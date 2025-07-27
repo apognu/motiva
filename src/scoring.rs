@@ -15,6 +15,7 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>) -> 
       .into_par_iter()
       .map(|mut hit| {
         let _enter = span.enter();
+
         let (score, features) = A::score(entity, &hit);
 
         hit.features = features.into_iter().filter(|(_, score)| score > &0.0).collect::<Vec<(_, _)>>();

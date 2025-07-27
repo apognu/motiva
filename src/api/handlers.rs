@@ -14,7 +14,7 @@ use crate::{
     errors::AppError,
     middlewares::json_rejection::TypedJson,
   },
-  matching::{logic_v1::LogicV1, name_based::NameBased, name_qualified::NameQualified},
+  matching::{name_based::NameBased, name_qualified::NameQualified},
   scoring, search,
 };
 

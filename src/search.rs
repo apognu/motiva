@@ -63,7 +63,7 @@ pub struct EsEntitySource {
   pub properties: HashMap<String, Vec<String>>,
 }
 
-#[instrument(level = "trace", skip_all)]
+#[instrument(skip_all)]
 pub async fn search(catalog: Arc<RwLock<Collections>>, es: &Elasticsearch, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, AppError> {
   let query = build_query(catalog, entity, params).await?;
 

@@ -9,6 +9,7 @@ use crate::{
   model::{Entity, HasProperties, SearchEntity},
 };
 
+// TODO
 #[scoring_feature(OrgIdMismatch, name = "orgid_disjoint")]
 fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   if lhs.schema.0 != "Organization" || rhs.schema.0 != "Organization" {
@@ -36,7 +37,7 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 
         if ratio > 0.7 { ratio } else { 0.0 }
       })
-      .max_by(|lhs, rhs| lhs.total_cmp(&rhs))
+      .max_by(|lhs, rhs| lhs.total_cmp(rhs))
       .unwrap_or(1.0)
 }
 

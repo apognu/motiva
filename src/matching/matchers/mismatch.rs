@@ -27,6 +27,7 @@ impl<'e> Feature<'e> for SimpleMismatch<'e> {
     self.name
   }
 
+  #[tracing::instrument(name = "simple_mismatch", skip_all, fields(mismatch = self.name))]
   fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     let lhs = (self.extractor)(lhs);
     let rhs = (self.extractor)(rhs);
