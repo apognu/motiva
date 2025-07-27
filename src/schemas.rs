@@ -1,0 +1,83 @@
+use std::{
+  collections::{HashMap, HashSet},
+  sync::LazyLock,
+};
+
+use rust_embed::Embed;
+use serde::Deserialize;
+
+#[derive(Embed)]
+#[folder = "assets/schemas/"]
+pub struct Schemas;
+
+pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema>> = LazyLock::new(|| {
+  tracing::debug!("building schemas");
+
+  let mut schemas = Schemas::iter()
+    .map(|filename| {
+      let file = Schemas::get(filename.as_ref()).expect("invalid schema");
+      let content = std::str::from_utf8(&file.data).expect("invalid schema");
+      let schema = serde_yaml::from_str::<HashMap<String, FtmSchema>>(content).expect("invalid schema");
+
+      schema.into_iter().next().expect("schema does not contain schema")
+    })
+    .collect::<HashMap<String, FtmSchema>>();
+
+  let schemas_clone = schemas.clone();
+  let mut children_map: HashMap<&str, Vec<&str>> = HashMap::default();
+
+  for (name, schema) in &schemas_clone {
+    for parent in &schema.extends {
+      children_map.entry(parent).or_default().push(name);
+    }
+  }
+
+  for name in schemas_clone.keys() {
+    let mut descendants: HashSet<&str> = HashSet::default();
+    let mut stack: Vec<&str> = Vec::default();
+
+    if let Some(children) = children_map.get(name.as_str()) {
+      stack.extend(children);
+    }
+
+    while let Some(node) = stack.pop() {
+      if descendants.insert(node) {
+        if let Some(children) = children_map.get(&node) {
+          stack.extend(children.clone());
+        }
+      }
+    }
+
+    schemas.get_mut(name).unwrap().descendants = descendants.into_iter().map(String::from).collect();
+  }
+
+  schemas
+});
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct FtmSchema {
+  #[serde(default)]
+  pub extends: Vec<String>,
+  pub matchable: bool,
+  #[serde(default)]
+  pub required: Vec<String>,
+  #[serde(default)]
+  pub caption: Vec<String>,
+  #[serde(default)]
+  pub properties: HashMap<String, FtmProperty>,
+
+  #[serde(skip)]
+  pub descendants: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct FtmProperty {
+  #[serde(default, rename = "type")]
+  pub _type: String,
+  #[serde(default = "c_true")]
+  pub matchable: bool,
+}
+
+const fn c_true() -> bool {
+  true
+}

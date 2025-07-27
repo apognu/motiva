@@ -1,0 +1,40 @@
+pub mod python;
+
+use std::collections::HashMap;
+
+use crate::model::{Entity, Schema, SearchEntity};
+
+#[bon::builder]
+pub fn e(#[builder(start_fn)] schema: &str, id: Option<&str>, properties: &[(&str, &[&str])]) -> Entity {
+  let mut props = HashMap::default();
+
+  for (prop, values) in properties {
+    props.insert(prop.to_string(), values.into_iter().map(|s| s.to_string()).collect::<Vec<_>>());
+  }
+
+  Entity {
+    schema: Schema(schema.to_string()),
+    id: id.map(ToOwned::to_owned).unwrap_or_default(),
+    caption: String::new(),
+    properties: props,
+    ..Default::default()
+  }
+}
+
+#[bon::builder]
+pub fn se(#[builder(start_fn)] schema: &str, properties: &[(&str, &[&str])]) -> SearchEntity {
+  let mut props = HashMap::default();
+
+  for (prop, values) in properties {
+    props.insert(prop.to_string(), values.into_iter().map(|s| s.to_string()).collect::<Vec<_>>());
+  }
+
+  let mut entity = SearchEntity {
+    schema: Schema(schema.to_string()),
+    properties: props,
+    name_parts: Default::default(),
+  };
+
+  entity.precompute();
+  entity
+}
