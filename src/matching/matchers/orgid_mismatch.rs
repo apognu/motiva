@@ -14,6 +14,7 @@ impl<'e> Feature<'e> for OrgIdMismatch {
     "orgid_disjoint"
   }
 
+  #[tracing::instrument(name = "orgid_disjoint", skip_all)]
   fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     if lhs.schema.0 != "Organization" || rhs.schema.0 != "Organization" {
       return 0.0;
