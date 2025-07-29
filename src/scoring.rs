@@ -11,7 +11,7 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>) -> 
 
   let mut results = Vec::with_capacity(hits.len());
 
-  let out = hits.into_iter().map(|mut hit| {
+  let scores = hits.into_iter().map(|mut hit| {
     let _enter = span.enter();
 
     let (score, features) = A::score(entity, &hit);
@@ -23,7 +23,7 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>) -> 
     (hit, score)
   });
 
-  results.extend(out);
+  results.extend(scores);
 
   Ok(results)
 }

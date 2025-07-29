@@ -1,10 +1,14 @@
 use std::collections::HashSet;
 
 use compact_str::CompactString;
+use macros::scoring_feature;
 use tracing::instrument;
 
 use crate::{
-  matching::{Feature, extractors},
+  matching::{
+    Feature,
+    extractors::{self, extract_numbers},
+  },
   model::{Entity, HasProperties, SearchEntity},
 };
 
@@ -53,6 +57,25 @@ impl<'e> Feature<'e> for SimpleMismatch<'e> {
   }
 }
 
+#[scoring_feature(NumbersMismatch, name = "numbers_mismatch")]
+fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+  let (lhs_numbers, rhs_numbers) = match lhs.schema.is_a("Address") {
+    true => (
+      HashSet::<String>::from_iter(extract_numbers(lhs.property("full").iter()).map(ToOwned::to_owned)),
+      HashSet::<String>::from_iter(extract_numbers(rhs.property("full").iter()).map(ToOwned::to_owned)),
+    ),
+    false => (
+      HashSet::<String>::from_iter(extract_numbers(lhs.names_and_aliases().iter()).map(ToOwned::to_owned)),
+      HashSet::<String>::from_iter(extract_numbers(rhs.names_and_aliases().iter()).map(ToOwned::to_owned)),
+    ),
+  };
+
+  let base = lhs_numbers.len().min(rhs_numbers.len());
+  let mismatches = lhs_numbers.difference(&rhs_numbers).count();
+
+  mismatches as f64 / base.max(1) as f64
+}
+
 pub fn dob_year_disjoint<S: AsRef<str>>(lhs: &[S], rhs: &[S]) -> f64 {
   let lhs_years = lhs.iter().map(|d| d.as_ref().chars().take(4).collect::<CompactString>()).collect::<HashSet<_>>();
   let rhs_years = rhs.iter().map(|d| d.as_ref().chars().take(4).collect::<CompactString>()).collect::<HashSet<_>>();
@@ -86,6 +109,11 @@ pub fn dob_day_disjoint<S: AsRef<str>>(lhs: &[S], rhs: &[S]) -> f64 {
 
 #[cfg(test)]
 mod tests {
+  use crate::{
+    matching::Feature,
+    tests::{e, se},
+  };
+
   #[test]
   fn dob_year_disjoint() {
     assert_eq!(super::dob_year_disjoint(&["1988-07-22"], &["1989-07-22"]), 1.0);
@@ -100,5 +128,13 @@ mod tests {
     assert_eq!(super::dob_day_disjoint(&["2022-01-02"], &["2022-01-02"]), 0.0);
     assert_eq!(super::dob_day_disjoint(&["2022-01-02"], &["2022-02-01"]), 0.5);
     assert_eq!(super::dob_day_disjoint(&["1987-07-20", "2022-01-02"], &["2022-03-04", "1987-20-07"]), 0.5);
+  }
+
+  #[test]
+  fn numbers_mismatch() {
+    let lhs = se("Person").properties(&[("name", &["123 Limited", "The answer is 42"])]).call();
+    let rhs = e("Person").properties(&[("name", &["The 123 Name", "Avenue 4123"])]).call();
+
+    assert_eq!(super::NumbersMismatch.score_feature(&lhs, &rhs), 0.5);
   }
 }

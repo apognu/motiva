@@ -8,6 +8,7 @@ use axum_extra::extract::WithRejection;
 use itertools::Itertools;
 use tracing::{Instrument, instrument};
 
+use crate::matching::logic_v1::LogicV1;
 use crate::{
   api::{
     AppState,
@@ -53,6 +54,7 @@ pub async fn match_entities(
         let scores = match query.algorithm.unwrap_or(Algorithm::NameBased) {
           Algorithm::NameBased => scoring::score::<NameBased>(&entity, hits),
           Algorithm::NameQualified => scoring::score::<NameQualified>(&entity, hits),
+          Algorithm::LogicV1 => scoring::score::<LogicV1>(&entity, hits),
         };
 
         match scores {

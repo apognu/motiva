@@ -1,7 +1,8 @@
-use std::{borrow::Borrow, collections::HashSet};
+use std::{borrow::Borrow, collections::HashSet, sync::LazyLock};
 
 use any_ascii::any_ascii;
 use itertools::Itertools;
+use regex::Regex;
 use rphonetic::{Encoder, Metaphone};
 
 #[inline(always)]
@@ -14,13 +15,33 @@ where
 }
 
 #[inline(always)]
-pub fn clean_names<'s, I, S>(names: I) -> impl Iterator<Item = String>
+pub fn clean_names<'s, I, S>(names: I) -> impl Iterator<Item = String> + Clone
 where
   S: Borrow<str> + 's,
-  I: Iterator<Item = &'s S> + 's,
+  I: Iterator<Item = &'s S> + Clone + 's,
 {
   names
     .map(|s| any_ascii(s.borrow()).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
+    .unique()
+}
+
+#[inline(always)]
+pub fn clean_address_parts<'s, I, S>(names: I) -> impl Iterator<Item = String> + Clone
+where
+  S: Borrow<str> + 's,
+  I: Iterator<Item = &'s S> + Clone + 's,
+{
+  names
+    .map(|s| {
+      any_ascii(s.borrow())
+        .to_lowercase()
+        .chars()
+        .map(|c| match c {
+          c if c.is_alphanumeric() || c.is_whitespace() => c,
+          _ => ' ',
+        })
+        .collect::<String>()
+    })
     .unique()
 }
 
@@ -120,6 +141,26 @@ pub fn flip_date(mut date: Vec<char>) -> Vec<char> {
   (date[3], date[4]) = (m1, m2);
 
   date
+}
+
+static NUMBERS_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
+
+pub fn extract_numbers<'s, I, S>(haystack: I) -> impl Iterator<Item = &'s str>
+where
+  S: Borrow<str> + 's,
+  I: Iterator<Item = &'s S> + 's,
+{
+  // let mut set = HashSet::<String>::new();
+
+  // for value in haystack {
+  //   for candidate in NUMBERS_REGEX.find_iter(value.borrow()) {
+  //     set.insert(candidate.as_str().to_string());
+  //   }
+  // }
+
+  // set
+
+  haystack.flat_map(|value| NUMBERS_REGEX.find_iter(value.borrow()).map(|number| number.as_str()))
 }
 
 #[cfg(test)]

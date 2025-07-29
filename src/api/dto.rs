@@ -12,6 +12,8 @@ pub enum Algorithm {
   NameBased,
   #[serde(rename = "name-qualified")]
   NameQualified,
+  #[serde(rename = "logic-v1")]
+  LogicV1,
 }
 
 #[derive(Clone, Debug, Deserialize)]
