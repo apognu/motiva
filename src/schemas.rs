@@ -43,10 +43,10 @@ pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema>> = LazyLock::new(|| {
     }
 
     while let Some(node) = stack.pop() {
-      if descendants.insert(node) {
-        if let Some(children) = children_map.get(&node) {
-          stack.extend(children.clone());
-        }
+      if descendants.insert(node)
+        && let Some(children) = children_map.get(&node)
+      {
+        stack.extend(children.clone());
       }
     }
 

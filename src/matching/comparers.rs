@@ -23,6 +23,31 @@ pub fn is_levenshtein_plausible(lhs: &str, rhs: &str) -> bool {
   levenshtein(&lhs.to_lowercase(), &rhs.to_lowercase()) <= threshold
 }
 
+pub fn default_levenshtein_similarity(lhs: &str, rhs: &str) -> f64 {
+  levenshtein_similarity(lhs, rhs, 4)
+}
+
+pub fn levenshtein_similarity(lhs: &str, rhs: &str, max_edits: usize) -> f64 {
+  if lhs.is_empty() || rhs.is_empty() {
+    return 0.0;
+  }
+
+  let pct_edits = (lhs.len().min(rhs.len()) as f64 * 0.2).ceil();
+  let max_edits = (max_edits as f64).min(pct_edits);
+
+  if (lhs.len() as isize - rhs.len() as isize).abs() > max_edits as isize {
+    return 0.0;
+  }
+
+  let distance = levenshtein(lhs, rhs) as f64;
+
+  if distance > max_edits {
+    return 0.0;
+  }
+
+  1.0 - (distance / lhs.len().max(rhs.len()) as f64)
+}
+
 pub fn align_name_parts<'s, S>(query: &[S], result: &[S]) -> f64
 where
   S: Borrow<str> + 's,

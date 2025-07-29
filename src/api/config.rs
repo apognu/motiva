@@ -37,12 +37,12 @@ impl Config {
       enable_tracing: env::var("ENABLE_TRACING").unwrap_or_default() == "1",
     };
 
-    if let EsAuthMethod::Basic | EsAuthMethod::ApiKey = config.index_auth_method {
-      if config.index_client_id.is_none() || config.index_client_secret.is_none() {
-        return Err(AppError::ConfigError(
-          "ES_CLIENT_ID and ES_CLIENT_SECRET are required when using Basic or ApiKey authentication methods".into(),
-        ));
-      }
+    if let EsAuthMethod::Basic | EsAuthMethod::ApiKey = config.index_auth_method
+      && (config.index_client_id.is_none() || config.index_client_secret.is_none())
+    {
+      return Err(AppError::ConfigError(
+        "ES_CLIENT_ID and ES_CLIENT_SECRET are required when using Basic or ApiKey authentication methods".into(),
+      ));
     }
 
     Ok(config)

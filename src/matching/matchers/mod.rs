@@ -1,5 +1,11 @@
+pub mod address;
+pub mod crypto_wallet;
+pub mod identifier;
 pub mod jaro_winkler;
+pub mod match_;
 pub mod mismatch;
+pub mod name_fingerprint_levenshtein;
 pub mod name_literal_match;
 pub mod orgid_mismatch;
+pub mod phonetic;
 pub mod soundex;

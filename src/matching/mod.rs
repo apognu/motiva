@@ -7,6 +7,8 @@ pub mod extractors;
 pub mod logic_v1;
 pub mod name_based;
 pub mod name_qualified;
+pub mod replacers;
+pub mod validators;
 
 pub trait MatchingAlgorithm {
   fn name() -> &'static str;

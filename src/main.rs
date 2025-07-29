@@ -23,6 +23,7 @@ use tracing_subscriber::fmt;
 use crate::{
   api::config::{self, Config, Env},
   catalog::fetch_catalog,
+  matching::replacers::company_types::ORG_TYPES,
   schemas::SCHEMAS,
 };
 
@@ -32,6 +33,8 @@ async fn main() -> anyhow::Result<()> {
 
   let (_logger, tracer) = init_logger(&config);
   let _ = *SCHEMAS;
+  let _ = *ORG_TYPES;
+
   let catalog = fetch_catalog().await.expect("could not fetch initial catalog");
 
   let app = api::routes(&config, catalog)?;
