@@ -27,7 +27,6 @@ impl Algorithm {
     match self {
       Algorithm::NameBased => "NameMatcher",
       Algorithm::NameQualified => "NameQualifiedMatcher",
-      Algorithm::LogicV1 => "LogicV1",
     }
   }
 }

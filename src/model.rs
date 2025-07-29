@@ -4,7 +4,7 @@ use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use validator::Validate;
 
-use crate::{matching::utils, search::EsEntity};
+use crate::{matching::extractors, search::EsEntity};
 
 pub const EMPTY: [String; 0] = [];
 
@@ -12,7 +12,7 @@ pub trait HasProperties {
   fn names(&self) -> &[String];
   fn names_and_aliases(&self) -> Vec<String>;
   fn property(&self, key: &str) -> &[String];
-  fn gather(&self, keys: &[&str]) -> HashSet<String>;
+  fn gather(&self, keys: &[&str]) -> Vec<String>;
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -31,7 +31,7 @@ pub struct SearchEntity {
 
 impl SearchEntity {
   pub fn precompute(&mut self) {
-    self.name_parts = utils::name_parts(self.property("name")).collect();
+    self.name_parts = extractors::name_parts_flat(self.property("name").iter()).collect();
   }
 }
 
@@ -57,8 +57,8 @@ impl HasProperties for SearchEntity {
     }
   }
 
-  fn gather(&self, keys: &[&str]) -> HashSet<String> {
-    let mut values = HashSet::new();
+  fn gather(&self, keys: &[&str]) -> Vec<String> {
+    let mut values = Vec::with_capacity(keys.len());
 
     for key in keys {
       values.extend(self.property(key).iter().cloned());
@@ -137,8 +137,8 @@ impl HasProperties for Entity {
       None => &EMPTY,
     }
   }
-  fn gather(&self, keys: &[&str]) -> HashSet<String> {
-    let mut values = HashSet::new();
+  fn gather(&self, keys: &[&str]) -> Vec<String> {
+    let mut values = Vec::with_capacity(keys.len());
 
     for key in keys {
       values.extend(self.property(key).iter().cloned());

@@ -57,7 +57,6 @@ pub(super) async fn match_entity(
           let scores = match query.algorithm.unwrap_or(Algorithm::NameBased) {
             Algorithm::NameBased => scoring::score::<NameBased>(&entity, hits),
             Algorithm::NameQualified => scoring::score::<NameQualified>(&entity, hits),
-            Algorithm::LogicV1 => scoring::score::<LogicV1>(&entity, hits),
           };
 
           match scores {

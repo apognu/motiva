@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use compact_str::CompactString;
 
 use crate::{
-  matching::{Feature, utils},
+  matching::{Feature, extractors},
   model::{Entity, HasProperties, SearchEntity},
 };
 
@@ -38,7 +38,7 @@ impl<'e> Feature<'e> for SimpleMismatch<'e> {
     match self.matcher {
       Some(func) => (func)(lhs, rhs),
 
-      None => match utils::is_disjoint(lhs, rhs) {
+      None => match extractors::is_disjoint(lhs, rhs) {
         true => 1.0,
         false => 0.0,
       },
@@ -68,7 +68,7 @@ pub fn dob_day_disjoint<S: AsRef<str>>(lhs: &[S], rhs: &[S]) -> f64 {
     return 0.0;
   }
 
-  let lhs_flipped = lhs_months.into_iter().filter(|d| d.len() == 5).map(utils::flip_date).collect::<HashSet<_>>();
+  let lhs_flipped = lhs_months.into_iter().filter(|d| d.len() == 5).map(extractors::flip_date).collect::<HashSet<_>>();
 
   if !lhs_flipped.is_disjoint(&rhs_months) {
     return 0.5;

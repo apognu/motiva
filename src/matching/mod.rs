@@ -2,10 +2,10 @@ mod matchers;
 
 use crate::model::{Entity, SearchEntity};
 
+pub mod extractors;
 pub mod logic_v1;
 pub mod name_based;
 pub mod name_qualified;
-pub mod utils;
 
 pub trait MatchingAlgorithm {
   fn name() -> &'static str;

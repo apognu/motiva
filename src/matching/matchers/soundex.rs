@@ -4,7 +4,7 @@ use macros::scoring_feature;
 use rphonetic::{Encoder, Soundex};
 
 use crate::{
-  matching::{Feature, utils},
+  matching::{Feature, extractors},
   model::{Entity, HasProperties, SearchEntity},
 };
 
@@ -13,7 +13,7 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   let soundex = Soundex::default();
   let mut similarities = Vec::new();
 
-  let parts = utils::name_parts(rhs.names()).collect::<HashSet<String>>();
+  let parts = extractors::name_parts_flat(rhs.names().iter()).collect::<HashSet<String>>();
   let rhs_soundexes = parts.iter().map(|s| soundex.encode(s)).collect::<Vec<_>>();
 
   for part in &lhs.name_parts {

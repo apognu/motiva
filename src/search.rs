@@ -13,7 +13,7 @@ use unicode_normalization::UnicodeNormalization;
 use crate::{
   api::{dto::MatchParams, errors::AppError},
   catalog::Collections,
-  matching::utils,
+  matching::extractors,
   model::{Entity, Schema, SearchEntity},
   schemas::SCHEMAS,
 };
@@ -174,13 +174,13 @@ fn build_shoulds(entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>
     }));
   }
 
-  for name in utils::name_keys(&names) {
+  for name in extractors::name_keys(names.iter()) {
     add_term(&mut should, "name_keys", &name, 4.0);
   }
-  for name in utils::name_parts(&names) {
+  for name in extractors::name_parts_flat(names.iter()) {
     add_term(&mut should, "name_parts", &name, 1.0);
   }
-  for name in utils::phonetic_name(&Metaphone::new(None), &names) {
+  for name in extractors::phonetic_name(&Metaphone::new(None), names.iter()) {
     add_term(&mut should, "name_phonetic", &name, 0.8);
   }
 

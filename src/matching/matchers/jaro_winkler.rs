@@ -2,7 +2,7 @@ use macros::scoring_feature;
 use strsim::jaro_winkler;
 
 use crate::{
-  matching::{Feature, utils},
+  matching::{Feature, extractors},
   model::{Entity, HasProperties, SearchEntity},
 };
 
@@ -13,7 +13,7 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   for part in &lhs.name_parts {
     let mut best = 0.0f64;
 
-    for other in utils::name_parts(rhs.names()) {
+    for other in extractors::name_parts_flat(rhs.names().iter()) {
       let similarity = match jaro_winkler(part, &other) {
         score if score > 0.6 => score,
         _ => 0.0,
