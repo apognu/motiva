@@ -11,8 +11,12 @@ use tokio::sync::RwLock;
 use tower_http::trace::TraceLayer;
 use uuid::Uuid;
 
-use crate::catalog::{Collections, fetch_catalog};
+use crate::{
+  api::config::Config,
+  catalog::{Collections, fetch_catalog},
+};
 
+pub mod config;
 pub mod dto;
 pub mod errors;
 
@@ -29,11 +33,11 @@ impl FromRef<AppState> for () {
   fn from_ref(_: &AppState) -> Self {}
 }
 
-pub async fn routes(catalog: Collections) -> Router {
+pub async fn routes(config: &Config, catalog: Collections) -> Router {
   let catalog = Arc::new(RwLock::new(catalog));
 
   let state = AppState {
-    es: Elasticsearch::new(Transport::single_node("http://127.0.0.1:9200").unwrap()),
+    es: Elasticsearch::new(Transport::single_node(&config.es_url).unwrap()),
     catalog: Arc::clone(&catalog),
   };
 
