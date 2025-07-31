@@ -1,10 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+  collections::{HashMap, HashSet},
+  ops::Deref,
+};
 
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use validator::Validate;
 
-use crate::{matching::extractors, search::EsEntity};
+use crate::{matching::extractors, schemas::SCHEMAS, search::EsEntity};
 
 pub const EMPTY: [String; 0] = [];
 
@@ -16,7 +19,29 @@ pub trait HasProperties {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct Schema(pub String);
+pub struct Schema(String);
+
+impl Schema {
+  pub fn is_a(&self, schema: &str) -> bool {
+    if self.0 == schema {
+      return true;
+    }
+
+    let Some(asked) = SCHEMAS.get(schema) else {
+      return false;
+    };
+
+    asked.descendants.iter().any(|s| s == &self.0)
+  }
+}
+
+impl Deref for Schema {
+  type Target = String;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize, Validate)]
 pub struct SearchEntity {
@@ -137,6 +162,7 @@ impl HasProperties for Entity {
       None => &EMPTY,
     }
   }
+
   fn gather(&self, keys: &[&str]) -> Vec<String> {
     let mut values = Vec::with_capacity(keys.len());
 
@@ -145,5 +171,17 @@ impl HasProperties for Entity {
     }
 
     values
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use crate::tests::e;
+
+  #[test]
+  fn entity_is_a() {
+    let entity = e("Company").properties(&[]).call();
+
+    assert!(entity.schema.is_a("Organization"));
   }
 }

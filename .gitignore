@@ -1,4 +1,5 @@
 /target
 /poetry.lock
+/assets/followthemoney
 
 .DS_Store

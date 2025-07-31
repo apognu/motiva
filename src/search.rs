@@ -31,7 +31,7 @@ impl EsEntity {
       return &self._source.caption;
     }
 
-    match SCHEMAS.get(&self._source.schema.0) {
+    match SCHEMAS.get(&*self._source.schema) {
       Some(schema) => {
         for prop in &schema.caption {
           if let Some(values) = self._source.properties.get(prop)
@@ -123,8 +123,8 @@ async fn build_filters(catalog: Arc<RwLock<Collections>>, entity: &SearchEntity,
 }
 
 fn build_schemas(entity: &SearchEntity, filters: &mut Vec<serde_json::Value>) -> Result<(), AppError> {
-  let schema = SCHEMAS.get(&entity.schema.0).ok_or(AppError::BadRequest)?;
-  let mut schemas = resolve_schemas(&entity.schema.0, true)?;
+  let schema = SCHEMAS.get(&*entity.schema).ok_or(AppError::BadRequest)?;
+  let mut schemas = resolve_schemas(&entity.schema, true)?;
   schemas.extend(schema.descendants.clone());
 
   filters.push(json!({ "terms": { "schema": schemas } }));
@@ -184,7 +184,7 @@ fn build_shoulds(entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>
     add_term(&mut should, "name_phonetic", &name, 0.8);
   }
 
-  let schema = SCHEMAS.get(&entity.schema.0).ok_or(anyhow::anyhow!("unknown schema"))?;
+  let schema = SCHEMAS.get(&*entity.schema).ok_or(anyhow::anyhow!("unknown schema"))?;
 
   for (property, values) in &entity.properties {
     if property == "name" || !schema.properties.get(property).map(|p| p.matchable).unwrap_or(false) {

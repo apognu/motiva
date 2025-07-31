@@ -12,7 +12,7 @@ use crate::{
 // TODO
 #[scoring_feature(OrgIdMismatch, name = "orgid_disjoint")]
 fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
-  if lhs.schema.0 != "Organization" || rhs.schema.0 != "Organization" {
+  if !lhs.schema.is_a("Organization") || !rhs.schema.is_a("Organization") {
     return 0.0;
   }
 
