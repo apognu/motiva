@@ -1,0 +1,52 @@
+name: Build and test
+on: push
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Install poetry
+        uses: abatilo/actions-poetry@v4
+
+      - name: Cache build artifacts
+        id: build-artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv/
+            target/
+          key: "${{hashFiles('Cargo.lock', 'pyproject.toml')}}"
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y libicu74 libicu-dev
+          git submodule update --init --checkout
+
+      - name: Setup a local virtual environment
+        run: |
+          poetry config virtualenvs.create true --local
+          poetry config virtualenvs.in-project true --local
+
+      - name: Install the Python dependencies
+        run: poetry install --no-root
+
+      - name: Build
+        env:
+          PYTHONPATH: "./.venv/lib/python3.13/site-packages"
+        run: cargo test
+
+      - name: Build
+        run: cargo build --release
