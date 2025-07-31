@@ -1,7 +1,4 @@
-use std::{
-  collections::{HashMap, HashSet},
-  ops::Deref,
-};
+use std::collections::{HashMap, HashSet};
 
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
@@ -22,6 +19,14 @@ pub trait HasProperties {
 pub struct Schema(String);
 
 impl Schema {
+  pub fn from(name: &str) -> Schema {
+    Schema(name.to_string())
+  }
+
+  pub fn as_str(&self) -> &str {
+    &self.0
+  }
+
   pub fn is_a(&self, schema: &str) -> bool {
     if self.0 == schema {
       return true;
@@ -32,14 +37,6 @@ impl Schema {
     };
 
     asked.descendants.iter().any(|s| s == &self.0)
-  }
-}
-
-impl Deref for Schema {
-  type Target = String;
-
-  fn deref(&self) -> &Self::Target {
-    &self.0
   }
 }
 

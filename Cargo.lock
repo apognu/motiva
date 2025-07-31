@@ -1198,12 +1198,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
-name = "jaro_winkler"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "966903d6b75c207539d45eef272e66e68542640adc142f15e9c9623f76f36b5f"
-
-[[package]]
 name = "jiff"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1385,7 +1379,6 @@ dependencies = [
  "elasticsearch",
  "float-cmp",
  "itertools",
- "jaro_winkler",
  "jiff",
  "macros",
  "opentelemetry",

@@ -18,7 +18,7 @@ impl<'py> IntoPyObject<'py> for Schema {
       .getattr("Model")?
       .call1((&PathBuf::new().join(env::var("PYTHONPATH").unwrap()).join("followthemoney/schema").display().to_string(),))?
       .getattr("get")?
-      .call1((self.0.clone(),))
+      .call1((self.as_str(),))
   }
 }
 
@@ -98,6 +98,29 @@ pub fn nomenklatura_score(matcher: Algorithm, query: &SearchEntity, hits: Vec<En
     }
 
     Ok(MatchResults(scores))
+  });
+
+  result.context("could not compute score")
+}
+
+pub fn nomenklatura_comparer(path: &str, function: &str, query: &SearchEntity, entity: &Entity) -> anyhow::Result<f64> {
+  let result = Python::with_gil::<_, PyResult<f64>>(|py| {
+    let ftm = py.import("followthemoney.proxy")?;
+
+    let query = {
+      let data = vec![("properties", query.properties.clone())].into_py_dict(py)?;
+      ftm.getattr("EntityProxy")?.call1((query.schema.clone(), data))?
+    };
+
+    let entity = {
+      let data = vec![("properties", entity.properties.clone())].into_py_dict(py)?;
+      ftm.getattr("EntityProxy")?.call1((entity.schema.clone(), data))?
+    };
+
+    let matcher = py.import(&format!("nomenklatura.matching.{path}"))?.getattr(function)?;
+    let score: f64 = matcher.call1((&query, entity))?.extract()?;
+
+    Ok(score)
   });
 
   result.context("could not compute score")

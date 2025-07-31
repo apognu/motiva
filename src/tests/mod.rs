@@ -13,7 +13,7 @@ pub fn e(#[builder(start_fn)] schema: &str, id: Option<&str>, properties: &[(&st
   }
 
   Entity {
-    schema: Schema(schema.to_string()),
+    schema: Schema::from(schema),
     id: id.map(ToOwned::to_owned).unwrap_or_default(),
     caption: String::new(),
     properties: props,
@@ -30,7 +30,7 @@ pub fn se(#[builder(start_fn)] schema: &str, properties: &[(&str, &[&str])]) -> 
   }
 
   let mut entity = SearchEntity {
-    schema: Schema(schema.to_string()),
+    schema: Schema::from(schema),
     properties: props,
     name_parts: Default::default(),
   };

@@ -51,7 +51,7 @@ mod tests {
   };
 
   #[test]
-  fn putin_against_nomenklatura() {
+  fn against_nomenklatura() {
     pyo3::prepare_freethreaded_python();
 
     let queries = vec![
@@ -81,12 +81,12 @@ mod tests {
     ];
 
     for query in queries {
-      let nomenklatura_scores = nomenklatura_score(Algorithm::NameQualified, &query, results.clone()).unwrap();
+      let nscores = nomenklatura_score(Algorithm::NameQualified, &query, results.clone()).unwrap();
 
-      for (index, (_, nomenklatura_score)) in nomenklatura_scores.into_iter().enumerate() {
+      for (index, (_, nscore)) in nscores.into_iter().enumerate() {
         let (score, _) = NameQualified::score(&query, results.get(index).unwrap());
 
-        assert!(approx_eq!(f64, score, nomenklatura_score, epsilon = 0.05));
+        assert!(approx_eq!(f64, score, nscore, epsilon = 0.01));
       }
     }
   }

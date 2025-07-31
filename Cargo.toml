@@ -18,7 +18,6 @@ elasticsearch = { version = "9.0.0-alpha.1", default-features = false, features 
     "rustls-tls",
 ] }
 itertools = "0.14.0"
-jaro_winkler = "0.1.0"
 jiff = { version = "0.2.15", features = ["serde"] }
 rayon = "1.10.0"
 rphonetic = "3.0.3"

@@ -71,12 +71,12 @@ mod tests {
         .call(),
     ];
 
-    let nomenklatura_scores = nomenklatura_score(Algorithm::NameBased, &query, results.clone()).unwrap();
+    let nscores = nomenklatura_score(Algorithm::NameBased, &query, results.clone()).unwrap();
 
-    for (index, (_, nomenklatura_score)) in nomenklatura_scores.into_iter().enumerate() {
+    for (index, (_, nscore)) in nscores.into_iter().enumerate() {
       let (score, _) = NameBased::score(&query, results.get(index).unwrap());
 
-      assert!(approx_eq!(f64, score, nomenklatura_score, epsilon = 0.05));
+      assert!(approx_eq!(f64, score, nscore, epsilon = 0.05));
     }
   }
 }

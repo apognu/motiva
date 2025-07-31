@@ -45,7 +45,7 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 mod tests {
   use float_cmp::approx_eq;
 
-  use crate::tests::{e, se};
+  use crate::tests::{e, python::nomenklatura_comparer, se};
 
   use super::Feature;
 
@@ -61,9 +61,21 @@ mod tests {
 
     assert_eq!(super::OrgIdMismatch.score_feature(&lhs, &rhs), 1.0);
 
-    let lhs = se("Organization").properties(&[("registrationNumber", &["FR1234567890"])]).call();
+    let lhs = se("Company").properties(&[("registrationNumber", &["FR1234567890"])]).call();
     let rhs = e("Organization").properties(&[("registrationNumber", &["FR-1134567-890"])]).call();
 
     assert!(approx_eq!(f64, super::OrgIdMismatch.score_feature(&lhs, &rhs), 0.08, epsilon = 0.01));
+  }
+
+  #[test]
+  fn against_nomenklatura() {
+    pyo3::prepare_freethreaded_python();
+
+    let lhs = se("Company").properties(&[("registrationNumber", &["FR1234567890"])]).call();
+    let rhs = e("Organization").properties(&[("registrationNumber", &["FR-1134567-890"])]).call();
+
+    let nscore = nomenklatura_comparer("compare.identifiers", "orgid_disjoint", &lhs, &rhs).unwrap();
+
+    assert!(approx_eq!(f64, nscore, super::OrgIdMismatch.score_feature(&lhs, &rhs), epsilon = 0.01));
   }
 }

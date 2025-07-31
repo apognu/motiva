@@ -4,6 +4,7 @@ use tracing::instrument;
 
 use crate::model::{Entity, SearchEntity};
 
+pub mod comparers;
 pub mod extractors;
 pub mod logic_v1;
 pub mod name_based;

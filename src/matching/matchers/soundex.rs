@@ -24,3 +24,25 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 
   similarities.iter().sum::<f64>() / 1.0f64.max(similarities.len() as f64)
 }
+
+#[cfg(test)]
+mod tests {
+  use float_cmp::approx_eq;
+
+  use crate::{
+    matching::Feature,
+    tests::{e, python::nomenklatura_comparer, se},
+  };
+
+  #[test]
+  fn against_nomenklatura() {
+    pyo3::prepare_freethreaded_python();
+
+    let lhs = se("Person").properties(&[("name", &["Vladimir Putin", "Vladimir Putin"])]).call();
+    let rhs = e("Person").properties(&[("name", &["Vladymire Poutine"])]).call();
+
+    let nscore = nomenklatura_comparer("compare.phonetic", "name_soundex_match", &lhs, &rhs).unwrap();
+
+    assert!(approx_eq!(f64, nscore, super::SoundexNameParts.score_feature(&lhs, &rhs), epsilon = 0.01));
+  }
+}
