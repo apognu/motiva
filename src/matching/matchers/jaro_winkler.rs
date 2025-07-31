@@ -70,6 +70,7 @@ mod tests {
   };
 
   #[test]
+  #[serial_test::serial]
   fn jaro_name_parts_against_nomenklatura() {
     pyo3::prepare_freethreaded_python();
 
@@ -82,6 +83,7 @@ mod tests {
   }
 
   #[test]
+  #[serial_test::serial]
   fn person_name_jaro_winkler_against_nomenklatura() {
     pyo3::prepare_freethreaded_python();
 

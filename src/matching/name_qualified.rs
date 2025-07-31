@@ -51,6 +51,7 @@ mod tests {
   };
 
   #[test]
+  #[serial_test::serial]
   fn against_nomenklatura() {
     pyo3::prepare_freethreaded_python();
 
