@@ -1,0 +1,3 @@
+[submodule "assets/followthemoney"]
+	path = assets/followthemoney
+	url = https://github.com/alephdata/followthemoney.git
