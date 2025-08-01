@@ -21,6 +21,9 @@ pub enum AppError {
   ServerError,
   #[error(transparent)]
   OtherError(#[from] anyhow::Error),
+
+  #[error("invalid configuration: {0}")]
+  ConfigError(String),
   #[error(transparent)]
   IndexError(#[from] elasticsearch::Error),
 

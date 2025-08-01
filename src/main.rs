@@ -2,11 +2,11 @@
 
 mod api;
 mod catalog;
+mod index;
 mod matching;
 mod model;
 mod schemas;
 mod scoring;
-mod search;
 
 #[cfg(test)]
 mod tests;
@@ -23,20 +23,22 @@ use crate::{
 };
 
 #[tokio::main]
-async fn main() {
-  let config = Config::from_env();
+async fn main() -> anyhow::Result<()> {
+  let config = Config::from_env()?;
 
   let (_logger, _provider) = init_logger(&config);
   let _ = *SCHEMAS;
   let catalog = fetch_catalog().await.expect("could not fetch initial catalog");
 
-  let app = api::routes(&config, catalog).await;
+  let app = api::routes(&config, catalog).await?;
 
   tracing::info!("listening on {}", config.listen_addr);
 
   let listener = tokio::net::TcpListener::bind(&config.listen_addr).await.expect("could not create listener");
 
   axum::serve(listener, app).await.expect("could not start app");
+
+  Ok(())
 }
 
 fn init_logger(config: &Config) -> (WorkerGuard, Option<SdkTracerProvider>) {
@@ -68,8 +70,8 @@ fn init_logger(config: &Config) -> (WorkerGuard, Option<SdkTracerProvider>) {
   };
 
   tracing_subscriber::registry()
-    .with(tracing_layer)
     .with(EnvFilter::builder().try_from_env().or_else(|_| EnvFilter::try_new("info")).unwrap())
+    .with(tracing_layer)
     .with(formatter)
     .init();
 

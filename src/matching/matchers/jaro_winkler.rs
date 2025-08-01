@@ -18,7 +18,7 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   for part in &lhs.name_parts {
     let mut best = 0.0f64;
 
-    for other in extractors::name_parts_flat(rhs.names().iter()) {
+    for other in extractors::name_parts_flat(rhs.names_and_aliases().iter()) {
       let similarity = match jaro_winkler(part, &other) {
         score if score > 0.6 => score,
         _ => 0.0,

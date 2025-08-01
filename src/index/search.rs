@@ -1,70 +1,24 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use axum::http::StatusCode;
-use elasticsearch::{Elasticsearch, SearchParts};
-use jiff::civil::DateTime;
+use elasticsearch::SearchParts;
 use rphonetic::Metaphone;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::RwLock;
 use tracing::instrument;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::{
-  api::{dto::MatchParams, errors::AppError},
+  api::{AppState, dto::MatchParams, errors::AppError},
   catalog::Collections,
+  index::EsEntity,
   matching::extractors,
-  model::{Entity, Schema, SearchEntity},
+  model::{Entity, SearchEntity},
   schemas::SCHEMAS,
 };
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct EsEntity {
-  #[serde(rename(deserialize = "_id"))]
-  pub id: String,
-  pub _source: EsEntitySource,
-}
-
-impl EsEntity {
-  pub fn caption(&self) -> &str {
-    if !self._source.caption.is_empty() {
-      return &self._source.caption;
-    }
-
-    match SCHEMAS.get(self._source.schema.as_str()) {
-      Some(schema) => {
-        for prop in &schema.caption {
-          if let Some(values) = self._source.properties.get(prop)
-            && let Some(first) = values.first()
-          {
-            // TODO: heuristic to pick the "best" name for Things.
-            return first;
-          }
-        }
-
-        &self._source.caption
-      }
-
-      None => &self._source.caption,
-    }
-  }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct EsEntitySource {
-  pub caption: String,
-  pub schema: Schema,
-  pub datasets: Vec<String>,
-  pub referents: Vec<String>,
-  pub target: bool,
-  pub first_seen: DateTime,
-  pub last_seen: DateTime,
-  pub last_change: DateTime,
-  pub properties: HashMap<String, Vec<String>>,
-}
-
 #[instrument(skip_all)]
-pub async fn search(catalog: Arc<RwLock<Collections>>, es: &Elasticsearch, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, AppError> {
+pub async fn search(AppState { es, catalog, .. }: &AppState, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, AppError> {
   let query = build_query(catalog, entity, params).await?;
 
   let results = es
@@ -101,7 +55,7 @@ pub async fn search(catalog: Arc<RwLock<Collections>>, es: &Elasticsearch, entit
   )
 }
 
-async fn build_query(catalog: Arc<RwLock<Collections>>, entity: &SearchEntity, params: &MatchParams) -> Result<serde_json::Value, AppError> {
+async fn build_query(catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity, params: &MatchParams) -> Result<serde_json::Value, AppError> {
   Ok(json!({
       "query": {
           "bool": {
@@ -112,7 +66,7 @@ async fn build_query(catalog: Arc<RwLock<Collections>>, entity: &SearchEntity, p
   }))
 }
 
-async fn build_filters(catalog: Arc<RwLock<Collections>>, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<serde_json::Value>, AppError> {
+async fn build_filters(catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<serde_json::Value>, AppError> {
   let mut filters = Vec::<serde_json::Value>::new();
 
   build_schemas(entity, &mut filters)?;
@@ -132,7 +86,7 @@ fn build_schemas(entity: &SearchEntity, filters: &mut Vec<serde_json::Value>) ->
   Ok(())
 }
 
-async fn build_datasets(catalog: Arc<RwLock<Collections>>, filters: &mut Vec<serde_json::Value>, params: &MatchParams) {
+async fn build_datasets(catalog: &Arc<RwLock<Collections>>, filters: &mut Vec<serde_json::Value>, params: &MatchParams) {
   let scope = {
     let guard = catalog.read().await;
     guard.get("default").and_then(|dataset| dataset.datasets.clone()).unwrap_or_default()
@@ -242,7 +196,7 @@ fn resolve_schemas(schema: &str, root: bool) -> Result<Vec<String>, AppError> {
 
 #[cfg(test)]
 mod tests {
-  use crate::search::resolve_schemas;
+  use crate::index::search::resolve_schemas;
 
   #[test]
   fn resolve_schema_chain() {

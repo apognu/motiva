@@ -52,7 +52,7 @@ mod tests {
 
   #[test]
   #[serial_test::serial]
-  fn against_nomenklatura() {
+  fn person_against_nomenklatura() {
     pyo3::prepare_freethreaded_python();
 
     let queries = vec![
@@ -73,13 +73,38 @@ mod tests {
       e("Person")
         .id("Q7747")
         .properties(&[
-          ("name", &["PUTIN, Vladimir Vladimirovich", "Владимир Владимирович Путин", "Vladimir Vladimirovich Putin"]),
+          ("name", &["Fladymir Poutin"]),
+          ("alias", &["Vladou", "Poutine"]),
           ("birthDate", &["1952-10-07"]),
           ("gender", &["male"]),
           ("country", &["ru"]),
         ])
         .call(),
     ];
+
+    for query in queries {
+      let nscores = nomenklatura_score(Algorithm::NameQualified, &query, results.clone()).unwrap();
+
+      for (index, (_, nscore)) in nscores.into_iter().enumerate() {
+        let (score, _) = NameQualified::score(&query, results.get(index).unwrap());
+
+        assert!(approx_eq!(f64, score, nscore, epsilon = 0.01));
+      }
+    }
+  }
+
+  #[test]
+  #[serial_test::serial]
+  fn company_against_nomenklatura() {
+    pyo3::prepare_freethreaded_python();
+
+    let queries = vec![
+      se("Company").properties(&[("name", &["Google"]), ("registrationNumber", &["FR12"])]).call(),
+      se("Company").properties(&[("name", &["Gooogle"]), ("registrationNumber", &["US1234"])]).call(),
+      se("Company").properties(&[("name", &["Google"]), ("registrationNumber", &["US1234"])]).call(),
+    ];
+
+    let results = vec![e("Company").id("TEST").properties(&[("name", &["Google"]), ("registrationNumber", &["US-1234"])]).call()];
 
     for query in queries {
       let nscores = nomenklatura_score(Algorithm::NameQualified, &query, results.clone()).unwrap();

@@ -4,7 +4,7 @@ use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use validator::Validate;
 
-use crate::{matching::extractors, schemas::SCHEMAS, search::EsEntity};
+use crate::{index::EsEntity, matching::extractors, schemas::SCHEMAS};
 
 pub const EMPTY: [String; 0] = [];
 

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use axum_extra::extract::Query;
@@ -14,23 +14,20 @@ use crate::{
     errors::AppError,
     middlewares::json_rejection::TypedJson,
   },
+  index,
   matching::{name_based::NameBased, name_qualified::NameQualified},
-  scoring, search,
+  scoring,
 };
 
-pub(super) async fn not_found() -> impl IntoResponse {
-  AppError::ResourceNotFound
-}
-
 #[instrument(skip_all)]
-pub(super) async fn match_entity(
-  State(AppState { es, catalog }): State<AppState>,
+pub async fn match_entities(
+  State(state): State<AppState>,
   WithRejection(Query(mut query), _): WithRejection<Query<MatchParams>, QueryRejection>,
   TypedJson(mut body): TypedJson<Payload>,
 ) -> Result<(StatusCode, impl IntoResponse), AppError> {
   let limit = query.limit.unwrap_or(5);
 
-  query.limit = Some((limit * 10).clamp(20, 9999));
+  query.limit = Some((limit * state.config.match_candidates).clamp(20, 9999));
 
   body.queries.iter_mut().for_each(|(_, entity)| {
     entity.precompute();
@@ -39,12 +36,11 @@ pub(super) async fn match_entity(
   let tasks = body.queries.into_iter().map(|(id, entity)| {
     tokio::spawn(
       {
-        let catalog = Arc::clone(&catalog);
+        let state = state.clone();
         let query = query.clone();
-        let es = es.clone();
 
         async move {
-          let hits = match search::search(catalog, &es, &entity, &query).await {
+          let hits = match index::search::search(&state, &entity, &query).await {
             Ok(hits) => hits,
 
             Err(err) => {
