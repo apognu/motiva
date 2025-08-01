@@ -4,7 +4,11 @@ use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use validator::Validate;
 
-use crate::{index::EsEntity, matching::extractors, schemas::SCHEMAS};
+use crate::{
+  index::EsEntity,
+  matching::extractors,
+  schemas::{FtmProperty, SCHEMAS},
+};
 
 pub const EMPTY: [String; 0] = [];
 
@@ -37,6 +41,24 @@ impl Schema {
     };
 
     asked.descendants.iter().any(|s| s == &self.0)
+  }
+
+  pub fn properties(&self) -> Option<Vec<(String, FtmProperty)>> {
+    let Some(schema) = SCHEMAS.get(self.as_str()) else {
+      return None;
+    };
+
+    Some(
+      schema
+        .parents
+        .iter()
+        .filter_map(|s| match SCHEMAS.get(s) {
+          Some(schema) => Some(schema.properties.clone()),
+          None => None,
+        })
+        .flatten()
+        .collect::<Vec<_>>(),
+    )
   }
 }
 
@@ -104,10 +126,19 @@ pub struct Entity {
   pub last_seen: DateTime,
   pub last_change: DateTime,
 
-  pub properties: HashMap<String, Vec<String>>,
+  pub properties: Properties,
 
   #[serde(serialize_with = "features_to_map")]
   pub features: Vec<(&'static str, f64)>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(bound(deserialize = "'de: 'static"))]
+pub struct Properties {
+  #[serde(flatten)]
+  pub strings: HashMap<String, Vec<String>>,
+  #[serde(flatten)]
+  pub entities: HashMap<String, serde_json::Value>,
 }
 
 fn features_to_map<S: Serializer>(input: &[(&'static str, f64)], ser: S) -> Result<S::Ok, S::Error> {
@@ -132,7 +163,10 @@ impl From<EsEntity> for Entity {
       first_seen: entity._source.first_seen,
       last_seen: entity._source.last_seen,
       last_change: entity._source.last_change,
-      properties: entity._source.properties,
+      properties: Properties {
+        strings: entity._source.properties,
+        ..Default::default()
+      },
       ..Default::default()
     }
   }
@@ -140,7 +174,7 @@ impl From<EsEntity> for Entity {
 
 impl HasProperties for Entity {
   fn names(&self) -> &[String] {
-    match self.properties.get("name") {
+    match self.properties.strings.get("name") {
       Some(names) => names,
       None => &EMPTY,
     }
@@ -154,7 +188,7 @@ impl HasProperties for Entity {
   }
 
   fn property(&self, key: &str) -> &[String] {
-    match self.properties.get(key) {
+    match self.properties.strings.get(key) {
       Some(values) => values,
       None => &EMPTY,
     }

@@ -87,7 +87,7 @@ pub fn nomenklatura_score(matcher: Algorithm, query: &SearchEntity, hits: Vec<En
 
     for hit in hits {
       let entity = {
-        let data = vec![("properties", hit.properties.clone())].into_py_dict(py)?;
+        let data = vec![("properties", hit.properties.strings.clone())].into_py_dict(py)?;
         ftm.getattr("EntityProxy")?.call1((hit.schema.clone(), data))?
       };
 
@@ -115,7 +115,7 @@ pub fn nomenklatura_comparer(path: &str, function: &str, query: &SearchEntity, e
     };
 
     let entity = {
-      let data = vec![("properties", entity.properties.clone())].into_py_dict(py)?;
+      let data = vec![("properties", entity.properties.strings.clone())].into_py_dict(py)?;
       ftm.getattr("EntityProxy")?.call1((entity.schema.clone(), data))?
     };
 

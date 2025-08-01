@@ -15,7 +15,7 @@ pub enum GetEntityResult {
 }
 
 #[instrument(skip_all)]
-pub async fn get(AppState { es, .. }: &AppState, id: &str) -> anyhow::Result<GetEntityResult> {
+pub async fn get_entity(AppState { es, .. }: &AppState, id: &str) -> anyhow::Result<GetEntityResult> {
   let query = json!({
     "query": {
         "bool": {
@@ -62,4 +62,45 @@ pub async fn get(AppState { es, .. }: &AppState, id: &str) -> anyhow::Result<Get
   }
 
   Err(AppError::ResourceNotFound.into())
+}
+
+#[instrument(skip_all)]
+pub async fn get_related_entities(AppState { es, .. }: &AppState, ids: &[String]) -> anyhow::Result<Vec<EsEntity>> {
+  let query = json!({
+    "query": {
+        "bool": {
+            "should": [
+                { "terms": { "entities": ids } },
+                { "ids": { "values": ids } },
+            ],
+            "minimum_should_match": 1
+        }
+    }
+  });
+
+  let results = es.search(SearchParts::Index(&["yente-entities"])).from(0).size(10).body(query).send().await?;
+  let status = results.status_code();
+  let body = results.json::<serde_json::Value>().await?;
+
+  if status != StatusCode::OK {
+    let err = body["error"]["reason"].as_str().unwrap().to_string();
+
+    Err(AppError::OtherError(anyhow::anyhow!(err)))?;
+  }
+
+  tracing::trace!(
+    latency = body["took"].as_u64(),
+    hits = body["hits"]["total"]["value"].as_u64(),
+    results = body["hits"]["hits"].as_array().iter().count(),
+    "got response from index"
+  );
+
+  Ok(
+    body["hits"]["hits"]
+      .as_array()
+      .ok_or(anyhow::anyhow!("invalid response"))?
+      .iter()
+      .map(|hit| serde_json::from_value::<EsEntity>(hit.clone()).unwrap().into())
+      .collect::<Vec<_>>(),
+  )
 }

@@ -2,7 +2,7 @@ pub mod python;
 
 use std::collections::HashMap;
 
-use crate::model::{Entity, Schema, SearchEntity};
+use crate::model::{Entity, Properties, Schema, SearchEntity};
 
 #[bon::builder]
 pub fn e(#[builder(start_fn)] schema: &str, id: Option<&str>, properties: &[(&str, &[&str])]) -> Entity {
@@ -16,7 +16,7 @@ pub fn e(#[builder(start_fn)] schema: &str, id: Option<&str>, properties: &[(&st
     schema: Schema::from(schema),
     id: id.map(ToOwned::to_owned).unwrap_or_default(),
     caption: String::new(),
-    properties: props,
+    properties: Properties { strings: props, ..Default::default() },
     ..Default::default()
   }
 }

@@ -27,6 +27,8 @@ pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema>> = LazyLock::new(|| {
   let mut children_map: HashMap<&str, Vec<&str>> = HashMap::default();
 
   for (name, schema) in &schemas_clone {
+    schemas.get_mut(name).unwrap().parents = resolve_schemas(&schemas, name, true).unwrap_or_default();
+
     for parent in &schema.extends {
       children_map.entry(parent).or_default().push(name);
     }
@@ -54,6 +56,26 @@ pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema>> = LazyLock::new(|| {
   schemas
 });
 
+fn resolve_schemas(schemas: &HashMap<String, FtmSchema>, schema: &str, root: bool) -> Option<Vec<String>> {
+  let mut out = Vec::new();
+
+  if let Some(def) = schemas.get(schema) {
+    if root && schema != "Thing" && !def.matchable {
+      return None;
+    }
+
+    if root || def.matchable || schema == "Thing" {
+      out.push(schema.to_string());
+    }
+
+    for parent in &def.extends {
+      out.extend(resolve_schemas(schemas, parent, false)?);
+    }
+  }
+
+  Some(out)
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct FtmSchema {
   #[serde(default)]
@@ -66,6 +88,8 @@ pub struct FtmSchema {
   #[serde(default)]
   pub properties: HashMap<String, FtmProperty>,
 
+  #[serde(skip)]
+  pub parents: Vec<String>,
   #[serde(skip)]
   pub descendants: Vec<String>,
 }
