@@ -7,7 +7,7 @@ authors = [
 ]
 readme = "README.md"
 requires-python = ">=3.13,<4.0.0"
-dependencies = ["nomenklatura (==4.0.4)"]
+dependencies = ["nomenklatura (==4.1.0)"]
 
 
 [build-system]

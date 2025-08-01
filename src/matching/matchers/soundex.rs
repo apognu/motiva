@@ -42,7 +42,7 @@ mod tests {
     let lhs = se("Person").properties(&[("name", &["Vladimir Putin", "Vladimir Putin"])]).call();
     let rhs = e("Person").properties(&[("name", &["Vladymire Poutine"])]).call();
 
-    let nscore = nomenklatura_comparer("compare.phonetic", "name_soundex_match", &lhs, &rhs).unwrap();
+    let nscore = nomenklatura_comparer("logic_v1.phonetic", "name_soundex_match", &lhs, &rhs).unwrap();
 
     assert!(approx_eq!(f64, nscore, super::SoundexNameParts.score_feature(&lhs, &rhs), epsilon = 0.01));
   }

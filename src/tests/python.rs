@@ -91,8 +91,10 @@ pub fn nomenklatura_score(matcher: Algorithm, query: &SearchEntity, hits: Vec<En
         ftm.getattr("EntityProxy")?.call1((hit.schema.clone(), data))?
       };
 
+      let config = py.import("nomenklatura.matching.types")?.getattr("ScoringConfig")?.getattr("defaults")?.call0()?;
+
       let matcher = matching.getattr(matcher.as_nomenklatura())?.getattr("compare")?;
-      let score: PyMatchingResult = matcher.call1((&query, entity))?.extract()?;
+      let score: PyMatchingResult = matcher.call1((&query, entity, config))?.extract()?;
 
       scores.push((hit, score.score));
     }
@@ -117,8 +119,19 @@ pub fn nomenklatura_comparer(path: &str, function: &str, query: &SearchEntity, e
       ftm.getattr("EntityProxy")?.call1((entity.schema.clone(), data))?
     };
 
+    let inspect = py.import("inspect")?.getattr("signature")?;
     let matcher = py.import(&format!("nomenklatura.matching.{path}"))?.getattr(function)?;
-    let score: f64 = matcher.call1((&query, entity))?.extract()?;
+
+    let score: f64 = match inspect.call1((matcher.clone(),))?.getattr("parameters")?.len()? {
+      2 => matcher.call1((&query, entity))?.extract()?,
+      3 => {
+        let config = py.import("nomenklatura.matching.types")?.getattr("ScoringConfig")?.getattr("defaults")?.call0()?;
+
+        matcher.call1((&query, entity, config))?.getattr("score")?.extract()?
+      }
+
+      _ => panic!("unexpected comparer method type"),
+    };
 
     Ok(score)
   });

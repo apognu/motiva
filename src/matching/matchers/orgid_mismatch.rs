@@ -75,7 +75,7 @@ mod tests {
     let lhs = se("Company").properties(&[("registrationNumber", &["FR1234567890"])]).call();
     let rhs = e("Organization").properties(&[("registrationNumber", &["FR-1134567-890"])]).call();
 
-    let nscore = nomenklatura_comparer("compare.identifiers", "orgid_disjoint", &lhs, &rhs).unwrap();
+    let nscore = nomenklatura_comparer("name_based.misc", "orgid_disjoint", &lhs, &rhs).unwrap();
 
     assert!(approx_eq!(f64, nscore, super::OrgIdMismatch.score_feature(&lhs, &rhs), epsilon = 0.01));
   }
