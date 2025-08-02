@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use ahash::RandomState;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use axum_extra::extract::Query;
 use axum_extra::extract::QueryRejection;
@@ -85,7 +86,7 @@ pub async fn match_entities(
     })
   });
 
-  let mut hits = Vec::new();
+  let mut hits = Vec::with_capacity(tasks.len());
 
   for task in tasks {
     match task.await {
@@ -95,7 +96,7 @@ pub async fn match_entities(
   }
 
   let response = MatchResponse {
-    responses: hits.into_iter().collect::<HashMap<_, _>>(),
+    responses: hits.into_iter().collect::<HashMap<_, _, RandomState>>(),
     limit,
   };
 

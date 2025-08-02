@@ -11,7 +11,7 @@ use crate::{
 #[scoring_feature(SoundexNameParts, name = "soundex_name_parts")]
 fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   let soundex = Soundex::default();
-  let mut similarities = Vec::new();
+  let mut similarities = Vec::with_capacity(lhs.name_parts.len());
 
   let parts = extractors::name_parts_flat(rhs.names_and_aliases().iter()).collect::<HashSet<String>>();
   let rhs_soundexes = parts.iter().map(|s| soundex.encode(s)).collect::<Vec<_>>();

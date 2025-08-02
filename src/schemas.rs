@@ -57,7 +57,7 @@ pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema>> = LazyLock::new(|| {
 });
 
 fn resolve_schemas(schemas: &HashMap<String, FtmSchema>, schema: &str, root: bool) -> Option<Vec<String>> {
-  let mut out = Vec::new();
+  let mut out = Vec::with_capacity(8);
 
   if let Some(def) = schemas.get(schema) {
     if root && schema != "Thing" && !def.matchable {

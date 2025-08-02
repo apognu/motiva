@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use ahash::RandomState;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
@@ -26,12 +27,12 @@ pub struct MatchParams {
 #[derive(Clone, Debug, Deserialize, Validate)]
 pub(super) struct Payload {
   #[validate(nested, length(min = 1, message = "at least one query must be provided"))]
-  pub queries: HashMap<String, SearchEntity>,
+  pub queries: HashMap<String, SearchEntity, RandomState>,
 }
 
 #[derive(Default, Serialize)]
 pub(super) struct MatchResponse {
-  pub responses: HashMap<String, MatchResults>,
+  pub responses: HashMap<String, MatchResults, RandomState>,
   pub limit: usize,
 }
 

@@ -11,7 +11,7 @@ use unicode_normalization::UnicodeNormalization;
 use crate::{
   api::{AppState, dto::MatchParams, errors::AppError},
   catalog::Collections,
-  index::EsEntity,
+  index::EsResponse,
   matching::extractors,
   model::{Entity, SearchEntity},
   schemas::SCHEMAS,
@@ -21,7 +21,7 @@ use crate::{
 pub async fn search(AppState { es, catalog, .. }: &AppState, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, AppError> {
   let query = build_query(catalog, entity, params).await?;
 
-  let results = es
+  let response = es
     .search(SearchParts::Index(&["yente-entities"]))
     .from(0)
     .size(params.limit.unwrap_or(5) as i64)
@@ -29,30 +29,24 @@ pub async fn search(AppState { es, catalog, .. }: &AppState, entity: &SearchEnti
     .send()
     .await?;
 
-  let status = results.status_code();
-  let body = results.json::<serde_json::Value>().await?;
+  let status = response.status_code();
+  let body: EsResponse = response.json().await?;
 
-  if status != StatusCode::OK {
-    let err = body["error"]["reason"].as_str().unwrap().to_string();
-
-    Err(AppError::OtherError(anyhow::anyhow!(err)))?;
+  if status != StatusCode::OK
+    && let Some(error) = body.error
+  {
+    Err(AppError::OtherError(anyhow::anyhow!(error.reason)))?;
   }
 
-  tracing::trace!(
-    latency = body["took"].as_u64(),
-    hits = body["hits"]["total"]["value"].as_u64(),
-    results = body["hits"]["hits"].as_array().iter().count(),
-    "got response from index"
-  );
+  match body.hits.hits {
+    Some(hits) => {
+      tracing::trace!(latency = body.took, hits = body.hits.total.value, results = hits.len(), "got response from index");
 
-  Ok(
-    body["hits"]["hits"]
-      .as_array()
-      .ok_or(anyhow::anyhow!("invalid response"))?
-      .iter()
-      .map(|hit| serde_json::from_value::<EsEntity>(hit.clone()).unwrap().into())
-      .collect::<Vec<_>>(),
-  )
+      Ok(hits.into_iter().map(Entity::from).collect())
+    }
+
+    None => Err(AppError::OtherError(anyhow::anyhow!("invalid response from elasticsearch"))),
+  }
 }
 
 async fn build_query(catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity, params: &MatchParams) -> Result<serde_json::Value, AppError> {
@@ -175,7 +169,7 @@ fn add_term(queries: &mut Vec<serde_json::Value>, key: &str, name: &str, boost: 
 }
 
 fn resolve_schemas(schema: &str, root: bool) -> Result<Vec<String>, AppError> {
-  let mut out = Vec::new();
+  let mut out = Vec::with_capacity(8);
 
   if let Some(def) = SCHEMAS.get(schema) {
     if root && schema != "Thing" && !def.matchable {

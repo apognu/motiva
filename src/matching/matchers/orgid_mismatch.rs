@@ -15,8 +15,20 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     return 0.0;
   }
 
-  let lhs = extractors::clean_names(lhs.gather(&["registrationNumber", "taxNumber"]).iter()).collect::<Vec<_>>();
-  let rhs = extractors::clean_names(rhs.gather(&["registrationNumber", "taxNumber"]).iter()).collect::<Vec<_>>();
+  let lhs = lhs.gather(&["registrationNumber", "taxNumber"]);
+
+  if lhs.is_empty() {
+    return 0.0;
+  }
+
+  let rhs = rhs.gather(&["registrationNumber", "taxNumber"]);
+
+  if rhs.is_empty() {
+    return 0.0;
+  }
+
+  let lhs = extractors::clean_names(lhs.iter()).collect::<Vec<_>>();
+  let rhs = extractors::clean_names(rhs.iter()).collect::<Vec<_>>();
 
   if lhs.is_empty() || rhs.is_empty() {
     return 0.0;

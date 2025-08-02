@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use ahash::RandomState;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +8,29 @@ use crate::{model::Schema, schemas::SCHEMAS};
 
 pub(super) mod get;
 pub(super) mod search;
+
+#[derive(Deserialize)]
+pub struct EsResponse {
+  error: Option<EsError>,
+  hits: EsResults,
+  took: u64,
+}
+
+#[derive(Deserialize)]
+pub struct EsError {
+  reason: String,
+}
+
+#[derive(Deserialize)]
+pub struct EsResults {
+  hits: Option<Vec<EsEntity>>,
+  total: EsCounts,
+}
+
+#[derive(Deserialize)]
+pub struct EsCounts {
+  value: u64,
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EsEntity {
@@ -50,5 +74,5 @@ pub struct EsEntitySource {
   pub first_seen: DateTime,
   pub last_seen: DateTime,
   pub last_change: DateTime,
-  pub properties: HashMap<String, Vec<String>>,
+  pub properties: HashMap<String, Vec<String>, RandomState>,
 }

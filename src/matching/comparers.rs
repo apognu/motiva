@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use ahash::RandomState;
 use itertools::Itertools;
 use strsim::{jaro_winkler, levenshtein};
 
@@ -45,12 +46,12 @@ pub fn align_name_parts(query: &[String], result: &[String]) -> f64 {
 
   // To avoid mutating the input slices (which is un-idiomatic and often impossible),
   // we use frequency counters for the original lists.
-  let mut query_counts: HashMap<&str, usize> = HashMap::new();
+  let mut query_counts: HashMap<&str, usize, RandomState> = HashMap::default();
   for part in query {
     *query_counts.entry(part).or_insert(0) += 1;
   }
 
-  let mut result_counts: HashMap<&str, usize> = HashMap::new();
+  let mut result_counts: HashMap<&str, usize, RandomState> = HashMap::default();
   for part in result {
     *result_counts.entry(part).or_insert(0) += 1;
   }
@@ -60,7 +61,7 @@ pub fn align_name_parts(query: &[String], result: &[String]) -> f64 {
   let mut sorted_scores: Vec<_> = scores.into_iter().collect();
   sorted_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-  let mut pairs: Vec<(String, String)> = Vec::new();
+  let mut pairs: Vec<(String, String)> = Vec::with_capacity(sorted_scores.len());
   let mut total_score = 1.0;
   let original_query_len = query.len();
 

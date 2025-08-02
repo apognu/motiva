@@ -13,7 +13,7 @@ use crate::{
 
 #[scoring_feature(JaroNameParts, name = "jaro_name_parts")]
 fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
-  let mut similarities = Vec::new();
+  let mut similarities = Vec::with_capacity(lhs.name_parts.len());
 
   for part in &lhs.name_parts {
     let mut best = 0.0f64;

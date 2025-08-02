@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use ahash::RandomState;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use validator::Validate;
@@ -61,7 +62,7 @@ impl Schema {
 pub struct SearchEntity {
   pub schema: Schema,
   #[validate(length(min = 1, message = "at least one property must be given"))]
-  pub properties: HashMap<String, Vec<String>>,
+  pub properties: HashMap<String, Vec<String>, RandomState>,
 
   // Those attributes will be precomputed when receiving the request to skip the computation for every matching entity.
   #[serde(skip)]
@@ -123,7 +124,7 @@ pub struct Entity {
 
   pub properties: Properties,
 
-  #[serde(serialize_with = "features_to_map")]
+  #[serde(serialize_with = "features_to_map", skip_serializing_if = "Vec::is_empty")]
   pub features: Vec<(&'static str, f64)>,
 }
 
@@ -131,12 +132,16 @@ pub struct Entity {
 #[serde(bound(deserialize = "'de: 'static"))]
 pub struct Properties {
   #[serde(flatten)]
-  pub strings: HashMap<String, Vec<String>>,
+  pub strings: HashMap<String, Vec<String>, RandomState>,
   #[serde(flatten)]
-  pub entities: HashMap<String, serde_json::Value>,
+  pub entities: HashMap<String, serde_json::Value, RandomState>,
 }
 
 fn features_to_map<S: Serializer>(input: &[(&'static str, f64)], ser: S) -> Result<S::Ok, S::Error> {
+  if input.is_empty() {
+    return ser.serialize_unit();
+  }
+
   let mut map = ser.serialize_map(Some(input.len()))?;
   for (k, v) in input {
     map.serialize_entry(k, &v)?;

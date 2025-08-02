@@ -1,4 +1,6 @@
 /target
 /poetry.lock
 
+/assets
+
 .DS_Store

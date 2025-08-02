@@ -31,9 +31,14 @@ impl<'e> Feature<'e> for SimpleMismatch<'e> {
   #[instrument(level = "trace", name = "simple_mismatch", skip_all, fields(mismatch = self.name))]
   fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     let lhs = (self.extractor)(lhs);
+
+    if lhs.is_empty() {
+      return 0.0;
+    }
+
     let rhs = (self.extractor)(rhs);
 
-    if lhs.is_empty() || rhs.is_empty() {
+    if rhs.is_empty() {
       return 0.0;
     }
 
