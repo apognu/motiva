@@ -44,18 +44,13 @@ impl Schema {
   }
 
   pub fn properties(&self) -> Option<Vec<(String, FtmProperty)>> {
-    let Some(schema) = SCHEMAS.get(self.as_str()) else {
-      return None;
-    };
+    let schema = SCHEMAS.get(self.as_str())?;
 
     Some(
       schema
         .parents
         .iter()
-        .filter_map(|s| match SCHEMAS.get(s) {
-          Some(schema) => Some(schema.properties.clone()),
-          None => None,
-        })
+        .filter_map(|name| SCHEMAS.get(name).map(|schema| schema.properties.clone()))
         .flatten()
         .collect::<Vec<_>>(),
     )

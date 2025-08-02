@@ -100,7 +100,7 @@ pub async fn get_related_entities(AppState { es, .. }: &AppState, ids: &[String]
       .as_array()
       .ok_or(anyhow::anyhow!("invalid response"))?
       .iter()
-      .map(|hit| serde_json::from_value::<EsEntity>(hit.clone()).unwrap().into())
+      .map(|hit| serde_json::from_value::<EsEntity>(hit.clone()).unwrap())
       .collect::<Vec<_>>(),
   )
 }

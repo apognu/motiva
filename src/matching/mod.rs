@@ -1,7 +1,5 @@
 mod matchers;
 
-use tracing::instrument;
-
 use crate::model::{Entity, SearchEntity};
 
 pub mod comparers;
@@ -20,7 +18,6 @@ pub trait Feature<'e>: Send + Sync {
   fn score_feature(&self, lhs: &'e SearchEntity, rhs: &'e Entity) -> f64;
 }
 
-#[instrument(skip_all, fields(entity_id = rhs.id))]
 pub fn run_features<'e>(lhs: &'e SearchEntity, rhs: &'e Entity, init: f64, features: &[(&dyn Feature<'e>, f64)], results: &mut Vec<(&'static str, f64)>) -> f64 {
   features.iter().fold(init, move |score, (func, weight)| {
     let feature_score = func.score_feature(lhs, rhs);

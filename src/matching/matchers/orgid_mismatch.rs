@@ -9,7 +9,6 @@ use crate::{
   model::{Entity, HasProperties, SearchEntity},
 };
 
-// TODO
 #[scoring_feature(OrgIdMismatch, name = "orgid_disjoint")]
 fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   if !lhs.schema.is_a("Organization") || !rhs.schema.is_a("Organization") {

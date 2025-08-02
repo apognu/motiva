@@ -22,7 +22,7 @@ pub async fn get_entity(State(state): State<AppState>, Path(id): Path<String>) -
             continue;
           }
 
-          let values = entity.property(&name).into_iter().cloned().collect::<Vec<_>>();
+          let values = entity.property(&name).to_vec();
 
           if values.is_empty() {
             continue;
@@ -30,7 +30,7 @@ pub async fn get_entity(State(state): State<AppState>, Path(id): Path<String>) -
 
           // TODO: study how getting related entities work beyond this
           entity.properties.entities.insert(
-            name.into(),
+            name,
             serde_json::to_value(index::get::get_related_entities(&state, &values).await?.into_iter().map(Entity::from).collect::<Vec<_>>()).map_err(|err| AppError::OtherError(err.into()))?,
           );
         }

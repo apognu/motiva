@@ -23,7 +23,7 @@ pub fn scoring_feature(attrs: TokenStream, input: TokenStream) -> TokenStream {
             #name
         }
 
-        #[tracing::instrument(name = #name, skip_all)]
+        #[tracing::instrument(level = "trace", name = #name, skip_all)]
         #input
       }
   }

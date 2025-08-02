@@ -34,57 +34,55 @@ pub async fn match_entities(
   });
 
   let tasks = body.queries.into_iter().map(|(id, entity)| {
-    tokio::spawn(
-      {
-        let state = state.clone();
-        let query = query.clone();
+    tokio::spawn({
+      let state = state.clone();
+      let query = query.clone();
 
-        async move {
-          let hits = match index::search::search(&state, &entity, &query).await {
-            Ok(hits) => hits,
+      async move {
+        let hits = match index::search::search(&state, &entity, &query).await {
+          Ok(hits) => hits,
 
-            Err(err) => {
-              tracing::error!(error = err.to_string(), "index query returned an error");
+          Err(err) => {
+            tracing::error!(error = err.to_string(), "index query returned an error");
 
-              return (id, MatchResults { status: 500, ..Default::default() });
-            }
-          };
-
-          let scores = match query.algorithm.unwrap_or(Algorithm::NameBased) {
-            Algorithm::NameBased => scoring::score::<NameBased>(&entity, hits),
-            Algorithm::NameQualified => scoring::score::<NameQualified>(&entity, hits),
-          };
-
-          match scores {
-            Ok(scores) => {
-              let hits = scores
-                .into_iter()
-                .filter(|(_, score)| score > &query.cutoff.unwrap_or(0.5))
-                .sorted_by(|(_, lhs), (_, rhs)| lhs.total_cmp(rhs).reverse())
-                .take(limit)
-                .map(|(entity, score)| MatchHit {
-                  entity,
-                  score,
-                  match_: score > query.threshold.unwrap_or(0.7),
-                })
-                .collect::<Vec<_>>();
-
-              (
-                id,
-                MatchResults {
-                  status: 200,
-                  total: Some(MatchTotal { relation: "eq", value: hits.len() }),
-                  results: hits,
-                },
-              )
-            }
-
-            Err(_) => (id, MatchResults { status: 500, ..Default::default() }),
+            return (id, MatchResults { status: 500, ..Default::default() });
           }
+        };
+
+        let scores = match query.algorithm.unwrap_or(Algorithm::NameBased) {
+          Algorithm::NameBased => scoring::score::<NameBased>(&entity, hits),
+          Algorithm::NameQualified => scoring::score::<NameQualified>(&entity, hits),
+        };
+
+        match scores {
+          Ok(scores) => {
+            let hits = scores
+              .into_iter()
+              .filter(|(_, score)| score > &query.cutoff.unwrap_or(0.5))
+              .sorted_by(|(_, lhs), (_, rhs)| lhs.total_cmp(rhs).reverse())
+              .take(limit)
+              .map(|(entity, score)| MatchHit {
+                entity,
+                score,
+                match_: score > query.threshold.unwrap_or(0.7),
+              })
+              .collect::<Vec<_>>();
+
+            (
+              id,
+              MatchResults {
+                status: 200,
+                total: Some(MatchTotal { relation: "eq", value: hits.len() }),
+                results: hits,
+              },
+            )
+          }
+
+          Err(_) => (id, MatchResults { status: 500, ..Default::default() }),
         }
       }
-      .in_current_span(),
-    )
+      .in_current_span()
+    })
   });
 
   let mut hits = Vec::new();

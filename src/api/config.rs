@@ -89,7 +89,7 @@ impl FromStr for EsAuthMethod {
   }
 }
 
-fn parse_env<T>(name: &str, default: T) -> anyhow::Result<T>
+pub fn parse_env<T>(name: &str, default: T) -> anyhow::Result<T>
 where
   T: FromStr,
   T::Err: Display,
