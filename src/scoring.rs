@@ -1,4 +1,3 @@
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tracing::{Span, instrument};
 
 use crate::{
@@ -10,20 +9,21 @@ use crate::{
 pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>) -> anyhow::Result<Vec<(Entity, f64)>> {
   let span = Span::current();
 
-  Ok(
-    hits
-      .into_par_iter()
-      .map(|mut hit| {
-        let _enter = span.enter();
+  let mut results = Vec::with_capacity(hits.len());
 
-        let (score, features) = A::score(entity, &hit);
+  let out = hits.into_iter().map(|mut hit| {
+    let _enter = span.enter();
 
-        hit.features = features.into_iter().filter(|(_, score)| score > &0.0).collect::<Vec<(_, _)>>();
+    let (score, features) = A::score(entity, &hit);
 
-        tracing::debug!(score = score, "computed score");
+    hit.features = features.into_iter().filter(|(_, score)| score > &0.0).collect::<Vec<(_, _)>>();
 
-        (hit, score)
-      })
-      .collect::<Vec<_>>(),
-  )
+    tracing::debug!(score = score, "computed score");
+
+    (hit, score)
+  });
+
+  results.extend(out);
+
+  Ok(results)
 }

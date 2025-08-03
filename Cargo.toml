@@ -3,6 +3,10 @@ name = "motiva"
 version = "0.1.0"
 edition = "2024"
 
+[profile.release]
+lto = "fat"
+codegen-units = 1
+
 [profile.profiling]
 inherits = "release"
 debug = 1

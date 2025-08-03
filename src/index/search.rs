@@ -21,6 +21,8 @@ use crate::{
 pub async fn search(AppState { es, catalog, .. }: &AppState, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, AppError> {
   let query = build_query(catalog, entity, params).await?;
 
+  tracing::trace!(%query, "running query");
+
   let response = es
     .search(SearchParts::Index(&["yente-entities"]))
     .from(0)
@@ -55,6 +57,7 @@ async fn build_query(catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity, 
           "bool": {
               "filter": build_filters(catalog, entity, params).await?,
               "should": build_shoulds(entity)?,
+              "minimum_should_match": 1,
           }
       }
   }))
