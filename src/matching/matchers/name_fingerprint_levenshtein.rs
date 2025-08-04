@@ -1,5 +1,6 @@
 use std::cmp::Reverse;
 
+use bumpalo::Bump;
 use itertools::Itertools;
 use macros::scoring_feature;
 use strsim::levenshtein;
@@ -15,7 +16,7 @@ use crate::{
 };
 
 #[scoring_feature(NameFingerprintLevenshtein, name = "name_fingerprint_levenshtein")]
-fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   name_fingerprint_levenshtein(lhs, rhs)
 }
 

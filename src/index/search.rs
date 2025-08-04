@@ -42,7 +42,7 @@ pub async fn search(AppState { es, catalog, .. }: &AppState, entity: &SearchEnti
 
   match body.hits.hits {
     Some(hits) => {
-      tracing::trace!(latency = body.took, hits = body.hits.total.value, results = hits.len(), "got response from index");
+      tracing::debug!(latency = body.took, hits = body.hits.total.value, results = hits.len(), "got response from index");
 
       Ok(hits.into_iter().map(Entity::from).collect())
     }

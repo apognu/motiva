@@ -1,5 +1,9 @@
 use std::collections::HashSet;
 
+use bumpalo::{
+  Bump,
+  collections::{CollectIn, Vec},
+};
 use itertools::Itertools;
 use macros::scoring_feature;
 
@@ -14,7 +18,7 @@ use crate::{
 };
 
 #[scoring_feature(AddressEntityMatch, name = "address_entity_match")]
-fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   if !lhs.schema.is_a("Address") || !rhs.schema.is_a("Address") {
     return 0.0;
   }
@@ -42,7 +46,7 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
       continue;
     }
 
-    let overlap = lhs.intersection(&rhs).collect::<Vec<_>>();
+    let overlap = lhs.intersection(&rhs).collect_in::<Vec<_>>(bump);
     let overlap_size = overlap.len();
 
     if overlap_size == lhs.len() || overlap_size == rhs.len() {
@@ -68,6 +72,7 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 
 #[cfg(test)]
 mod tests {
+  use bumpalo::Bump;
   use float_cmp::approx_eq;
 
   use crate::{
@@ -80,6 +85,6 @@ mod tests {
     let lhs = se("Address").properties(&[("full", &["No.3, New York avenue, 103-222, New York City"])]).call();
     let rhs = e("Address").properties(&[("full", &["3 New York ave, 103222, New York City"])]).call();
 
-    assert!(approx_eq!(f64, super::AddressEntityMatch.score_feature(&lhs, &rhs), 0.9, epsilon = 0.01));
+    assert!(approx_eq!(f64, super::AddressEntityMatch.score_feature(&Bump::new(), &lhs, &rhs), 0.9, epsilon = 0.01));
   }
 }

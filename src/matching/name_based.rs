@@ -1,3 +1,4 @@
+use bumpalo::Bump;
 use tracing::instrument;
 
 use crate::{
@@ -17,10 +18,10 @@ impl MatchingAlgorithm for NameBased {
   }
 
   #[instrument(name = "score_hit", skip_all)]
-  fn score(lhs: &SearchEntity, rhs: &Entity) -> (f64, Vec<(&'static str, f64)>) {
+  fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> (f64, Vec<(&'static str, f64)>) {
     let features: &[(&dyn Feature, f64)] = &[(&SoundexNameParts, 0.5), (&JaroNameParts, 0.5)];
     let mut results = Vec::with_capacity(features.len());
-    let score = run_features(lhs, rhs, 0.0, features, &mut results);
+    let score = run_features(bump, lhs, rhs, 0.0, features, &mut results);
 
     (score.clamp(0.0, 1.0), results)
   }
@@ -28,6 +29,7 @@ impl MatchingAlgorithm for NameBased {
 
 #[cfg(test)]
 mod tests {
+  use bumpalo::Bump;
   use float_cmp::approx_eq;
 
   use crate::{
@@ -41,7 +43,7 @@ mod tests {
     let e1 = se("Person").properties(&[("name", &["Vladimir Putin"])]).call();
     let e2 = e("Person").properties(&[("name", &["Vladimir Putin"])]).call();
 
-    let (score, _) = NameBased::score(&e1, &e2);
+    let (score, _) = NameBased::score(&Bump::new(), &e1, &e2);
 
     assert_eq!(score, 1.0);
   }
@@ -75,7 +77,7 @@ mod tests {
     let nscores = nomenklatura_score(Algorithm::NameBased, &query, results.clone()).unwrap();
 
     for (index, (_, nscore)) in nscores.into_iter().enumerate() {
-      let (score, _) = NameBased::score(&query, results.get(index).unwrap());
+      let (score, _) = NameBased::score(&Bump::new(), &query, results.get(index).unwrap());
 
       assert!(approx_eq!(f64, score, nscore, epsilon = 0.05));
     }

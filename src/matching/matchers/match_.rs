@@ -1,5 +1,7 @@
+use bumpalo::Bump;
+
 use crate::{
-  matching::{Feature, extractors},
+  matching::{Feature, comparers::is_disjoint},
   model::{Entity, HasProperties, SearchEntity},
 };
 
@@ -23,7 +25,7 @@ impl<'e> Feature<'e> for SimpleMatch<'e> {
     self.name
   }
 
-  fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+  fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     let lhs_names = (self.extractor)(lhs);
     let rhs_names = (self.extractor)(rhs);
 
@@ -34,7 +36,7 @@ impl<'e> Feature<'e> for SimpleMatch<'e> {
     match self.matcher {
       Some(func) => (func)(&lhs_names, &rhs_names),
 
-      None => match extractors::is_disjoint(&lhs_names, &rhs_names) {
+      None => match is_disjoint(&lhs_names, &rhs_names) {
         false => 1.0,
         true => 0.0,
       },
