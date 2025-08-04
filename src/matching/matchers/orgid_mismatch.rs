@@ -1,16 +1,22 @@
-use std::collections::HashSet;
-
+use bumpalo::{
+  Bump,
+  collections::{CollectIn, Vec},
+};
 use itertools::Itertools;
 use macros::scoring_feature;
 use strsim::levenshtein;
 
 use crate::{
-  matching::{Feature, extractors},
+  matching::{
+    Feature,
+    comparers::is_disjoint,
+    extractors::{self},
+  },
   model::{Entity, HasProperties, SearchEntity},
 };
 
 #[scoring_feature(OrgIdMismatch, name = "orgid_disjoint")]
-fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   if !lhs.schema.is_a("Organization") || !rhs.schema.is_a("Organization") {
     return 0.0;
   }
@@ -27,14 +33,14 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     return 0.0;
   }
 
-  let lhs = extractors::clean_names(lhs.iter()).collect::<Vec<_>>();
-  let rhs = extractors::clean_names(rhs.iter()).collect::<Vec<_>>();
+  let lhs = extractors::clean_names(lhs.iter()).collect_in::<Vec<_>>(bump);
+  let rhs = extractors::clean_names(rhs.iter()).collect_in::<Vec<_>>(bump);
 
   if lhs.is_empty() || rhs.is_empty() {
     return 0.0;
   }
 
-  if !lhs.iter().collect::<HashSet<_>>().is_disjoint(&rhs.iter().collect()) {
+  if !is_disjoint(&lhs, &rhs) {
     return 0.0;
   }
 
@@ -54,6 +60,7 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 
 #[cfg(test)]
 mod tests {
+  use bumpalo::Bump;
   use float_cmp::approx_eq;
 
   use crate::tests::{e, python::nomenklatura_comparer, se};
@@ -65,17 +72,17 @@ mod tests {
     let lhs = se("Organization").properties(&[("registrationNumber", &["FR12-34"])]).call();
     let rhs = e("Organization").properties(&[("registrationNumber", &["FR-1234"])]).call();
 
-    assert_eq!(super::OrgIdMismatch.score_feature(&lhs, &rhs), 0.0);
+    assert_eq!(super::OrgIdMismatch.score_feature(&Bump::new(), &lhs, &rhs), 0.0);
 
     let lhs = se("Organization").properties(&[("registrationNumber", &["FR12-34"])]).call();
     let rhs = e("Organization").properties(&[("registrationNumber", &["UK-4321"])]).call();
 
-    assert_eq!(super::OrgIdMismatch.score_feature(&lhs, &rhs), 1.0);
+    assert_eq!(super::OrgIdMismatch.score_feature(&Bump::new(), &lhs, &rhs), 1.0);
 
     let lhs = se("Company").properties(&[("registrationNumber", &["FR1234567890"])]).call();
     let rhs = e("Organization").properties(&[("registrationNumber", &["FR-1134567-890"])]).call();
 
-    assert!(approx_eq!(f64, super::OrgIdMismatch.score_feature(&lhs, &rhs), 0.08, epsilon = 0.01));
+    assert!(approx_eq!(f64, super::OrgIdMismatch.score_feature(&Bump::new(), &lhs, &rhs), 0.08, epsilon = 0.01));
   }
 
   #[test]
@@ -88,6 +95,6 @@ mod tests {
 
     let nscore = nomenklatura_comparer("name_based.misc", "orgid_disjoint", &lhs, &rhs).unwrap();
 
-    assert!(approx_eq!(f64, nscore, super::OrgIdMismatch.score_feature(&lhs, &rhs), epsilon = 0.01));
+    assert!(approx_eq!(f64, nscore, super::OrgIdMismatch.score_feature(&Bump::new(), &lhs, &rhs), epsilon = 0.01));
   }
 }

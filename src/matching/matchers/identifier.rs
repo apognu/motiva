@@ -1,8 +1,12 @@
+use bumpalo::{
+  Bump,
+  collections::{CollectIn, Vec},
+};
 use itertools::Itertools;
 use tracing::instrument;
 
 use crate::{
-  matching::{Feature, extractors::is_disjoint},
+  matching::{Feature, comparers::is_disjoint},
   model::{Entity, HasProperties, Schema, SearchEntity},
   schemas::{FtmProperty, SCHEMAS},
 };
@@ -18,7 +22,7 @@ impl<'p> IdentifierMatch<'p> {
     Self { name, properties, validator }
   }
 
-  fn match_property(&self, schema: &Schema, lhs: &impl HasProperties, rhs: &impl HasProperties, property: &str) -> bool {
+  fn match_property(&self, bump: &Bump, schema: &Schema, lhs: &impl HasProperties, rhs: &impl HasProperties, property: &str) -> bool {
     let lhs_values = lhs.property(property);
 
     if lhs_values.is_empty() {
@@ -36,7 +40,7 @@ impl<'p> IdentifierMatch<'p> {
     };
 
     let mut schema_property: Option<FtmProperty> = None;
-    let mut properties = Vec::new();
+    let mut properties = Vec::new_in(bump);
 
     'prop: for chain in &schema.parents {
       let Some(chain_schema) = SCHEMAS.get(chain) else {
@@ -70,7 +74,11 @@ impl<'p> IdentifierMatch<'p> {
       properties.extend(rhs_properties);
     }
 
-    let rhs_values = rhs.gather(&properties).into_iter().filter(|code| self.validator.map(|v| v(code)).unwrap_or(true)).collect::<Vec<_>>();
+    let rhs_values = rhs
+      .gather(&properties)
+      .into_iter()
+      .filter(|code| self.validator.map(|v| v(code)).unwrap_or(true))
+      .collect_in::<Vec<_>>(bump);
 
     !is_disjoint(lhs.property(property), &rhs_values)
   }
@@ -82,12 +90,12 @@ impl<'p> Feature<'p> for IdentifierMatch<'p> {
   }
 
   #[instrument(level = "trace", name = "identifier_match", skip_all, fields(identifier = ?self.properties))]
-  fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+  fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     for property in self.properties {
-      if self.match_property(&lhs.schema, lhs, rhs, property) {
+      if self.match_property(bump, &lhs.schema, lhs, rhs, property) {
         return 1.0;
       }
-      if self.match_property(&rhs.schema, rhs, lhs, property) {
+      if self.match_property(bump, &rhs.schema, rhs, lhs, property) {
         return 1.0;
       }
     }

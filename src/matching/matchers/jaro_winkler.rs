@@ -1,3 +1,7 @@
+use bumpalo::{
+  Bump,
+  collections::{CollectIn, Vec},
+};
 use itertools::Itertools;
 use macros::scoring_feature;
 use strsim::jaro_winkler;
@@ -12,8 +16,8 @@ use crate::{
 };
 
 #[scoring_feature(JaroNameParts, name = "jaro_name_parts")]
-fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
-  let mut similarities = Vec::with_capacity(lhs.name_parts.len());
+fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+  let mut similarities = Vec::with_capacity_in(lhs.name_parts.len(), bump);
 
   for part in &lhs.name_parts {
     let mut best = 0.0f64;
@@ -36,13 +40,13 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 }
 
 #[scoring_feature(PersonNameJaroWinkler, name = "person_name_jaro_winkler")]
-fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   if !lhs.schema.is_a("Person") || !rhs.schema.is_a("Person") {
     return 0.0;
   }
 
-  let lhs_names = extractors::name_parts(lhs.names_and_aliases().iter()).collect::<Vec<_>>();
-  let rhs_names = extractors::name_parts(rhs.names_and_aliases().iter()).collect::<Vec<_>>();
+  let lhs_names = extractors::name_parts(lhs.names_and_aliases().iter()).collect_in::<Vec<_>>(bump);
+  let rhs_names = extractors::name_parts(rhs.names_and_aliases().iter()).collect_in::<Vec<_>>(bump);
 
   let mut score = 0.0f64;
 
@@ -62,6 +66,7 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 
 #[cfg(test)]
 mod tests {
+  use bumpalo::Bump;
   use float_cmp::approx_eq;
 
   use crate::{
@@ -79,7 +84,7 @@ mod tests {
 
     let nscore = nomenklatura_comparer("name_based.names", "jaro_name_parts", &lhs, &rhs).unwrap();
 
-    assert!(approx_eq!(f64, nscore, super::JaroNameParts.score_feature(&lhs, &rhs), epsilon = 0.01));
+    assert!(approx_eq!(f64, nscore, super::JaroNameParts.score_feature(&Bump::new(), &lhs, &rhs), epsilon = 0.01));
   }
 
   #[test]
@@ -92,6 +97,6 @@ mod tests {
 
     let nscore = nomenklatura_comparer("compare.names", "person_name_jaro_winkler", &lhs, &rhs).unwrap();
 
-    assert!(approx_eq!(f64, nscore, super::PersonNameJaroWinkler.score_feature(&lhs, &rhs), epsilon = 0.01));
+    assert!(approx_eq!(f64, nscore, super::PersonNameJaroWinkler.score_feature(&Bump::new(), &lhs, &rhs), epsilon = 0.01));
   }
 }

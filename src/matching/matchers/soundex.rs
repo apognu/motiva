@@ -1,5 +1,8 @@
-use std::collections::HashSet;
-
+use bumpalo::{
+  Bump,
+  collections::{CollectIn, Vec},
+};
+use itertools::Itertools;
 use macros::scoring_feature;
 use rphonetic::{Encoder, Soundex};
 
@@ -9,12 +12,14 @@ use crate::{
 };
 
 #[scoring_feature(SoundexNameParts, name = "soundex_name_parts")]
-fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   let soundex = Soundex::default();
-  let mut similarities = Vec::with_capacity(lhs.name_parts.len());
+  let mut similarities = Vec::with_capacity_in(lhs.name_parts.len(), bump);
 
-  let parts = extractors::name_parts_flat(rhs.names_and_aliases().iter()).collect::<HashSet<String>>();
-  let rhs_soundexes = parts.iter().map(|s| soundex.encode(s)).collect::<Vec<_>>();
+  let rhs_soundexes = extractors::name_parts_flat(rhs.names_and_aliases().iter())
+    .unique()
+    .map(|s| soundex.encode(&s.to_string()))
+    .collect_in::<Vec<_>>(bump);
 
   for part in &lhs.name_parts {
     let lhs_soundex = soundex.encode(part);
@@ -27,6 +32,7 @@ fn score_feature(&self, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 
 #[cfg(test)]
 mod tests {
+  use bumpalo::Bump;
   use float_cmp::approx_eq;
 
   use crate::{
@@ -44,6 +50,6 @@ mod tests {
 
     let nscore = nomenklatura_comparer("logic_v1.phonetic", "name_soundex_match", &lhs, &rhs).unwrap();
 
-    assert!(approx_eq!(f64, nscore, super::SoundexNameParts.score_feature(&lhs, &rhs), epsilon = 0.01));
+    assert!(approx_eq!(f64, nscore, super::SoundexNameParts.score_feature(&Bump::new(), &lhs, &rhs), epsilon = 0.01));
   }
 }

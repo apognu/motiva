@@ -4,6 +4,37 @@ use ahash::{HashMapExt, RandomState};
 use itertools::Itertools;
 use strsim::{jaro_winkler, levenshtein};
 
+pub fn is_disjoint<'s, S>(a: &[S], b: &[S]) -> bool
+where
+  S: Borrow<str> + Ord + Clone + 's,
+{
+  let (mut shorter, longer) = if a.len() < b.len() { (a.to_vec(), b) } else { (b.to_vec(), a) };
+
+  shorter.sort_unstable();
+
+  for x in longer {
+    if shorter.binary_search(x).is_ok() {
+      return false;
+    }
+  }
+
+  true
+}
+
+pub fn is_disjoint_chars(a: &[Vec<char>], b: &[Vec<char>]) -> bool {
+  let (mut shorter, longer) = if a.len() < b.len() { (a.to_vec(), b) } else { (b.to_vec(), a) };
+
+  shorter.sort_unstable();
+
+  for x in longer {
+    if shorter.binary_search(x).is_ok() {
+      return false;
+    }
+  }
+
+  true
+}
+
 pub fn compare_name_phonetic_tuples((l_name, l_phone): (&str, Option<&str>), (r_name, r_phone): (&str, Option<&str>)) -> bool {
   if l_phone.is_none() || r_phone.is_none() {
     return l_name == r_name;

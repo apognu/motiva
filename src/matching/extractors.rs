@@ -1,11 +1,10 @@
-use std::{borrow::Borrow, collections::HashSet, sync::LazyLock};
+use std::{borrow::Borrow, sync::LazyLock};
 
 use any_ascii::any_ascii;
 use itertools::Itertools;
 use regex::Regex;
 use rphonetic::{Encoder, Metaphone};
 
-#[inline(always)]
 pub fn tokenize_names<'s, I, S>(names: I) -> impl Iterator<Item = impl Iterator<Item = &'s str>>
 where
   S: Borrow<str> + 's,
@@ -57,7 +56,6 @@ where
     .unique()
 }
 
-#[inline(always)]
 pub fn phonetic_name<'s, I, S>(metaphone: &Metaphone, names: I) -> impl Iterator<Item = String>
 where
   S: Borrow<str> + 's,
@@ -66,7 +64,6 @@ where
   tokenize_names(names).flat_map(|s| s.map(|s| metaphone.encode(s)))
 }
 
-#[inline(always)]
 pub fn phonetic_names_tuples<'s, I, S>(metaphone: &Metaphone, names: I) -> Vec<Vec<(&'s str, Option<String>)>>
 where
   S: Borrow<str> + 's,
@@ -86,7 +83,6 @@ where
     .collect()
 }
 
-#[inline(always)]
 pub fn name_keys<'s, I, S>(names: I) -> impl Iterator<Item = String>
 where
   S: Borrow<str> + 's,
@@ -100,7 +96,6 @@ where
   })
 }
 
-#[inline(always)]
 pub fn name_parts_flat<'s, I, S>(names: I) -> impl Iterator<Item = String>
 where
   S: Borrow<str> + 's,
@@ -113,7 +108,6 @@ where
     .unique()
 }
 
-#[inline(always)]
 pub fn name_parts<'s, I, S>(names: I) -> impl Iterator<Item = Vec<String>>
 where
   S: Borrow<str> + 's,
@@ -127,12 +121,6 @@ where
     .unique()
 }
 
-#[inline(always)]
-pub fn is_disjoint(lhs: &[String], rhs: &[String]) -> bool {
-  HashSet::<String>::from_iter(lhs.to_vec()).is_disjoint(&HashSet::from_iter(rhs.to_vec()))
-}
-
-#[inline(always)]
 pub fn flip_date(mut date: Vec<char>) -> Vec<char> {
   let (m1, m2) = (date[0], date[1]);
   let (d1, d2) = (date[3], date[4]);
@@ -150,16 +138,6 @@ where
   S: Borrow<str> + 's,
   I: Iterator<Item = &'s S> + 's,
 {
-  // let mut set = HashSet::<String>::new();
-
-  // for value in haystack {
-  //   for candidate in NUMBERS_REGEX.find_iter(value.borrow()) {
-  //     set.insert(candidate.as_str().to_string());
-  //   }
-  // }
-
-  // set
-
   haystack.flat_map(|value| NUMBERS_REGEX.find_iter(value.borrow()).map(|number| number.as_str()))
 }
 
