@@ -34,7 +34,7 @@ impl FromRef<AppState> for () {
   fn from_ref(_: &AppState) -> Self {}
 }
 
-pub async fn routes(config: &Config, catalog: Collections) -> anyhow::Result<Router> {
+pub fn routes(config: &Config, catalog: Collections) -> anyhow::Result<Router> {
   let catalog = Arc::new(RwLock::new(catalog));
 
   let es = {

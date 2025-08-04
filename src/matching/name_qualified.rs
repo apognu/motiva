@@ -36,7 +36,7 @@ impl MatchingAlgorithm for NameQualified {
     let mut results = Vec::with_capacity(features.len());
     let score = run_features(lhs, rhs, 0.0, features, &mut results);
 
-    (score, results)
+    (score.clamp(0.0, 1.0), results)
   }
 }
 
@@ -67,6 +67,22 @@ mod tests {
       se("Person")
         .properties(&[("name", &["Vladimir Putin"]), ("birthDate", &["1982-07-10"]), ("gender", &["female"]), ("country", &["fr"])])
         .call(),
+      se("Person").properties(&[("name", &["Beyonce Knowles"])]).call(),
+      se("Person").properties(&[("name", &["Beyoncé Knowles"])]).call(),
+      se("Person").properties(&[("name", &["Beyoncé"]), ("birthDate", &["1981-09-04"])]).call(),
+      se("Person").properties(&[("name", &["Beyoncé"]), ("birthDate", &["1981-09-05"])]).call(),
+      se("Person").properties(&[("name", &["Beyoncé"]), ("birthDate", &["1981-09-04"]), ("gender", &["female"])]).call(),
+      se("Person").properties(&[("name", &["Beyoncé"]), ("birthDate", &["1981-09-04"]), ("gender", &["male"])]).call(),
+      se("Person").properties(&[("name", &["Beyoncé"]), ("birthDate", &["1981-09-04"]), ("country", &["us"])]).call(),
+      se("Person").properties(&[("name", &["Beyoncé"]), ("birthDate", &["1981-09-04"]), ("country", &["fr"])]).call(),
+      se("Person").properties(&[("name", &["Elon Musk"])]).call(),
+      se("Person").properties(&[("name", &["Elon Musc"])]).call(),
+      se("Person").properties(&[("name", &["Elon Musk"]), ("birthDate", &["1971-06-28"])]).call(),
+      se("Person").properties(&[("name", &["Elon Musk"]), ("birthDate", &["1971-06-29"])]).call(),
+      se("Person").properties(&[("name", &["Elon Musk"]), ("birthDate", &["1971-06-28"]), ("gender", &["male"])]).call(),
+      se("Person").properties(&[("name", &["Elon Musk"]), ("birthDate", &["1971-06-28"]), ("gender", &["female"])]).call(),
+      se("Person").properties(&[("name", &["Elon Musk"]), ("birthDate", &["1971-06-28"]), ("country", &["za"])]).call(),
+      se("Person").properties(&[("name", &["Elon Musk"]), ("birthDate", &["1971-06-28"]), ("country", &["us"])]).call(),
     ];
 
     let results = vec![
@@ -78,6 +94,26 @@ mod tests {
           ("birthDate", &["1952-10-07"]),
           ("gender", &["male"]),
           ("country", &["ru"]),
+        ])
+        .call(),
+      e("Person")
+        .id("Q3123")
+        .properties(&[
+          ("name", &["Beyoncé Knowles"]),
+          ("alias", &["Beyoncé"]),
+          ("birthDate", &["1981-09-04"]),
+          ("gender", &["female"]),
+          ("country", &["us"]),
+        ])
+        .call(),
+      e("Person")
+        .id("Q317521")
+        .properties(&[
+          ("name", &["Elon Musk"]),
+          ("alias", &["Elon"]),
+          ("birthDate", &["1971-06-28"]),
+          ("gender", &["male"]),
+          ("country", &["za"]),
         ])
         .call(),
     ];

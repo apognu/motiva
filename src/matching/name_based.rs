@@ -22,7 +22,7 @@ impl MatchingAlgorithm for NameBased {
     let mut results = Vec::with_capacity(features.len());
     let score = run_features(lhs, rhs, 0.0, features, &mut results);
 
-    (score, results)
+    (score.clamp(0.0, 1.0), results)
   }
 }
 

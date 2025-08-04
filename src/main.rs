@@ -34,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
   let _ = *SCHEMAS;
   let catalog = fetch_catalog().await.expect("could not fetch initial catalog");
 
-  let app = api::routes(&config, catalog).await?;
+  let app = api::routes(&config, catalog)?;
 
   tracing::info!("listening on {}", config.listen_addr);
 
@@ -104,7 +104,7 @@ async fn shutdown() {
   };
 
   tokio::select! {
-      _ = ctrl_c => tracing::info!("received ^C, initiating shutdown"),
-      _ = terminate => tracing::info!("received terminate signal, initiating shutdown"),
+      () = ctrl_c => tracing::info!("received ^C, initiating shutdown"),
+      () = terminate => tracing::info!("received terminate signal, initiating shutdown"),
   }
 }

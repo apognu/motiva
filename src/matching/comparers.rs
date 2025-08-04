@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::{borrow::Borrow, cmp::Ordering, collections::HashMap};
 
-use ahash::RandomState;
+use ahash::{HashMapExt, RandomState};
 use itertools::Itertools;
 use strsim::{jaro_winkler, levenshtein};
 
@@ -23,85 +23,97 @@ pub fn is_levenshtein_plausible(lhs: &str, rhs: &str) -> bool {
   levenshtein(&lhs.to_lowercase(), &rhs.to_lowercase()) <= threshold
 }
 
-// TODO: rewrite
-pub fn align_name_parts(query: &[String], result: &[String]) -> f64 {
+pub fn align_name_parts<'s, S>(query: &[S], result: &[S]) -> f64
+where
+  S: Borrow<str> + 's,
+{
   if query.is_empty() || result.is_empty() {
     return 0.0;
   }
 
-  // Use HashSets to get unique name parts, like Python's `set()`.
-  let query_set: HashSet<String> = query.iter().cloned().collect();
-  let result_set: HashSet<String> = result.iter().cloned().collect();
+  let mut query_counts = count_parts(query);
+  let mut result_counts = count_parts(result);
 
-  // 1. Compute all pairwise scores for name parts.
-  // Using `itertools::cartesian_product` for clean iteration.
-  let mut scores = HashMap::new();
-  for (qn, rn) in query_set.iter().cartesian_product(result_set.iter()) {
-    let score = jaro_winkler(qn, rn);
-    // Filter pairs that are not plausible matches.
-    if score > 0.0 && is_levenshtein_plausible(qn, rn) {
-      scores.insert((qn, rn), score);
-    }
-  }
+  let mut scores = query_counts
+    .keys()
+    .cartesian_product(result_counts.keys())
+    .filter_map(|(&qn, &rn)| {
+      let score = jaro_winkler(qn, rn);
 
-  // To avoid mutating the input slices (which is un-idiomatic and often impossible),
-  // we use frequency counters for the original lists.
-  let mut query_counts: HashMap<&str, usize, RandomState> = HashMap::default();
-  for part in query {
-    *query_counts.entry(part).or_insert(0) += 1;
-  }
+      if score > 0.0 && is_levenshtein_plausible(qn, rn) { Some((qn, rn, score)) } else { None }
+    })
+    .collect::<Vec<_>>();
 
-  let mut result_counts: HashMap<&str, usize, RandomState> = HashMap::default();
-  for part in result {
-    *result_counts.entry(part).or_insert(0) += 1;
-  }
+  scores.sort_unstable_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(Ordering::Equal));
 
-  // 2. Find the best pairing for each name part by score.
-  // First, sort the scores in descending order.
-  let mut sorted_scores: Vec<_> = scores.into_iter().collect();
-  sorted_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+  let mut final_score = 1.0;
+  let mut pairs: Vec<(&str, &str)> = Vec::with_capacity(query.len());
 
-  let mut pairs: Vec<(String, String)> = Vec::with_capacity(sorted_scores.len());
-  let mut total_score = 1.0;
-  let original_query_len = query.len();
+  for (qn, rn, score) in scores {
+    let q_count = query_counts.get_mut(qn).unwrap();
+    let r_count = result_counts.get_mut(rn).unwrap();
 
-  for ((qn, rn), score) in sorted_scores {
-    // Check if both parts are still available to be matched.
-    let q_count = query_counts.entry(qn).or_insert(0);
-    let r_count = result_counts.entry(rn).or_insert(0);
-
-    // One name part can only be used once per match, but can appear multiple times
-    // if it's in the input lists multiple times.
     while *q_count > 0 && *r_count > 0 {
-      // "Use" up one instance of each part.
       *q_count -= 1;
       *r_count -= 1;
+      final_score *= score;
 
-      total_score *= score;
-      pairs.push((qn.clone(), rn.clone()));
+      pairs.push((qn, rn));
     }
   }
 
-  // 3. Assume there should be at least one candidate for each query name part.
-  if pairs.len() < original_query_len {
+  if pairs.len() < query.len() {
     return 0.0;
   }
 
-  // 4. Final plausibility check on the concatenated aligned strings.
-  // Weakest evidence first to bias Jaro-Winkler for lower scores on imperfect matches.
-  pairs.reverse(); // In-place reverse is efficient.
+  pairs.reverse();
 
-  let query_aligned: String = pairs.iter().map(|p| p.0.to_string()).collect();
-  let result_aligned: String = pairs.iter().map(|p| p.1.to_string()).collect();
+  let query_aligned = pairs.iter().map(|p| p.0).join(" ");
+  let result_aligned = pairs.iter().map(|p| p.1).join(" ");
 
   if !is_levenshtein_plausible(&query_aligned, &result_aligned) {
     return 0.0;
   }
 
-  // Return the multiplicative score.
-  total_score
+  final_score
+}
 
-  // The original code had a commented-out alternative return.
-  // If you prefer that, the Rust equivalent would be:
-  // jaro_winkler(&query_aligned, &result_aligned)
+#[inline(always)]
+fn count_parts<'s, S: Borrow<str> + 's>(parts: &'s [S]) -> HashMap<&'s str, usize, RandomState> {
+  let mut counts = HashMap::<_, _, RandomState>::with_capacity(parts.len());
+  for part in parts {
+    *counts.entry(part.borrow()).or_default() += 1;
+  }
+  counts
+}
+
+#[cfg(test)]
+mod tests {
+  use float_cmp::assert_approx_eq;
+
+  use crate::tests::python::nomenklatura_str_list;
+
+  #[test]
+  fn is_levenshtein_plausible() {
+    assert!(super::is_levenshtein_plausible("Martin", "Jardin"));
+    assert!(!super::is_levenshtein_plausible("John", "Nicolas"));
+  }
+
+  #[test]
+  #[serial_test::serial]
+  fn align_name_parts() {
+    pyo3::prepare_freethreaded_python();
+
+    let data: &[(&[&str], &[&str])] = &[
+      (&["vladimir", "putin"], &["vladimir", "vladimirovich", "putin"]),
+      (&["mohamed", "laha"], &["khalil", "ibrahim", "mohamed", "achar", "foudail", "taha"]),
+    ];
+
+    for (lhs, rhs) in data {
+      let score = super::align_name_parts(lhs, rhs);
+      let nscore = nomenklatura_str_list("compare.names", "_align_name_parts", lhs, rhs).unwrap();
+
+      assert_approx_eq!(f64, score, nscore, epsilon = 0.01);
+    }
+  }
 }

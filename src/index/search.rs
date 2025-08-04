@@ -112,7 +112,7 @@ fn build_shoulds(entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>
   let names = entity.properties["name"].iter().map(|s| s.nfc().collect::<String>()).collect::<Vec<_>>();
   let mut should = Vec::<serde_json::Value>::new();
 
-  for name in names.iter() {
+  for name in &names {
     should.push(json!({
         "match": {
             "names": {
@@ -138,7 +138,7 @@ fn build_shoulds(entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>
   let schema = SCHEMAS.get(entity.schema.as_str()).ok_or(anyhow::anyhow!("unknown schema"))?;
 
   for (property, values) in &entity.properties {
-    if property == "name" || !schema.properties.get(property).map(|p| p.matchable).unwrap_or(false) {
+    if property == "name" || !schema.properties.get(property).is_some_and(|p| p.matchable) {
       continue;
     }
 

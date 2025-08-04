@@ -138,3 +138,14 @@ pub fn nomenklatura_comparer(path: &str, function: &str, query: &SearchEntity, e
 
   result.context("could not compute score")
 }
+
+pub fn nomenklatura_str_list(path: &str, function: &str, query: &[&str], entity: &[&str]) -> anyhow::Result<f64> {
+  let result = Python::with_gil::<_, PyResult<f64>>(|py| {
+    let matcher = py.import(&format!("nomenklatura.matching.{path}"))?.getattr(function)?;
+    let score = matcher.call1((query, entity))?.extract()?;
+
+    Ok(score)
+  });
+
+  result.context("could not compute score")
+}

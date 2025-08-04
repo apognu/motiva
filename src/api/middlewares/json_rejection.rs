@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use axum::{
   Json, RequestExt,
   body::Body,
@@ -28,7 +30,7 @@ impl IntoResponse for TypedJsonRejection {
       },
 
       TypedJsonRejection::ValidationFailed(errs) => {
-        let messages: Vec<String> = errs.field_errors().into_iter().flat_map(|(_, f)| f.clone()).filter_map(|f| f.message.map(|s| s.into_owned())).collect();
+        let messages: Vec<String> = errs.field_errors().into_iter().flat_map(|(_, f)| f.clone()).filter_map(|f| f.message.map(Cow::into_owned)).collect();
 
         ApiError(StatusCode::UNPROCESSABLE_ENTITY, "payload failed validation".to_string(), Some(messages)).into_response()
       }
