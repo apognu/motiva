@@ -23,7 +23,7 @@ impl MatchingAlgorithm for NameQualified {
   }
 
   #[instrument(name = "score_hit", skip_all, fields(algorithm = Self::name(), entity_id = rhs.id))]
-  fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> (f64, Vec<(&'static str, f64)>) {
+  fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, cutoff: f64) -> (f64, Vec<(&'static str, f64)>) {
     let features: &[(&dyn Feature, f64)] = &[
       (&SoundexNameParts, 0.5),
       (&JaroNameParts, 0.5),
@@ -35,7 +35,7 @@ impl MatchingAlgorithm for NameQualified {
     ];
 
     let mut results = Vec::with_capacity(features.len());
-    let score = run_features(bump, lhs, rhs, 0.0, features, &mut results);
+    let score = run_features(bump, lhs, rhs, 0.0, cutoff, features, &mut results);
 
     (score.clamp(0.0, 1.0), results)
   }
@@ -124,7 +124,7 @@ mod tests {
       let nscores = nomenklatura_score(Algorithm::NameQualified, &query, results.clone()).unwrap();
 
       for (index, (_, nscore)) in nscores.into_iter().enumerate() {
-        let (score, _) = NameQualified::score(&Bump::new(), &query, results.get(index).unwrap());
+        let (score, _) = NameQualified::score(&Bump::new(), &query, results.get(index).unwrap(), 0.0);
 
         assert!(approx_eq!(f64, score, nscore, epsilon = 0.01));
       }
@@ -148,7 +148,7 @@ mod tests {
       let nscores = nomenklatura_score(Algorithm::NameQualified, &query, results.clone()).unwrap();
 
       for (index, (_, nscore)) in nscores.into_iter().enumerate() {
-        let (score, _) = NameQualified::score(&Bump::new(), &query, results.get(index).unwrap());
+        let (score, _) = NameQualified::score(&Bump::new(), &query, results.get(index).unwrap(), 0.0);
 
         assert!(approx_eq!(f64, score, nscore, epsilon = 0.01));
       }

@@ -1447,6 +1447,7 @@ dependencies = [
  "luhn",
  "macros",
  "opentelemetry",
+ "opentelemetry-http",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "pyo3",

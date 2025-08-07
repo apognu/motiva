@@ -28,7 +28,7 @@ impl MatchingAlgorithm for LogicV1 {
   }
 
   #[instrument(name = "score_hit", skip_all)]
-  fn score(bump: &Bump, lhs: &crate::model::SearchEntity, rhs: &crate::model::Entity) -> (f64, Vec<(&'static str, f64)>) {
+  fn score(bump: &Bump, lhs: &crate::model::SearchEntity, rhs: &crate::model::Entity, cutoff: f64) -> (f64, Vec<(&'static str, f64)>) {
     let features: &[(&dyn Feature, f64)] = &[
       (&NameLiteralMatch, 1.0),
       (&PersonNameJaroWinkler, 0.8),
@@ -77,7 +77,7 @@ impl MatchingAlgorithm for LogicV1 {
       }
     }
 
-    let score = run_features(bump, lhs, rhs, score, qualifiers, &mut results);
+    let score = run_features(bump, lhs, rhs, cutoff, score, qualifiers, &mut results);
 
     (score.clamp(0.0, 1.0), results)
   }
@@ -102,7 +102,7 @@ mod tests {
       .properties(&[("name", &["PUTIN vladimir vladimirovich", "PUTIN, Vladimir Vladimirovich", "Владимир Путин", "Vladimyr Bob Phutain"])])
       .call();
 
-    let (score, features) = super::LogicV1::score(&Bump::new(), &lhs, &rhs);
+    let (score, features) = super::LogicV1::score(&Bump::new(), &lhs, &rhs, 0.0);
 
     assert!(approx_eq!(f64, score, 0.72, epsilon = 0.01));
     assert!(approx_eq!(
@@ -123,7 +123,7 @@ mod tests {
       .properties(&[("name", &["Gogole SAS"]), ("leiCode", &["LEI1234"]), ("innCode", &["529900T8BM49AURSDO55", "2022200525818"])])
       .call();
 
-    let (score, features) = super::LogicV1::score(&Bump::new(), &lhs, &rhs);
+    let (score, features) = super::LogicV1::score(&Bump::new(), &lhs, &rhs, 0.0);
 
     assert_eq!(score, 0.95);
     assert!(features.iter().contains(&("name_fingerprint_levenshtein", 7.0 / 9.0)));
@@ -136,7 +136,7 @@ mod tests {
     let lhs = se("Vessel").properties(&[("mmsi", &["366123456"])]).call();
     let rhs = e("Vessel").properties(&[("imoNumber", &["366123456"])]).call();
 
-    let (score, features) = super::LogicV1::score(&Bump::new(), &lhs, &rhs);
+    let (score, features) = super::LogicV1::score(&Bump::new(), &lhs, &rhs, 0.0);
 
     assert_eq!(score, 0.95);
     assert!(features.iter().contains(&("vessel_imo_mmsi_match", 1.0)));
@@ -190,7 +190,7 @@ mod tests {
       let nscores = nomenklatura_score(Algorithm::LogicV1, &query, results.clone()).unwrap();
 
       for (index, (_, nscore)) in nscores.into_iter().enumerate() {
-        let (score, _) = LogicV1::score(&Bump::new(), &query, results.get(index).unwrap());
+        let (score, _) = LogicV1::score(&Bump::new(), &query, results.get(index).unwrap(), 0.0);
 
         assert!(approx_eq!(f64, score, nscore, epsilon = 0.01));
       }
