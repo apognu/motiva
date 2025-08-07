@@ -7,8 +7,11 @@ use axum::{
   routing::{get, post},
 };
 use elasticsearch::{Elasticsearch, auth::Credentials, http::transport::Transport};
+use opentelemetry::global;
+use opentelemetry_http::HeaderExtractor;
 use tokio::sync::RwLock;
 use tower_http::trace::TraceLayer;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uuid::Uuid;
 
 use crate::{
@@ -81,10 +84,13 @@ pub fn routes(config: &Config, catalog: Collections) -> anyhow::Result<Router> {
       .fallback(handlers::not_found)
       .layer(middleware::from_fn(middlewares::logging::api_logger))
       .layer(middleware::from_fn(middlewares::request_id))
-      .layer(TraceLayer::new_for_http().make_span_with(|_req: &Request| {
+      .layer(TraceLayer::new_for_http().make_span_with(|req: &Request| {
+        let parent = global::get_text_map_propagator(|propagator| propagator.extract(&HeaderExtractor(req.headers())));
         let request_id = Uuid::new_v4().to_string();
 
-        tracing::info_span!("request", request_id = request_id)
+        let span = tracing::info_span!("request", request_id = request_id);
+        span.set_parent(parent);
+        span
       }))
       .with_state(state),
   )

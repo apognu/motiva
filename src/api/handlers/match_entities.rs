@@ -28,6 +28,7 @@ pub async fn match_entities(
   TypedJson(mut body): TypedJson<Payload>,
 ) -> Result<(StatusCode, impl IntoResponse), AppError> {
   let limit = query.limit.unwrap_or(5);
+  let cutoff = query.cutoff.unwrap_or(0.5);
 
   query.limit = Some((limit * state.config.match_candidates).clamp(20, 9999));
 
@@ -52,16 +53,16 @@ pub async fn match_entities(
         };
 
         let scores = match query.algorithm.unwrap_or(Algorithm::NameBased) {
-          Algorithm::NameBased => scoring::score::<NameBased>(&entity, hits),
-          Algorithm::NameQualified => scoring::score::<NameQualified>(&entity, hits),
-          Algorithm::LogicV1 => scoring::score::<LogicV1>(&entity, hits),
+          Algorithm::NameBased => scoring::score::<NameBased>(&entity, hits, cutoff),
+          Algorithm::NameQualified => scoring::score::<NameQualified>(&entity, hits, cutoff),
+          Algorithm::LogicV1 => scoring::score::<LogicV1>(&entity, hits, cutoff),
         };
 
         match scores {
           Ok(scores) => {
             let hits = scores
               .into_iter()
-              .filter(|(_, score)| score > &query.cutoff.unwrap_or(0.5))
+              .filter(|(_, score)| score > &cutoff)
               .sorted_by(|(_, lhs), (_, rhs)| lhs.total_cmp(rhs).reverse())
               .take(limit)
               .map(|(entity, score)| MatchHit {

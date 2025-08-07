@@ -11,9 +11,10 @@ mod scoring;
 #[cfg(test)]
 mod tests;
 
-use opentelemetry::{KeyValue, trace::TracerProvider as _};
+use opentelemetry::{KeyValue, global, trace::TracerProvider as _};
 use opentelemetry_sdk::{
   Resource,
+  propagation::TraceContextPropagator,
   trace::{BatchConfigBuilder, BatchSpanProcessor, Sampler, SdkTracerProvider},
 };
 use tokio::signal;
@@ -23,7 +24,7 @@ use tracing_subscriber::fmt;
 use crate::{
   api::config::{self, Config, Env},
   catalog::fetch_catalog,
-  matching::replacers::company_types::ORG_TYPES,
+  matching::replacers::{addresses::ADDRESS_FORMS, company_types::ORG_TYPES, ordinals::ORDINALS},
   schemas::SCHEMAS,
 };
 
@@ -37,6 +38,8 @@ async fn main() -> anyhow::Result<()> {
   let (_logger, tracer) = init_logger(&config);
   let _ = *SCHEMAS;
   let _ = *ORG_TYPES;
+  let _ = *ADDRESS_FORMS;
+  let _ = *ORDINALS;
 
   let catalog = fetch_catalog().await.expect("could not fetch initial catalog");
 
@@ -87,6 +90,8 @@ fn init_logger(config: &Config) -> (WorkerGuard, Option<SdkTracerProvider>) {
 
     false => (None, None),
   };
+
+  global::set_text_map_propagator(TraceContextPropagator::new());
 
   tracing_subscriber::registry()
     .with(EnvFilter::builder().try_from_env().or_else(|_| EnvFilter::try_new("info")).unwrap())

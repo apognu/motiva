@@ -7,16 +7,16 @@ use crate::{
 };
 
 #[instrument(name = "compute_scores", skip_all, fields(algorithm = A::name()))]
-pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>) -> anyhow::Result<Vec<(Entity, f64)>> {
+pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, cutoff: f64) -> anyhow::Result<Vec<(Entity, f64)>> {
   let span = Span::current();
 
-  let mut results = Vec::with_capacity(hits.len());
   let mut bump = Bump::with_capacity(1024);
+  let mut results = Vec::with_capacity(hits.len());
 
   let scores = hits.into_iter().map(|mut hit| {
     let _enter = span.enter();
 
-    let (score, features) = A::score(&bump, entity, &hit);
+    let (score, features) = A::score(&bump, entity, &hit, cutoff);
 
     hit.features = features.into_iter().filter(|(_, score)| score > &0.0).collect::<Vec<(_, _)>>();
 
