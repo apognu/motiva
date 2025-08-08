@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+  collections::{HashMap, HashSet},
+  sync::{Arc, Mutex},
+};
 
 use ahash::RandomState;
 use jiff::civil::DateTime;
@@ -55,6 +58,18 @@ impl Schema {
         .flatten()
         .collect::<Vec<_>>(),
     )
+  }
+
+  pub fn property(&self, name: &str) -> Option<(String, FtmProperty)> {
+    let schema = SCHEMAS.get(self.as_str())?;
+
+    println!("{:?}", schema.parents);
+
+    schema
+      .parents
+      .iter()
+      .filter_map(|s| SCHEMAS.get(s).map(|schema| schema.properties.clone().into_iter().find(|(n, _)| n == name)))
+      .next()?
   }
 }
 
@@ -133,8 +148,10 @@ pub struct Entity {
 pub struct Properties {
   #[serde(flatten)]
   pub strings: HashMap<String, Vec<String>, RandomState>,
-  #[serde(flatten)]
-  pub entities: HashMap<String, serde_json::Value, RandomState>,
+  // Arc<Mutex<T>> is used here because this struct is sent to threads, and must
+  // be thread-safe, there should be no concurrency on this field.
+  #[serde(flatten, skip_deserializing)]
+  pub entities: HashMap<String, Vec<Arc<Mutex<Entity>>>, RandomState>,
 }
 
 fn features_to_map<S: Serializer>(input: &[(&'static str, f64)], ser: S) -> Result<S::Ok, S::Error> {

@@ -60,9 +60,9 @@ fn resolve_schemas(schemas: &HashMap<String, FtmSchema>, schema: &str, root: boo
   let mut out = Vec::with_capacity(8);
 
   if let Some(def) = schemas.get(schema) {
-    if root && schema != "Thing" && !def.matchable {
-      return None;
-    }
+    // if root && schema != "Thing" && !def.matchable {
+    //   return None;
+    // }
 
     if root || def.matchable || schema == "Thing" {
       out.push(schema.to_string());
@@ -100,6 +100,13 @@ pub struct FtmProperty {
   pub _type: String,
   #[serde(default = "c_true")]
   pub matchable: bool,
+  #[serde(default)]
+  pub reverse: Option<FtmReverseField>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct FtmReverseField {
+  pub name: String,
 }
 
 const fn c_true() -> bool {
