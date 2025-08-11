@@ -18,6 +18,7 @@ pub struct Config {
   pub index_client_secret: Option<String>,
 
   // Match settings
+  pub catalog_url: Option<String>,
   pub match_candidates: usize,
 
   // Debugging
@@ -30,6 +31,7 @@ impl Config {
       env: Env::from(env::var("ENV").unwrap_or("dev".into())),
       listen_addr: env::var("LISTEN_ADDR").unwrap_or("0.0.0.0:8000".into()),
       match_candidates: parse_env("MATCH_CANDIDATES", 10)?,
+      catalog_url: env::var("CATALOG_URL").ok(),
       index_url: env::var("INDEX_URL").unwrap_or("http://localhost:9200".into()),
       index_auth_method: env::var("INDEX_AUTH_METHOD").unwrap_or("none".into()).parse()?,
       index_client_id: env::var("INDEX_CLIENT_ID").map(Some).unwrap_or_default(),

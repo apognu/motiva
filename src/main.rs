@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
   let _ = *ADDRESS_FORMS;
   let _ = *ORDINALS;
 
-  let catalog = fetch_catalog().await.expect("could not fetch initial catalog");
+  let catalog = fetch_catalog(&config.catalog_url).await.expect("could not fetch initial catalog");
 
   let app = api::routes(&config, catalog)?;
 

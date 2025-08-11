@@ -14,19 +14,16 @@ pub struct Catalog {
 #[derive(Debug, Deserialize)]
 pub struct Dataset {
   pub name: String,
-  #[serde(rename = "type")]
-  pub type_: String,
   pub datasets: Option<Vec<String>>,
 }
 
-pub async fn fetch_catalog() -> anyhow::Result<Collections> {
-  let catalog = reqwest::get(OPENSANCTIONS_CATALOG_URL)
+pub async fn fetch_catalog(url: &Option<String>) -> anyhow::Result<Collections> {
+  let catalog = reqwest::get(url.as_ref().map_or(OPENSANCTIONS_CATALOG_URL, |url| url))
     .await?
     .json::<Catalog>()
     .await?
     .datasets
     .into_iter()
-    .filter(|dataset| dataset.type_ == "collection")
     .map(|dataset| (dataset.name.clone(), dataset))
     .collect::<HashMap<_, _>>();
 

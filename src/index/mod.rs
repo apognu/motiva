@@ -70,9 +70,10 @@ pub struct EsEntitySource {
   pub schema: Schema,
   pub datasets: Vec<String>,
   pub referents: Vec<String>,
+  #[serde(default)]
   pub target: bool,
-  pub first_seen: DateTime,
-  pub last_seen: DateTime,
-  pub last_change: DateTime,
+  pub first_seen: Option<DateTime>,
+  pub last_seen: Option<DateTime>,
+  pub last_change: Option<DateTime>,
   pub properties: HashMap<String, Vec<String>, RandomState>,
 }

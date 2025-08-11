@@ -62,24 +62,28 @@ pub fn routes(config: &Config, catalog: Collections) -> anyhow::Result<Router> {
     catalog: Arc::clone(&catalog),
   };
 
-  tokio::spawn(async move {
-    loop {
-      match fetch_catalog().await {
-        Ok(new_catalog) => {
-          let mut guard = catalog.write().await;
-          *guard = new_catalog;
+  tokio::spawn({
+    let catalog_url = config.catalog_url.clone();
+
+    async move {
+      loop {
+        match fetch_catalog(&catalog_url).await {
+          Ok(new_catalog) => {
+            let mut guard = catalog.write().await;
+            *guard = new_catalog;
+          }
+
+          Err(err) => tracing::error!(error = err.to_string(), "could not refresh catalog"),
         }
 
-        Err(err) => tracing::error!(error = err.to_string(), "could not refresh catalog"),
+        tokio::time::sleep(Duration::from_secs(60 * 60)).await;
       }
-
-      tokio::time::sleep(Duration::from_secs(60 * 60)).await;
     }
   });
 
   Ok(
     Router::new()
-      .route("/match/{dataset}", post(handlers::match_entities))
+      .route("/match/{scope}", post(handlers::match_entities))
       .route("/entities/{id}", get(handlers::get_entity))
       .fallback(handlers::not_found)
       .layer(middleware::from_fn(middlewares::logging::api_logger))

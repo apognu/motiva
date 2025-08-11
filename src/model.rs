@@ -131,9 +131,12 @@ pub struct Entity {
   pub referents: Vec<String>,
   pub target: bool,
 
-  pub first_seen: DateTime,
-  pub last_seen: DateTime,
-  pub last_change: DateTime,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub first_seen: Option<DateTime>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub last_seen: Option<DateTime>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub last_change: Option<DateTime>,
 
   pub properties: Properties,
 

@@ -86,7 +86,8 @@ fn build_schemas(entity: &SearchEntity, filters: &mut Vec<serde_json::Value>) ->
 async fn build_datasets(catalog: &Arc<RwLock<Collections>>, filters: &mut Vec<serde_json::Value>, params: &MatchParams) {
   let scope = {
     let guard = catalog.read().await;
-    guard.get("default").and_then(|dataset| dataset.datasets.clone()).unwrap_or_default()
+
+    guard.get(&params.scope).and_then(|dataset| dataset.datasets.clone()).unwrap_or_default()
   };
 
   if let Some(datasets) = &params.include_dataset

@@ -18,6 +18,8 @@ pub enum Algorithm {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct MatchParams {
+  #[serde(skip_deserializing)]
+  pub scope: String,
   pub limit: Option<usize>,
   pub threshold: Option<f64>,
   pub cutoff: Option<f64>,

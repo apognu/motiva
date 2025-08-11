@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use ahash::RandomState;
+use axum::extract::Path;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use axum_extra::extract::Query;
 use axum_extra::extract::QueryRejection;
@@ -24,12 +25,14 @@ use crate::{
 #[instrument(skip_all)]
 pub async fn match_entities(
   State(state): State<AppState>,
+  Path((scope,)): Path<(String,)>,
   WithRejection(Query(mut query), _): WithRejection<Query<MatchParams>, QueryRejection>,
   TypedJson(mut body): TypedJson<Payload>,
 ) -> Result<(StatusCode, impl IntoResponse), AppError> {
   let limit = query.limit.unwrap_or(5);
   let cutoff = query.cutoff.unwrap_or(0.5);
 
+  query.scope = scope;
   query.limit = Some((limit * state.config.match_candidates).clamp(20, 9999));
 
   body.queries.iter_mut().for_each(|(_, entity)| {
@@ -46,7 +49,7 @@ pub async fn match_entities(
           Ok(hits) => hits,
 
           Err(err) => {
-            tracing::error!(error = err.to_string(), "index query returned an error");
+            tracing::error!(error = ?err, "index query returned an error");
 
             return (id, MatchResults { status: 500, ..Default::default() });
           }
