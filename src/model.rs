@@ -63,10 +63,8 @@ impl Schema {
   pub fn property(&self, name: &str) -> Option<(String, FtmProperty)> {
     let schema = SCHEMAS.get(self.as_str())?;
 
-    println!("{:?}", schema.parents);
-
     schema
-      .parents
+      .matchable_chain
       .iter()
       .filter_map(|s| SCHEMAS.get(s).map(|schema| schema.properties.clone().into_iter().find(|(n, _)| n == name)))
       .next()?

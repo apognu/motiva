@@ -27,7 +27,8 @@ pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema>> = LazyLock::new(|| {
   let mut children_map: HashMap<&str, Vec<&str>> = HashMap::default();
 
   for (name, schema) in &schemas_clone {
-    schemas.get_mut(name).unwrap().parents = resolve_schemas(&schemas, name, true).unwrap_or_default();
+    schemas.get_mut(name).unwrap().matchable_chain = resolve_schemas(&schemas, name, true).unwrap_or_default();
+    schemas.get_mut(name).unwrap().parents = resolve_schemas(&schemas, name, false).unwrap_or_default();
 
     for parent in &schema.extends {
       children_map.entry(parent).or_default().push(name);
@@ -56,15 +57,15 @@ pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema>> = LazyLock::new(|| {
   schemas
 });
 
-fn resolve_schemas(schemas: &HashMap<String, FtmSchema>, schema: &str, root: bool) -> Option<Vec<String>> {
+fn resolve_schemas(schemas: &HashMap<String, FtmSchema>, schema: &str, if_matchable: bool) -> Option<Vec<String>> {
   let mut out = Vec::with_capacity(8);
 
   if let Some(def) = schemas.get(schema) {
-    // if root && schema != "Thing" && !def.matchable {
-    //   return None;
-    // }
+    if if_matchable && schema != "Thing" && !def.matchable {
+      return None;
+    }
 
-    if root || def.matchable || schema == "Thing" {
+    if !if_matchable || def.matchable || schema == "Thing" {
       out.push(schema.to_string());
     }
 
@@ -89,6 +90,8 @@ pub struct FtmSchema {
   pub properties: HashMap<String, FtmProperty>,
 
   #[serde(skip)]
+  pub matchable_chain: Vec<String>,
+  #[serde(skip)]
   pub parents: Vec<String>,
   #[serde(skip)]
   pub descendants: Vec<String>,
@@ -111,4 +114,24 @@ pub struct FtmReverseField {
 
 const fn c_true() -> bool {
   true
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn resolve_schemas() {
+    assert_eq!(super::resolve_schemas(&super::SCHEMAS, "Thing", true).as_ref(), Some(&vec!["Thing".into()]));
+
+    assert_eq!(
+      super::resolve_schemas(&super::SCHEMAS, "Person", true).as_ref(),
+      Some(&vec!["Person".into(), "LegalEntity".into(), "Thing".into()])
+    );
+
+    assert_eq!(super::resolve_schemas(&super::SCHEMAS, "Event", true).as_ref(), None);
+
+    assert_eq!(
+      super::resolve_schemas(&super::SCHEMAS, "Event", false).as_ref(),
+      Some(&vec!["Event".into(), "Interval".into(), "Analyzable".into(), "Thing".into()])
+    );
+  }
 }
