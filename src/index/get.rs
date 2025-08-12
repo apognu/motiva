@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use ahash::RandomState;
 use elasticsearch::SearchParts;
 use reqwest::StatusCode;
 use serde_json::json;
@@ -61,7 +62,7 @@ pub async fn get_entity(AppState { es, .. }: &AppState, id: &str) -> Result<GetE
 }
 
 #[instrument(skip_all)]
-pub async fn get_related_entities(AppState { es, .. }: &AppState, root: Option<&String>, values: &[String], negatives: &HashSet<String>) -> anyhow::Result<Vec<EsEntity>> {
+pub async fn get_related_entities(AppState { es, .. }: &AppState, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> anyhow::Result<Vec<EsEntity>> {
   let mut shoulds = vec![json!({ "ids": { "values": values } })];
 
   if let Some(root) = root {

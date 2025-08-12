@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use ahash::RandomState;
 use bumpalo::{
   Bump,
   collections::{CollectIn, Vec},
@@ -28,7 +29,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
       .split_whitespace()
       .map(str::to_string)
       .unique()
-      .collect::<HashSet<_>>()
+      .collect::<HashSet<_, RandomState>>()
   });
 
   let rhs_addresses = extractors::clean_address_parts(rhs.property("full").iter()).map(|address| {
@@ -36,7 +37,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
       .split_whitespace()
       .map(str::to_string)
       .unique()
-      .collect::<HashSet<_>>()
+      .collect::<HashSet<_, RandomState>>()
   });
 
   let mut max_score = 0.0f64;

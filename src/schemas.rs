@@ -3,6 +3,7 @@ use std::{
   sync::LazyLock,
 };
 
+use ahash::RandomState;
 use rust_embed::Embed;
 use serde::Deserialize;
 
@@ -10,7 +11,7 @@ use serde::Deserialize;
 #[folder = "assets/followthemoney/followthemoney/schema"]
 pub struct Schemas;
 
-pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema>> = LazyLock::new(|| {
+pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema, RandomState>> = LazyLock::new(|| {
   tracing::debug!("building schemas");
 
   let mut schemas = Schemas::iter()
@@ -21,7 +22,7 @@ pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema>> = LazyLock::new(|| {
 
       schema.into_iter().next().expect("schema does not contain schema")
     })
-    .collect::<HashMap<String, FtmSchema>>();
+    .collect::<HashMap<String, FtmSchema, RandomState>>();
 
   let schemas_clone = schemas.clone();
   let mut children_map: HashMap<&str, Vec<&str>> = HashMap::default();
@@ -57,7 +58,7 @@ pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema>> = LazyLock::new(|| {
   schemas
 });
 
-fn resolve_schemas(schemas: &HashMap<String, FtmSchema>, schema: &str, if_matchable: bool) -> Option<Vec<String>> {
+fn resolve_schemas(schemas: &HashMap<String, FtmSchema, RandomState>, schema: &str, if_matchable: bool) -> Option<Vec<String>> {
   let mut out = Vec::with_capacity(8);
 
   if let Some(def) = schemas.get(schema) {
@@ -87,7 +88,7 @@ pub struct FtmSchema {
   #[serde(default)]
   pub caption: Vec<String>,
   #[serde(default)]
-  pub properties: HashMap<String, FtmProperty>,
+  pub properties: HashMap<String, FtmProperty, RandomState>,
 
   #[serde(skip)]
   pub matchable_chain: Vec<String>,

@@ -3,6 +3,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 
+use ahash::RandomState;
 use axum::{
   Json,
   extract::{Path, State},
@@ -23,7 +24,7 @@ pub async fn get_entity(State(state): State<AppState>, Path(id): Path<String>) -
   match index::get::get_entity(&state, &id).await? {
     GetEntityResult::Nominal(mut entity) => {
       let mut root = Some(&id);
-      let mut seen = HashSet::from([id.clone()]);
+      let mut seen = HashSet::<_, RandomState>::from_iter([id.clone()]);
 
       let mut ids: Vec<String> = Vec::new();
       let mut root_arena: HashMap<String, String> = Default::default();
