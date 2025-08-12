@@ -18,7 +18,7 @@ any_ascii = "0.3.3"
 anyhow = "1.0.98"
 axum = { version = "0.8.4", features = ["macros"] }
 axum-extra = { version = "0.10.1", features = ["query"] }
-elasticsearch = { version = "9.0.0-alpha.1", default-features = false, features = [
+elasticsearch = { version = "9.1.0-alpha.1", default-features = false, features = [
     "rustls-tls",
 ] }
 itertools = "0.14.0"
