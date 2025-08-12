@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::http::StatusCode;
 use elasticsearch::SearchParts;
+use itertools::Itertools;
 use rphonetic::Metaphone;
 use serde_json::json;
 use tokio::sync::RwLock;
@@ -23,13 +24,7 @@ pub async fn search(AppState { es, catalog, .. }: &AppState, entity: &SearchEnti
 
   tracing::trace!(%query, "running query");
 
-  let response = es
-    .search(SearchParts::Index(&["yente-entities"]))
-    .from(0)
-    .size(params.limit.unwrap_or(5) as i64)
-    .body(query)
-    .send()
-    .await?;
+  let response = es.search(SearchParts::Index(&["yente-entities"])).from(0).size(params.limit as i64).body(query).send().await?;
 
   let status = response.status_code();
   let body: EsResponse = response.json().await?;
@@ -90,10 +85,12 @@ async fn build_datasets(catalog: &Arc<RwLock<Collections>>, filters: &mut Vec<se
     guard.get(&params.scope).and_then(|dataset| dataset.datasets.clone()).unwrap_or_default()
   };
 
-  if let Some(datasets) = &params.include_dataset
-    && !datasets.is_empty()
-  {
-    let datasets: Vec<_> = datasets.iter().filter(|dataset| scope.contains(*dataset)).collect();
+  if !params.include_dataset.is_empty() {
+    let datasets: Vec<_> = params
+      .include_dataset
+      .iter()
+      .filter(|dataset| scope.contains(*dataset) && !params.exclude_dataset.iter().contains(*dataset))
+      .collect();
 
     filters.push(json!({ "terms": { "datasets": datasets } }));
   } else {
@@ -105,7 +102,7 @@ fn build_topics(params: &MatchParams, filters: &mut Vec<serde_json::Value>) {
   if let Some(topics) = &params.topics
     && !topics.is_empty()
   {
-    filters.push(json!({ "terms": { "topics": topics.split(',').collect::<Vec<_>>() } }));
+    filters.push(json!({ "terms": { "topics": topics } }));
   }
 }
 

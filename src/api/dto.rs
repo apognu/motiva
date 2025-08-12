@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use ahash::RandomState;
 use serde::{Deserialize, Serialize};
+use serde_inline_default::serde_inline_default;
 use validator::Validate;
 
 use crate::model::{Entity, SearchEntity};
@@ -16,16 +17,24 @@ pub enum Algorithm {
   LogicV1,
 }
 
+#[serde_inline_default]
 #[derive(Clone, Debug, Deserialize)]
 pub struct MatchParams {
   #[serde(skip_deserializing)]
   pub scope: String,
-  pub limit: Option<usize>,
-  pub threshold: Option<f64>,
-  pub cutoff: Option<f64>,
-  pub algorithm: Option<Algorithm>,
-  pub topics: Option<String>,
-  pub include_dataset: Option<Vec<String>>,
+  #[serde_inline_default(5)]
+  pub limit: usize,
+  #[serde_inline_default(0.7)]
+  pub threshold: f64,
+  #[serde_inline_default(0.5)]
+  pub cutoff: f64,
+  #[serde_inline_default(Algorithm::LogicV1)]
+  pub algorithm: Algorithm,
+  pub topics: Option<Vec<String>>,
+  #[serde(default)]
+  pub include_dataset: Vec<String>,
+  #[serde(default)]
+  pub exclude_dataset: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Validate)]

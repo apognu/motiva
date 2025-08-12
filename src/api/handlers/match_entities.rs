@@ -29,11 +29,8 @@ pub async fn match_entities(
   WithRejection(Query(mut query), _): WithRejection<Query<MatchParams>, QueryRejection>,
   TypedJson(mut body): TypedJson<Payload>,
 ) -> Result<(StatusCode, impl IntoResponse), AppError> {
-  let limit = query.limit.unwrap_or(5);
-  let cutoff = query.cutoff.unwrap_or(0.5);
-
   query.scope = scope;
-  query.limit = Some((limit * state.config.match_candidates).clamp(20, 9999));
+  query.limit = (query.limit * state.config.match_candidates).clamp(20, 9999);
 
   body.queries.iter_mut().for_each(|(_, entity)| {
     entity.precompute();
@@ -55,23 +52,23 @@ pub async fn match_entities(
           }
         };
 
-        let scores = match query.algorithm.unwrap_or(Algorithm::NameBased) {
-          Algorithm::NameBased => scoring::score::<NameBased>(&entity, hits, cutoff),
-          Algorithm::NameQualified => scoring::score::<NameQualified>(&entity, hits, cutoff),
-          Algorithm::LogicV1 => scoring::score::<LogicV1>(&entity, hits, cutoff),
+        let scores = match query.algorithm {
+          Algorithm::NameBased => scoring::score::<NameBased>(&entity, hits, query.cutoff),
+          Algorithm::NameQualified => scoring::score::<NameQualified>(&entity, hits, query.cutoff),
+          Algorithm::LogicV1 => scoring::score::<LogicV1>(&entity, hits, query.cutoff),
         };
 
         match scores {
           Ok(scores) => {
             let hits = scores
               .into_iter()
-              .filter(|(_, score)| score > &cutoff)
+              .filter(|(_, score)| score > &query.cutoff)
               .sorted_by(|(_, lhs), (_, rhs)| lhs.total_cmp(rhs).reverse())
-              .take(limit)
+              .take(query.limit)
               .map(|(entity, score)| MatchHit {
                 entity,
                 score,
-                match_: score > query.threshold.unwrap_or(0.7),
+                match_: score > query.threshold,
               })
               .collect::<Vec<_>>();
 
@@ -103,7 +100,7 @@ pub async fn match_entities(
 
   let response = MatchResponse {
     responses: hits.into_iter().collect::<HashMap<_, _, RandomState>>(),
-    limit,
+    limit: query.limit,
   };
 
   Ok((StatusCode::OK, Json(response)))
