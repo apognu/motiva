@@ -27,7 +27,7 @@ impl MatchingAlgorithm for LogicV1 {
     "logic-v1"
   }
 
-  #[instrument(name = "score_hit", skip_all)]
+  #[instrument(name = "score_hit", skip_all, fields(entity_id = rhs.id))]
   fn score(bump: &Bump, lhs: &crate::model::SearchEntity, rhs: &crate::model::Entity, cutoff: f64) -> (f64, Vec<(&'static str, f64)>) {
     let features: &[(&dyn Feature, f64)] = &[
       (&NameLiteralMatch, 1.0),

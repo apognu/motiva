@@ -84,8 +84,6 @@ pub struct FtmSchema {
   pub extends: Vec<String>,
   pub matchable: bool,
   #[serde(default)]
-  pub required: Vec<String>,
-  #[serde(default)]
   pub caption: Vec<String>,
   #[serde(default)]
   pub properties: HashMap<String, FtmProperty, RandomState>,

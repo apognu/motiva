@@ -1,4 +1,6 @@
 use bumpalo::Bump;
+use opentelemetry::global;
+use tokio::time::Instant;
 use tracing::{Span, instrument};
 
 use crate::{
@@ -12,6 +14,7 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, cut
 
   let mut bump = Bump::with_capacity(1024);
   let mut results = Vec::with_capacity(hits.len());
+  let then = Instant::now();
 
   let scores = hits.into_iter().map(|mut hit| {
     let _enter = span.enter();
@@ -26,6 +29,8 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, cut
 
     (hit, score)
   });
+
+  global::meter("motiva").f64_histogram("scoring_latency").build().record(then.elapsed().as_secs_f64() * 1000.0, &[]);
 
   results.extend(scores);
 

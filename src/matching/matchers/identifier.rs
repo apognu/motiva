@@ -89,7 +89,7 @@ impl<'p> Feature<'p> for IdentifierMatch<'p> {
     self.name
   }
 
-  #[instrument(level = "trace", name = "identifier_match", skip_all, fields(identifier = ?self.properties))]
+  #[instrument(level = "trace", name = "identifier_match", skip_all, fields(entity_id = rhs.id, identifier = ?self.properties))]
   fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     for property in self.properties {
       if self.match_property(bump, &lhs.schema, lhs, rhs, property) {

@@ -9,6 +9,7 @@ use axum::{
   response::Response,
 };
 use jiff::Timestamp;
+use opentelemetry::global;
 use tokio::time::Instant;
 
 pub async fn api_logger(request: Request<Body>, next: Next) -> Result<Response, StatusCode> {
@@ -25,6 +26,8 @@ pub async fn api_logger(request: Request<Body>, next: Next) -> Result<Response, 
 
   let then = Instant::now();
   let response = next.run(Request::from_parts(parts, body)).await;
+
+  global::meter("motiva").f64_histogram("request_latency").build().record(then.elapsed().as_secs_f64() * 1000.0, &[]);
 
   tracing::info!(
     time = time,

@@ -37,7 +37,7 @@ impl<'e> Feature<'e> for SimpleMismatch<'e> {
     self.name
   }
 
-  #[instrument(level = "trace", name = "simple_mismatch", skip_all, fields(mismatch = self.name))]
+  #[instrument(level = "trace", name = "simple_mismatch", skip_all, fields(entity_id = rhs.id, mismatch = self.name))]
   fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     let lhs = (self.extractor)(lhs);
 

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axum::http::StatusCode;
 use elasticsearch::SearchParts;
 use itertools::Itertools;
+use opentelemetry::global;
 use rphonetic::Metaphone;
 use serde_json::json;
 use tokio::sync::RwLock;
@@ -38,6 +39,9 @@ pub async fn search(AppState { es, catalog, .. }: &AppState, entity: &SearchEnti
   match body.hits.hits {
     Some(hits) => {
       tracing::debug!(latency = body.took, hits = body.hits.total.value, results = hits.len(), "got response from index");
+
+      global::meter("motiva").u64_histogram("index_hits").build().record(hits.len() as u64, &[]);
+      global::meter("motiva").u64_histogram("index_latency").build().record(body.took, &[]);
 
       Ok(hits.into_iter().map(Entity::from).collect())
     }

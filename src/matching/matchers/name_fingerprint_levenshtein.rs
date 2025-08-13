@@ -21,10 +21,6 @@ fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 }
 
 fn fingerprint_name(name: &str) -> String {
-  fn is_word_boundary(c: char) -> bool {
-    !c.is_alphanumeric()
-  }
-
   replacers::replace(&ORG_TYPES.0, &ORG_TYPES.1, name)
 }
 

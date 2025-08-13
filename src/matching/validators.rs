@@ -1,9 +1,3 @@
-use std::sync::LazyLock;
-
-use regex::Regex;
-
-static OGRN_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(\d{13}|\d{15})\b").unwrap());
-
 pub fn validate_ogrn(code: &str) -> bool {
   if code.len() != 13 || !code.chars().all(|c| c.is_ascii_digit()) {
     return false;
