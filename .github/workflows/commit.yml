@@ -27,6 +27,8 @@ jobs:
           path: |
             .venv/
             target/
+            ~/.cargo/registry
+            ~/.cargo/git
           key: "${{hashFiles('Cargo.lock', 'pyproject.toml')}}"
 
       - name: Install dependencies
@@ -70,6 +72,8 @@ jobs:
           path: |
             .venv/
             target/
+            ~/.cargo/registry
+            ~/.cargo/git
           key: "${{hashFiles('Cargo.lock', 'pyproject.toml')}}"
 
       - name: Install dependencies
