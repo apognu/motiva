@@ -17,8 +17,8 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     return 0.0;
   }
 
-  let lhs_names = extractors::clean_names(lhs.names_and_aliases().iter()).collect_in::<Vec<_>>(bump);
-  let rhs_names = extractors::clean_names(rhs.names_and_aliases().iter()).collect_in::<Vec<_>>(bump);
+  let lhs_names = extractors::clean_names(lhs.names_and_aliases()).collect_in::<Vec<_>>(bump);
+  let rhs_names = extractors::clean_names(rhs.names_and_aliases()).collect_in::<Vec<_>>(bump);
 
   let metaphone = Metaphone::new(None);
   let lhs_phone = extractors::phonetic_names_tuples(&metaphone, lhs_names.iter());

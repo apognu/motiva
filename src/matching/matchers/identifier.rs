@@ -1,6 +1,6 @@
 use bumpalo::{
+  collections::Vec,
   Bump,
-  collections::{CollectIn, Vec},
 };
 use itertools::Itertools;
 use tracing::instrument;
@@ -75,12 +75,13 @@ impl<'p> IdentifierMatch<'p> {
     }
 
     let rhs_values = rhs
-      .gather(&properties)
-      .into_iter()
+      .gather(properties.as_slice())
       .filter(|code| self.validator.map(|v| v(code)).unwrap_or(true))
-      .collect_in::<Vec<_>>(bump);
+      .collect::<std::vec::Vec<_>>();
 
-    !is_disjoint(lhs.property(property), &rhs_values)
+    let lhs_values = lhs.property(property).iter().map(|s| s.as_str()).collect::<std::vec::Vec<_>>();
+
+    !is_disjoint(&lhs_values, &rhs_values)
   }
 }
 

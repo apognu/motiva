@@ -22,7 +22,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   for part in &lhs.name_parts {
     let mut best = 0.0f64;
 
-    for other in extractors::name_parts_flat(rhs.names_and_aliases().iter()) {
+    for other in extractors::name_parts_flat(rhs.names_and_aliases()) {
       let similarity = match jaro_winkler(part, &other) {
         score if score > 0.6 => score,
         _ => 0.0,
@@ -45,8 +45,8 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     return 0.0;
   }
 
-  let lhs_names = extractors::name_parts(lhs.names_and_aliases().iter()).collect_in::<Vec<_>>(bump);
-  let rhs_names = extractors::name_parts(rhs.names_and_aliases().iter()).collect_in::<Vec<_>>(bump);
+  let lhs_names = extractors::name_parts(lhs.names_and_aliases()).collect_in::<Vec<_>>(bump);
+  let rhs_names = extractors::name_parts(rhs.names_and_aliases()).collect_in::<Vec<_>>(bump);
 
   let mut score = 0.0f64;
 

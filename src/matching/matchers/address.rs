@@ -1,10 +1,7 @@
 use std::collections::HashSet;
 
 use ahash::RandomState;
-use bumpalo::{
-  Bump,
-  collections::{CollectIn, Vec},
-};
+use bumpalo::Bump;
 use itertools::Itertools;
 use macros::scoring_feature;
 
@@ -19,35 +16,39 @@ use crate::{
 };
 
 #[scoring_feature(AddressEntityMatch, name = "address_entity_match")]
-fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   if !lhs.schema.is_a("Address") || !rhs.schema.is_a("Address") {
     return 0.0;
   }
 
-  let lhs_addresses = extractors::clean_address_parts(lhs.property("full").iter()).map(|address| {
-    replacers::replace(&ORDINALS.0, &ORDINALS.1, &replacers::replace(&ADDRESS_FORMS.0, &ADDRESS_FORMS.1, &address))
-      .split_whitespace()
-      .map(str::to_string)
-      .unique()
-      .collect::<HashSet<_, RandomState>>()
-  });
+  let lhs_addresses = extractors::clean_address_parts(lhs.property("full").iter())
+    .map(|address| {
+      replacers::replace(&ORDINALS.0, &ORDINALS.1, &replacers::replace(&ADDRESS_FORMS.0, &ADDRESS_FORMS.1, &address))
+        .split_whitespace()
+        .map(str::to_string)
+        .unique()
+        .collect::<HashSet<_, RandomState>>()
+    })
+    .collect::<std::vec::Vec<_>>();
 
-  let rhs_addresses = extractors::clean_address_parts(rhs.property("full").iter()).map(|address| {
-    replacers::replace(&ORDINALS.0, &ORDINALS.1, &replacers::replace(&ADDRESS_FORMS.0, &ADDRESS_FORMS.1, &address))
-      .split_whitespace()
-      .map(str::to_string)
-      .unique()
-      .collect::<HashSet<_, RandomState>>()
-  });
+  let rhs_addresses = extractors::clean_address_parts(rhs.property("full").iter())
+    .map(|address| {
+      replacers::replace(&ORDINALS.0, &ORDINALS.1, &replacers::replace(&ADDRESS_FORMS.0, &ADDRESS_FORMS.1, &address))
+        .split_whitespace()
+        .map(str::to_string)
+        .unique()
+        .collect::<HashSet<_, RandomState>>()
+    })
+    .collect::<std::vec::Vec<_>>();
 
   let mut max_score = 0.0f64;
 
-  for (lhs, rhs) in lhs_addresses.cartesian_product(rhs_addresses) {
+  for (lhs, rhs) in lhs_addresses.iter().cartesian_product(rhs_addresses.iter()) {
     if lhs.is_empty() || rhs.is_empty() {
       continue;
     }
 
-    let overlap = lhs.intersection(&rhs).collect_in::<Vec<_>>(bump);
+    let overlap = lhs.intersection(rhs).collect::<std::vec::Vec<_>>();
     let overlap_size = overlap.len();
 
     if overlap_size == lhs.len() || overlap_size == rhs.len() {

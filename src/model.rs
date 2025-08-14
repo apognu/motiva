@@ -18,9 +18,9 @@ pub const EMPTY: [String; 0] = [];
 
 pub trait HasProperties {
   fn names(&self) -> &[String];
-  fn names_and_aliases(&self) -> Vec<String>;
+  fn names_and_aliases(&self) -> Box<dyn Iterator<Item = &str> + '_>;
   fn property(&self, key: &str) -> &[String];
-  fn gather(&self, keys: &[&str]) -> Vec<String>;
+  fn gather<'a>(&'a self, keys: &'a [&str]) -> Box<dyn Iterator<Item = &str> + 'a>;
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -96,11 +96,8 @@ impl HasProperties for SearchEntity {
     }
   }
 
-  fn names_and_aliases(&self) -> Vec<String> {
-    let names = self.property("name");
-    let names = names.iter().chain(self.property("alias").iter());
-
-    names.cloned().collect()
+  fn names_and_aliases(&self) -> Box<dyn Iterator<Item = &str> + '_> {
+    Box::new(self.property("name").iter().chain(self.property("alias").iter()).map(|s| s.as_str()))
   }
 
   fn property(&self, key: &str) -> &[String] {
@@ -110,14 +107,8 @@ impl HasProperties for SearchEntity {
     }
   }
 
-  fn gather(&self, keys: &[&str]) -> Vec<String> {
-    let mut values = Vec::with_capacity(keys.len());
-
-    for key in keys {
-      values.extend(self.property(key).iter().cloned());
-    }
-
-    values
+  fn gather<'a>(&'a self, keys: &'a [&str]) -> Box<dyn Iterator<Item = &str> + 'a> {
+    Box::new(keys.iter().flat_map(move |key| self.property(key).iter()).map(|s| s.as_str()))
   }
 }
 
@@ -198,11 +189,8 @@ impl HasProperties for Entity {
     }
   }
 
-  fn names_and_aliases(&self) -> Vec<String> {
-    let names = self.property("name");
-    let names = names.iter().chain(self.property("alias").iter());
-
-    names.cloned().collect()
+  fn names_and_aliases(&self) -> Box<dyn Iterator<Item = &str> + '_> {
+    Box::new(self.property("name").iter().chain(self.property("alias").iter()).map(|s| s.as_str()))
   }
 
   fn property(&self, key: &str) -> &[String] {
@@ -212,14 +200,8 @@ impl HasProperties for Entity {
     }
   }
 
-  fn gather(&self, keys: &[&str]) -> Vec<String> {
-    let mut values = Vec::with_capacity(keys.len());
-
-    for key in keys {
-      values.extend(self.property(key).iter().cloned());
-    }
-
-    values
+  fn gather<'a>(&'a self, keys: &'a [&str]) -> Box<dyn Iterator<Item = &str> + 'a> {
+    Box::new(keys.iter().flat_map(move |key| self.property(key).iter()).map(|s| s.as_str()))
   }
 }
 

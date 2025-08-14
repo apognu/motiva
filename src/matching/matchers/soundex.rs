@@ -16,7 +16,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   let soundex = Soundex::default();
   let mut similarities = Vec::with_capacity_in(lhs.name_parts.len(), bump);
 
-  let rhs_soundexes = extractors::name_parts_flat(rhs.names_and_aliases().iter())
+  let rhs_soundexes = extractors::name_parts_flat(rhs.names_and_aliases())
     .unique()
     .map(|s| soundex.encode(&s.to_string()))
     .collect_in::<Vec<_>>(bump);

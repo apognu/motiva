@@ -7,17 +7,17 @@ use rphonetic::{Encoder, Metaphone};
 
 pub fn tokenize_names<'s, I, S>(names: I) -> impl Iterator<Item = impl Iterator<Item = &'s str>>
 where
-  S: Borrow<str> + 's,
+  S: Borrow<str> + 's + ?Sized,
   I: Iterator<Item = &'s S> + 's,
 {
   names.map(|s| s.borrow().split_whitespace())
 }
 
 #[inline(always)]
-pub fn clean_names<'s, I, S>(names: I) -> impl Iterator<Item = String> + Clone
+pub fn clean_names<'s, I, S>(names: I) -> impl Iterator<Item = String>
 where
-  S: Borrow<str> + 's,
-  I: Iterator<Item = &'s S> + Clone + 's,
+  S: Borrow<str> + 's + ?Sized,
+  I: Iterator<Item = &'s S> + 's,
 {
   names
     .map(|s| any_ascii(s.borrow()).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
@@ -25,10 +25,10 @@ where
 }
 
 #[inline(always)]
-pub fn clean_address_parts<'s, I, S>(names: I) -> impl Iterator<Item = String> + Clone
+pub fn clean_address_parts<'s, I, S>(names: I) -> impl Iterator<Item = String>
 where
-  S: Borrow<str> + 's,
-  I: Iterator<Item = &'s S> + Clone + 's,
+  S: Borrow<str> + 's + ?Sized,
+  I: Iterator<Item = &'s S> + 's,
 {
   names
     .map(|s| {
@@ -47,7 +47,7 @@ where
 #[inline(always)]
 pub fn tokenize_clean_names<'s, I, S>(names: I) -> impl Iterator<Item = String>
 where
-  S: Borrow<str> + 's,
+  S: Borrow<str> + 's + ?Sized,
   I: Iterator<Item = &'s S> + 's,
 {
   names
@@ -58,7 +58,7 @@ where
 
 pub fn phonetic_name<'s, I, S>(metaphone: &Metaphone, names: I) -> impl Iterator<Item = String>
 where
-  S: Borrow<str> + 's,
+  S: Borrow<str> + 's + ?Sized,
   I: Iterator<Item = &'s S> + 's,
 {
   tokenize_names(names).flat_map(|s| s.map(|s| metaphone.encode(s)))
@@ -66,7 +66,7 @@ where
 
 pub fn phonetic_names_tuples<'s, I, S>(metaphone: &Metaphone, names: I) -> Vec<Vec<(&'s str, Option<String>)>>
 where
-  S: Borrow<str> + 's,
+  S: Borrow<str> + 's + ?Sized,
   I: Iterator<Item = &'s S> + 's,
 {
   tokenize_names(names)
@@ -85,7 +85,7 @@ where
 
 pub fn name_keys<'s, I, S>(names: I) -> impl Iterator<Item = String>
 where
-  S: Borrow<str> + 's,
+  S: Borrow<str> + 's + ?Sized,
   I: Iterator<Item = &'s S> + 's,
 {
   tokenize_names(names).map(|tokens| {
@@ -98,7 +98,7 @@ where
 
 pub fn name_parts_flat<'s, I, S>(names: I) -> impl Iterator<Item = String>
 where
-  S: Borrow<str> + 's,
+  S: Borrow<str> + 's + ?Sized,
   I: Iterator<Item = &'s S> + 's,
 {
   tokenize_names(names)
@@ -110,7 +110,7 @@ where
 
 pub fn name_parts<'s, I, S>(names: I) -> impl Iterator<Item = Vec<String>>
 where
-  S: Borrow<str> + 's,
+  S: Borrow<str> + 's + ?Sized,
   I: Iterator<Item = &'s S> + 's,
 {
   tokenize_names(names)
@@ -135,7 +135,7 @@ static NUMBERS_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwr
 
 pub fn extract_numbers<'s, I, S>(haystack: I) -> impl Iterator<Item = &'s str>
 where
-  S: Borrow<str> + 's,
+  S: Borrow<str> + 's + ?Sized,
   I: Iterator<Item = &'s S> + 's,
 {
   haystack.flat_map(|value| NUMBERS_REGEX.find_iter(value.borrow()).map(|number| number.as_str()))

@@ -21,20 +21,20 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     return 0.0;
   }
 
-  let lhs = lhs.gather(&["registrationNumber", "taxNumber"]);
+  let mut lhs = lhs.gather(&["registrationNumber", "taxNumber"]).peekable();
 
-  if lhs.is_empty() {
+  if lhs.peek().is_none() {
     return 0.0;
   }
 
-  let rhs = rhs.gather(&["registrationNumber", "taxNumber"]);
+  let mut rhs = rhs.gather(&["registrationNumber", "taxNumber"]).peekable();
 
-  if rhs.is_empty() {
+  if rhs.peek().is_none() {
     return 0.0;
   }
 
-  let lhs = extractors::clean_names(lhs.iter()).collect_in::<Vec<_>>(bump);
-  let rhs = extractors::clean_names(rhs.iter()).collect_in::<Vec<_>>(bump);
+  let lhs = extractors::clean_names(lhs).collect_in::<Vec<_>>(bump);
+  let rhs = extractors::clean_names(rhs).collect_in::<Vec<_>>(bump);
 
   if lhs.is_empty() || rhs.is_empty() {
     return 0.0;
