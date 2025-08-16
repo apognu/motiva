@@ -1,3 +1,4 @@
+#[cfg(test)]
 pub mod python;
 
 use std::collections::HashMap;
@@ -11,7 +12,7 @@ pub fn e(#[builder(start_fn)] schema: &str, id: Option<&str>, properties: &[(&st
   let mut props: HashMap<_, _, RandomState> = HashMap::default();
 
   for (prop, values) in properties {
-    props.insert(prop.to_string(), values.into_iter().map(|s| s.to_string()).collect::<Vec<_>>());
+    props.insert(prop.to_string(), values.iter().map(|s| s.to_string()).collect::<Vec<_>>());
   }
 
   Entity {
@@ -28,7 +29,7 @@ pub fn se(#[builder(start_fn)] schema: &str, properties: &[(&str, &[&str])]) -> 
   let mut props: HashMap<_, _, RandomState> = HashMap::default();
 
   for (prop, values) in properties {
-    props.insert(prop.to_string(), values.into_iter().map(|s| s.to_string()).collect::<Vec<_>>());
+    props.insert(prop.to_string(), values.iter().map(|s| s.to_string()).collect::<Vec<_>>());
   }
 
   let mut entity = SearchEntity {

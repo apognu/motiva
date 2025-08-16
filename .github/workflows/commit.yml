@@ -51,8 +51,9 @@ jobs:
         env:
           PYTHONPATH: "./.venv/lib/python3.13/site-packages"
         run: |
-          cargo clippy -- -D warnings
+          cargo clippy --all-features -- -D warnings
           cargo test
+          cargo bench --features benchmarks
 
   build:
     runs-on: ubuntu-latest
