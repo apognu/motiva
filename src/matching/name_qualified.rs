@@ -126,7 +126,11 @@ mod tests {
       for (index, (_, nscore)) in nscores.into_iter().enumerate() {
         let (score, _) = NameQualified::score(&Bump::new(), &query, results.get(index).unwrap(), 0.0);
 
-        assert!(approx_eq!(f64, score, nscore, epsilon = 0.01));
+        assert!(
+          approx_eq!(f64, score, nscore, epsilon = 0.01),
+          "score mistmatch {score} vs {nscore}: {query:?} / {:?}",
+          results.get(index)
+        );
       }
     }
   }

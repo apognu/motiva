@@ -1,16 +1,13 @@
-use std::cmp::Reverse;
-
 use bumpalo::Bump;
 use itertools::Itertools;
 use macros::scoring_feature;
-use strsim::levenshtein;
 
 use crate::{
   matching::{
     Feature,
-    comparers::default_levenshtein_similarity,
+    comparers::{default_levenshtein_similarity, levenshtein_similarity},
     extractors::{clean_names, tokenize_clean_names},
-    replacers::{self, company_types::ORG_TYPES},
+    replacers::{self, company_types::ORG_TYPES, stopwords::STOPWORDS, symbols::ORG_SYMBOLS},
   },
   model::{Entity, HasProperties, SearchEntity},
 };
@@ -21,7 +18,11 @@ fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 }
 
 fn fingerprint_name(name: &str) -> String {
-  replacers::replace(&ORG_TYPES.0, &ORG_TYPES.1, name)
+  let output = replacers::replace(&STOPWORDS.0, &STOPWORDS.1, name);
+  let output = replacers::replace(&ORG_TYPES.0, &ORG_TYPES.1, &output);
+  let output = replacers::replace(&ORG_SYMBOLS.0, &ORG_SYMBOLS.1, &output);
+
+  output.trim().to_string()
 }
 
 pub fn name_fingerprint_levenshtein(lhs: &SearchEntity, rhs: &Entity) -> f64 {
@@ -32,8 +33,8 @@ pub fn name_fingerprint_levenshtein(lhs: &SearchEntity, rhs: &Entity) -> f64 {
   let qiter = lhs.names_and_aliases();
   let riter = rhs.names_and_aliases();
 
-  let query_names = clean_names(qiter.iter());
-  let result_names = clean_names(riter.iter());
+  let query_names = clean_names(qiter.iter()).filter(|word| word.len() >= 2);
+  let result_names = clean_names(riter.iter()).filter(|word| word.len() >= 2);
 
   query_names
     .cartesian_product(result_names)
@@ -55,9 +56,9 @@ pub fn name_fingerprint_levenshtein(lhs: &SearchEntity, rhs: &Entity) -> f64 {
         return score;
       }
 
-      let mut token_scores: Vec<_> = qtokens.iter().cartesian_product(rtokens.iter()).map(|(q, r)| ((q, r), levenshtein(q, r))).collect();
+      let mut token_scores: Vec<_> = qtokens.iter().cartesian_product(rtokens.iter()).map(|(q, r)| ((q, r), levenshtein_similarity(q, r, 4))).collect();
 
-      token_scores.sort_unstable_by_key(|&(_, score)| Reverse(score));
+      token_scores.sort_unstable_by(|&(_, s1), &(_, s2)| s1.partial_cmp(&s2).unwrap_or(std::cmp::Ordering::Equal).reverse());
 
       let mut aligned_q = String::new();
       let mut aligned_r = String::new();
@@ -77,7 +78,7 @@ pub fn name_fingerprint_levenshtein(lhs: &SearchEntity, rhs: &Entity) -> f64 {
         }
       }
 
-      if used_q.iter().any(|&u| !u) || used_r.iter().any(|&u| !u) {
+      if used_q.iter().any(|&u| !u) {
         return score;
       }
 
@@ -96,12 +97,12 @@ mod tests {
   fn fingerprint_name() {
     assert_eq!(
       super::fingerprint_name("ACME Inc. Comandita por Acciones General Partnership Anything Free Zone Co. andelslag"),
-      "ACME llc jsc gp Anything llc coop"
+      "ACME llc jsc  Partnership Anything llc coop"
     );
   }
 
-  #[serial_test::serial]
   #[test]
+  #[serial_test::serial]
   fn name_fingerprint_levenshtein() {
     pyo3::prepare_freethreaded_python();
 

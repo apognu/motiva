@@ -16,8 +16,8 @@ use crate::{
 
 #[scoring_feature(NameLiteralMatch, name = "name_literal_match")]
 fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
-  let lhs_names = extractors::clean_names(lhs.names_and_aliases().iter()).unique().collect_in::<Vec<_>>(bump);
-  let rhs_names = extractors::clean_names(rhs.names_and_aliases().iter()).unique().collect_in::<Vec<_>>(bump);
+  let lhs_names = extractors::clean_literal_names(lhs.names_and_aliases().iter()).unique().collect_in::<Vec<_>>(bump);
+  let rhs_names = extractors::clean_literal_names(rhs.names_and_aliases().iter()).unique().collect_in::<Vec<_>>(bump);
 
   if is_disjoint(&lhs_names, &rhs_names) { 0.0 } else { 1.0 }
 }

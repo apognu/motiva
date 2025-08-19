@@ -42,8 +42,37 @@ fn inn_check_digit(digits: &[u8], coeffs: &[u8]) -> u8 {
   ((sum % 11) % 10) as u8
 }
 
+pub fn validate_imo_mmsi(code: &str) -> bool {
+  validate_imo(code) || validate_mmsi(code)
+}
+
 pub fn validate_mmsi(code: &str) -> bool {
   code.len() == 9 && code.chars().all(|c| c.is_ascii_digit())
+}
+
+pub fn validate_imo(imo: &str) -> bool {
+  if imo.len() != 10 || !imo.to_uppercase().starts_with("IMO") {
+    return false;
+  }
+
+  let digits = &imo[3..];
+
+  if !digits.chars().all(|c| c.is_ascii_digit()) {
+    return false;
+  }
+
+  let weights = [7, 6, 5, 4, 3, 2];
+  let mut sum = 0;
+
+  for (i, w) in weights.iter().enumerate() {
+    let d = digits.chars().nth(i).unwrap().to_digit(10).unwrap();
+    sum += d * w;
+  }
+
+  let check_digit = sum % 10;
+  let actual_check_digit = digits.chars().nth(6).unwrap().to_digit(10).unwrap();
+
+  check_digit == actual_check_digit
 }
 
 pub fn validate_bic(code: &str) -> bool {
@@ -110,10 +139,10 @@ mod tests {
 
   #[test]
   fn validate_mmo_mmsi() {
-    assert!(super::validate_mmsi("366123456"));
-    assert!(!super::validate_mmsi("12345678"));
-    assert!(!super::validate_mmsi("1234567890"));
-    assert!(!super::validate_mmsi("12345abc9"));
+    assert!(super::validate_imo_mmsi("366123456"));
+    assert!(!super::validate_imo_mmsi("12345678"));
+    assert!(!super::validate_imo_mmsi("1234567890"));
+    assert!(!super::validate_imo_mmsi("12345abc9"));
   }
 
   #[test]

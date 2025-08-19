@@ -25,6 +25,17 @@ where
 }
 
 #[inline(always)]
+pub fn clean_literal_names<'s, I, S>(names: I) -> impl Iterator<Item = String> + Clone
+where
+  S: Borrow<str> + 's,
+  I: Iterator<Item = &'s S> + Clone + 's,
+{
+  names
+    .map(|s| s.borrow().to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
+    .unique()
+}
+
+#[inline(always)]
 pub fn clean_address_parts<'s, I, S>(names: I) -> impl Iterator<Item = String> + Clone
 where
   S: Borrow<str> + 's,
@@ -71,14 +82,15 @@ where
 {
   tokenize_names(names)
     .map(|s| {
-      s.map(|s| {
-        (s, {
-          let phoneme = metaphone.encode(s);
+      s.filter(|name| name.len() >= 2)
+        .map(|s| {
+          (s, {
+            let phoneme = metaphone.encode(s);
 
-          if phoneme.len() < 3 { None } else { Some(phoneme) }
+            if phoneme.len() < 3 { None } else { Some(phoneme) }
+          })
         })
-      })
-      .collect()
+        .collect()
     })
     .collect()
 }

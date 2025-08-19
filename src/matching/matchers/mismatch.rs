@@ -92,12 +92,25 @@ pub fn dob_year_disjoint<S: AsRef<str>>(bump: &Bump, lhs: &[S], rhs: &[S]) -> f6
 }
 
 pub fn dob_day_disjoint<S: AsRef<str>>(bump: &Bump, lhs: &[S], rhs: &[S]) -> f64 {
-  if dob_year_disjoint(bump, lhs, rhs) > 0.0 {
-    return 1.0;
+  let lhs_months = lhs
+    .iter()
+    .filter(|d| d.as_ref().len() >= 10)
+    .map(|d| d.as_ref().chars().skip(5).collect::<std::vec::Vec<char>>())
+    .collect_in::<Vec<_>>(bump);
+
+  let rhs_months = rhs
+    .iter()
+    .filter(|d| d.as_ref().len() >= 10)
+    .map(|d| d.as_ref().chars().skip(5).collect::<std::vec::Vec<char>>())
+    .collect_in::<Vec<_>>(bump);
+
+  if lhs_months.is_empty() || rhs_months.is_empty() {
+    return 0.0;
   }
 
-  let lhs_months = lhs.iter().map(|d| d.as_ref().chars().skip(5).collect::<std::vec::Vec<char>>()).collect_in::<Vec<_>>(bump);
-  let rhs_months = rhs.iter().map(|d| d.as_ref().chars().skip(5).collect::<std::vec::Vec<char>>()).collect_in::<Vec<_>>(bump);
+  if dob_year_disjoint(bump, lhs, rhs) == 1.0 {
+    return 1.0;
+  }
 
   if !is_disjoint_chars(&lhs_months, &rhs_months) {
     return 0.0;

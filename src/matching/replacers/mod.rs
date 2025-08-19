@@ -4,6 +4,8 @@ use rust_embed::Embed;
 pub mod addresses;
 pub mod company_types;
 pub mod ordinals;
+pub mod stopwords;
+pub mod symbols;
 
 #[derive(Embed)]
 #[folder = "assets/rigour/resources"]
