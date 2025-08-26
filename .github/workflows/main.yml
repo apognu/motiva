@@ -1,0 +1,14 @@
+name: Main publishing
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    uses: ./.github/workflows/pr.yml
+
+  docker:
+    uses: ./.github/workflows/docker.yml
+    needs: [test]
+    secrets: inherit

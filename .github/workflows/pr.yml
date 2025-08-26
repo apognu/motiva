@@ -1,0 +1,8 @@
+name: PR continuous testing
+
+on:
+  workflow_call:
+
+jobs:
+  test:
+    uses: .github/workflows/pr.yml
