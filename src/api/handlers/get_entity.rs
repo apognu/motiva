@@ -9,20 +9,27 @@ use axum::{
   extract::{Path, State},
   response::{IntoResponse, Redirect},
 };
+use axum_extra::extract::Query;
 use reqwest::StatusCode;
 use tracing::instrument;
 
 use crate::{
-  api::{AppState, errors::AppError},
+  api::{AppState, dto::GetEntityParams, errors::AppError},
   index::{self, get::GetEntityResult},
   model::{Entity, HasProperties},
   schemas::SCHEMAS,
 };
 
 #[instrument(skip_all)]
-pub async fn get_entity(State(state): State<AppState>, Path(id): Path<String>) -> Result<impl IntoResponse, AppError> {
+pub async fn get_entity(State(state): State<AppState>, Path(id): Path<String>, Query(params): Query<GetEntityParams>) -> Result<impl IntoResponse, AppError> {
   match index::get::get_entity(&state, &id).await? {
+    GetEntityResult::Referent(id) => Ok(Redirect::permanent(&format!("/entities/{id}")).into_response()),
+
     GetEntityResult::Nominal(mut entity) => {
+      if !params.nested {
+        return Ok((StatusCode::OK, Json(entity)).into_response());
+      }
+
       let mut root = Some(&id);
       let mut seen = HashSet::<_, RandomState>::from_iter([id.clone()]);
 
@@ -96,7 +103,5 @@ pub async fn get_entity(State(state): State<AppState>, Path(id): Path<String>) -
 
       Ok((StatusCode::OK, Json(entity)).into_response())
     }
-
-    GetEntityResult::Referent(id) => Ok(Redirect::permanent(&format!("/entities/{id}")).into_response()),
   }
 }

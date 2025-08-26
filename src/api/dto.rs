@@ -37,6 +37,13 @@ pub struct MatchParams {
   pub exclude_dataset: Vec<String>,
 }
 
+#[serde_inline_default]
+#[derive(Clone, Debug, Deserialize)]
+pub struct GetEntityParams {
+  #[serde_inline_default(true)]
+  pub nested: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, Validate)]
 pub(super) struct Payload {
   #[validate(nested, length(min = 1, message = "at least one query must be provided"))]
