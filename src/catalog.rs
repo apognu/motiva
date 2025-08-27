@@ -14,7 +14,7 @@ pub struct Catalog {
 #[derive(Debug, Deserialize)]
 pub struct Dataset {
   pub name: String,
-  pub datasets: Option<Vec<String>>,
+  pub children: Option<Vec<String>>,
 }
 
 pub async fn fetch_catalog(url: &Option<String>) -> anyhow::Result<Collections> {
@@ -26,6 +26,8 @@ pub async fn fetch_catalog(url: &Option<String>) -> anyhow::Result<Collections> 
     .into_iter()
     .map(|dataset| (dataset.name.clone(), dataset))
     .collect::<HashMap<_, _>>();
+
+  tracing::info!(datasets = catalog.len(), "fetched catalog");
 
   Ok(catalog)
 }

@@ -67,6 +67,8 @@ pub fn routes(config: &Config, catalog: Collections) -> anyhow::Result<Router> {
 
     async move {
       loop {
+        tokio::time::sleep(Duration::from_secs(60 * 60)).await;
+
         match fetch_catalog(&catalog_url).await {
           Ok(new_catalog) => {
             let mut guard = catalog.write().await;
@@ -75,8 +77,6 @@ pub fn routes(config: &Config, catalog: Collections) -> anyhow::Result<Router> {
 
           Err(err) => tracing::error!(error = err.to_string(), "could not refresh catalog"),
         }
-
-        tokio::time::sleep(Duration::from_secs(60 * 60)).await;
       }
     }
   });

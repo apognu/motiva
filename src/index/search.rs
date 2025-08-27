@@ -86,7 +86,7 @@ async fn build_datasets(catalog: &Arc<RwLock<Collections>>, filters: &mut Vec<se
   let scope = {
     let guard = catalog.read().await;
 
-    guard.get(&params.scope).and_then(|dataset| dataset.datasets.clone()).unwrap_or_default()
+    guard.get(&params.scope).and_then(|dataset| dataset.children.clone()).unwrap_or_default()
   };
 
   if !params.include_dataset.is_empty() {
