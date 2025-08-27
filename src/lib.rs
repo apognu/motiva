@@ -66,7 +66,7 @@ fn init_logger(config: &Config) -> (WorkerGuard, Option<SdkTracerProvider>) {
 
   let formatter = match config.env {
     Env::Dev => fmt::layer().compact().with_writer(appender).boxed(),
-    Env::Production => fmt::layer().json().with_writer(appender).flatten_event(true).boxed(),
+    Env::Production => fmt::layer().json().with_writer(appender).flatten_event(true).with_current_span(false).with_span_list(false).boxed(),
   };
 
   let (tracing_layer, tracing_provider, metrics_layer, metrics_provider) = match config.enable_tracing {

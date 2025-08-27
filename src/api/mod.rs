@@ -93,10 +93,11 @@ pub fn routes(config: &Config, catalog: Collections) -> anyhow::Result<Router> {
       .layer(middleware::from_fn(middlewares::request_id))
       .layer(TraceLayer::new_for_http().make_span_with(|req: &Request| {
         let parent = global::get_text_map_propagator(|propagator| propagator.extract(&HeaderExtractor(req.headers())));
-        let request_id = Uuid::new_v4().to_string();
+        let request_id = Uuid::new_v4();
 
-        let span = tracing::info_span!("request", request_id = request_id);
+        let span = tracing::info_span!("request", %request_id);
         span.set_parent(parent);
+
         span
       }))
       .with_state(state),

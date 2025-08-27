@@ -1,7 +1,5 @@
-FROM rust:1.89.0-alpine3.22 AS builder
+FROM rust:1.89-slim-trixie AS builder
 WORKDIR /app
-
-RUN apk add -U gcc g++
 
 COPY Cargo.toml Cargo.lock /app/
 COPY macros /app/macros
@@ -11,7 +9,7 @@ RUN cargo build --release --bin motiva
 COPY . /app/
 RUN touch /app/src/main.rs /app/src/lib.rs && cargo build --release --bin motiva
 
-FROM alpine:3.22.1
+FROM gcr.io/distroless/cc:latest
 COPY --from=builder /app/target/release/motiva /motiva
 
 ENTRYPOINT [ "/motiva" ]
