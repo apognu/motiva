@@ -83,6 +83,9 @@ pub fn routes(config: &Config, catalog: Collections) -> anyhow::Result<Router> {
 
   Ok(
     Router::new()
+      .route("/healthz", get(handlers::healthz))
+      .route("/readyz", get(handlers::readyz))
+      .route("/catalog", get(handlers::catalog))
       .route("/match/{scope}", post(handlers::match_entities))
       .route("/entities/{id}", get(handlers::get_entity))
       .fallback(handlers::not_found)

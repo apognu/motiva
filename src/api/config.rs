@@ -18,6 +18,7 @@ pub struct Config {
   pub index_client_secret: Option<String>,
 
   // Match settings
+  pub yente_url: Option<String>,
   pub catalog_url: Option<String>,
   pub match_candidates: usize,
 
@@ -31,6 +32,7 @@ impl Config {
       env: Env::from(env::var("ENV").unwrap_or("dev".into())),
       listen_addr: env::var("LISTEN_ADDR").unwrap_or("0.0.0.0:8000".into()),
       match_candidates: parse_env("MATCH_CANDIDATES", 10)?,
+      yente_url: env::var("YENTE_URL").ok(),
       catalog_url: env::var("CATALOG_URL").ok(),
       index_url: env::var("INDEX_URL").unwrap_or("http://localhost:9200".into()),
       index_auth_method: env::var("INDEX_AUTH_METHOD").unwrap_or("none".into()).parse()?,
