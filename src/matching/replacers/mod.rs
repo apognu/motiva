@@ -19,8 +19,8 @@ where
   let mut cursor = 0;
 
   for mat in aho.find_iter(haystack) {
-    let start_is_boundary = mat.start() == 0 || !haystack[..mat.start()].chars().next_back().unwrap().is_alphanumeric();
-    let end_is_boundary = mat.end() == haystack.len() || !haystack[mat.end()..].chars().next().unwrap().is_alphanumeric();
+    let start_is_boundary = mat.start() == 0 || !haystack[..mat.start()].chars().next_back().map(|c| c.is_alphanumeric()).unwrap_or_default();
+    let end_is_boundary = mat.end() == haystack.len() || !haystack[mat.end()..].chars().next().map(|c| c.is_alphanumeric()).unwrap_or_default();
 
     if start_is_boundary && end_is_boundary {
       out.push_str(&haystack[cursor..mat.start()]);

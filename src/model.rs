@@ -17,7 +17,6 @@ use crate::{
 pub const EMPTY: [String; 0] = [];
 
 pub trait HasProperties {
-  fn names(&self) -> &[String];
   fn names_and_aliases(&self) -> Vec<String>;
   fn property(&self, key: &str) -> &[String];
   fn gather(&self, keys: &[&str]) -> Vec<String>;
@@ -89,13 +88,6 @@ impl SearchEntity {
 }
 
 impl HasProperties for SearchEntity {
-  fn names(&self) -> &[String] {
-    match self.properties.get("name") {
-      Some(names) => names,
-      None => &EMPTY,
-    }
-  }
-
   fn names_and_aliases(&self) -> Vec<String> {
     let names = self.property("name");
     let names = names.iter().chain(self.property("alias").iter());
@@ -191,13 +183,6 @@ impl From<EsEntity> for Entity {
 }
 
 impl HasProperties for Entity {
-  fn names(&self) -> &[String] {
-    match self.properties.strings.get("name") {
-      Some(names) => names,
-      None => &EMPTY,
-    }
-  }
-
   fn names_and_aliases(&self) -> Vec<String> {
     let names = self.property("name");
     let names = names.iter().chain(self.property("alias").iter());

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use tokio::signal;
 
 #[global_allocator]

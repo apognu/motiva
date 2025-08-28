@@ -55,9 +55,9 @@ impl<'p> IdentifierMatch<'p> {
       }
     }
 
-    if schema_property.is_none() {
+    let Some(schema_property) = schema_property else {
       return false;
-    }
+    };
 
     for chain in &schema.parents {
       let Some(chain_schema) = SCHEMAS.get(chain) else {
@@ -67,7 +67,7 @@ impl<'p> IdentifierMatch<'p> {
       let rhs_properties = chain_schema
         .properties
         .iter()
-        .filter(|(_, prop)| prop._type == schema_property.clone().unwrap()._type)
+        .filter(|(_, prop)| prop._type == schema_property.clone()._type)
         .map(|(name, _)| name.as_str())
         .unique();
 

@@ -1,5 +1,4 @@
 use opentelemetry::{KeyValue, global, trace::TracerProvider};
-use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
   Resource,
   metrics::MeterProviderBuilder,
@@ -29,6 +28,10 @@ pub async fn init_logger(config: &Config) -> (WorkerGuard, Option<SdkTracerProvi
     true => {
       let resource = Resource::builder_empty().with_attributes([KeyValue::new("service.name", "motiva")]).build();
 
+      let tracing_provider_builder = SdkTracerProvider::builder()
+        .with_sampler(Sampler::TraceIdRatioBased(config::parse_env("OTEL_TRACES_SAMPLER_ARGS", 0.1).unwrap_or(0.1)))
+        .with_resource(resource.clone());
+
       match config.tracing_exporter {
         TracingExporter::Otlp => {
           let tracing_otlp = opentelemetry_otlp::SpanExporter::builder().with_tonic().build().unwrap();
@@ -36,17 +39,11 @@ pub async fn init_logger(config: &Config) -> (WorkerGuard, Option<SdkTracerProvi
             .with_batch_config(BatchConfigBuilder::default().with_max_queue_size(8192).build())
             .build();
 
-          let tracing_provider = SdkTracerProvider::builder()
-            .with_span_processor(processor)
-            .with_sampler(Sampler::TraceIdRatioBased(config::parse_env("OTEL_TRACES_SAMPLER_ARGS", 0.1).unwrap_or(0.1)))
-            .with_resource(resource.clone())
-            .build();
-
+          let tracing_provider = tracing_provider_builder.with_span_processor(processor).build();
           let tracer = tracing_provider.tracer("motiva");
-          let _ = opentelemetry_otlp::SpanExporter::builder().with_tonic().build().unwrap();
           let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
-          let metrics_otlp = opentelemetry_otlp::MetricExporter::builder().with_tonic().with_endpoint("http://localhost:4317").build().unwrap();
+          let metrics_otlp = opentelemetry_otlp::MetricExporter::builder().with_tonic().build().unwrap();
           let metrics_provider = MeterProviderBuilder::default().with_periodic_exporter(metrics_otlp).with_resource(resource).build();
           let metrics_layer = MetricsLayer::new(metrics_provider.clone());
 
@@ -56,19 +53,11 @@ pub async fn init_logger(config: &Config) -> (WorkerGuard, Option<SdkTracerProvi
         #[cfg(feature = "gcp")]
         TracingExporter::Gcp => {
           let gcp_trace_exporter = GcpCloudTraceExporterBuilder::new(config.gcp_project_id.clone()).with_resource(resource.clone());
-
-          let tracing_provider = gcp_trace_exporter
-            .create_provider_from_builder(
-              SdkTracerProvider::builder()
-                .with_sampler(Sampler::TraceIdRatioBased(config::parse_env("OTEL_TRACES_SAMPLER_ARGS", 0.1).unwrap_or(0.1)))
-                .with_resource(resource.clone()),
-            )
-            .await;
+          let tracing_provider = gcp_trace_exporter.create_provider_from_builder(tracing_provider_builder).await;
 
           match tracing_provider {
             Ok(tracing_provider) => {
               let tracer: opentelemetry_sdk::trace::Tracer = gcp_trace_exporter.install(&tracing_provider).await.unwrap();
-
               let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
               (Some(tracing_layer), Some(tracing_provider), None, None, None)
