@@ -3,22 +3,26 @@ use std::net::SocketAddr;
 use axum::{
   RequestPartsExt,
   body::{Body, HttpBody},
-  extract::ConnectInfo,
+  extract::{ConnectInfo, State},
   http::{Request, StatusCode},
   middleware::Next,
   response::Response,
 };
 use jiff::Timestamp;
-use opentelemetry::{global, trace::TraceContextExt};
+use opentelemetry::{TraceId, global, trace::TraceContextExt};
 use tokio::time::Instant;
 use tracing::Span;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-use crate::api::middlewares::RequestId;
+use crate::api::{
+  AppState,
+  config::{Config, TracingExporter},
+  middlewares::RequestId,
+};
 
-pub async fn api_logger(request: Request<Body>, next: Next) -> Result<Response, StatusCode> {
+pub async fn api_logger(State(state): State<AppState>, request: Request<Body>, next: Next) -> Result<Response, StatusCode> {
   let span = Span::current();
-  let trace_id = span.context().span().span_context().trace_id();
+  let trace_id = trace_id_for_logs(&state.config, span.context().span().span_context().trace_id());
 
   let time = Timestamp::now().strftime("%Y-%m-%dT%H:%M:%S%z").to_string();
   let method = request.method().clone();
@@ -53,4 +57,12 @@ pub async fn api_logger(request: Request<Body>, next: Next) -> Result<Response, 
   );
 
   Ok(response)
+}
+
+fn trace_id_for_logs(config: &Config, trace_id: TraceId) -> String {
+  match config.tracing_exporter {
+    TracingExporter::Otlp => trace_id.to_string(),
+    #[cfg(feature = "gcp")]
+    TracingExporter::Gcp => format!("projects/{}/traces/{trace_id}", config.gcp_project_id),
+  }
 }

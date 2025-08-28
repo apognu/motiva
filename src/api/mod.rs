@@ -89,7 +89,7 @@ pub fn routes(config: &Config, catalog: Collections) -> anyhow::Result<Router> {
       .route("/match/{scope}", post(handlers::match_entities))
       .route("/entities/{id}", get(handlers::get_entity))
       .fallback(handlers::not_found)
-      .layer(middleware::from_fn(middlewares::logging::api_logger))
+      .layer(middleware::from_fn_with_state(state.clone(), middlewares::logging::api_logger))
       .layer(middleware::from_fn(middlewares::request_id))
       .layer(TraceLayer::new_for_http().make_span_with(|req: &Request| {
         let parent = global::get_text_map_propagator(|propagator| propagator.extract(&HeaderExtractor(req.headers())));

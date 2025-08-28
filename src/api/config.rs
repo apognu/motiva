@@ -24,10 +24,13 @@ pub struct Config {
 
   // Debugging
   pub enable_tracing: bool,
+  pub tracing_exporter: TracingExporter,
+  #[cfg(feature = "gcp")]
+  pub gcp_project_id: String,
 }
 
 impl Config {
-  pub fn from_env() -> Result<Config, AppError> {
+  pub async fn from_env() -> Result<Config, AppError> {
     let config = Config {
       env: Env::from(env::var("ENV").unwrap_or("dev".into())),
       listen_addr: env::var("LISTEN_ADDR").unwrap_or("0.0.0.0:8000".into()),
@@ -39,6 +42,9 @@ impl Config {
       index_client_id: env::var("INDEX_CLIENT_ID").map(Some).unwrap_or_default(),
       index_client_secret: env::var("INDEX_CLIENT_SECRET").map(Some).unwrap_or_default(),
       enable_tracing: env::var("ENABLE_TRACING").unwrap_or_default() == "1",
+      tracing_exporter: TracingExporter::try_from(parse_env("TRACING_EXPORTER", "otlp".to_string())?)?,
+      #[cfg(feature = "gcp")]
+      gcp_project_id: detect_gcp_project_id().await,
     };
 
     if let EsAuthMethod::Basic | EsAuthMethod::ApiKey = config.index_auth_method
@@ -93,6 +99,26 @@ impl FromStr for EsAuthMethod {
   }
 }
 
+#[derive(Clone)]
+pub enum TracingExporter {
+  Otlp,
+  #[cfg(feature = "gcp")]
+  Gcp,
+}
+
+impl TryFrom<String> for TracingExporter {
+  type Error = AppError;
+
+  fn try_from(value: String) -> Result<Self, Self::Error> {
+    match value.as_ref() {
+      "otlp" => Ok(TracingExporter::Otlp),
+      #[cfg(feature = "gcp")]
+      "gcp" => Ok(TracingExporter::Gcp),
+      other => Err(AppError::ConfigError(format!("unsupported tracing exporter kind: {other}"))),
+    }
+  }
+}
+
 pub fn parse_env<T>(name: &str, default: T) -> anyhow::Result<T>
 where
   T: FromStr,
@@ -104,6 +130,20 @@ where
     Err(err) => match err {
       VarError::NotPresent => Ok(default),
       _ => Err(AppError::ConfigError(format!("could not read {name}: {err}")).into()),
+    },
+  }
+}
+
+#[cfg(feature = "gcp")]
+async fn detect_gcp_project_id() -> String {
+  match env::var("GOOGLE_CLOUD_PROJECT") {
+    Ok(project) => project,
+    Err(_) => match gcp_auth::provider().await {
+      Ok(provider) => match provider.project_id().await {
+        Ok(project) => project.to_string(),
+        _ => String::new(),
+      },
+      _ => String::new(),
     },
   }
 }
