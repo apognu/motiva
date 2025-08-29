@@ -204,6 +204,7 @@ mod tests {
   }
 
   #[test]
+  #[cfg(not(tarpaulin))]
   fn extensive_entity_matching_test() {
     pyo3::prepare_freethreaded_python();
 

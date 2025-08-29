@@ -38,7 +38,7 @@ pub async fn search(AppState { es, catalog, .. }: &AppState, entity: &SearchEnti
 
   match body.hits.hits {
     Some(hits) => {
-      tracing::debug!(latency = body.took, hits = body.hits.total.value, results = hits.len(), "got response from index");
+      tracing::debug!(latency = body.took, hits = body.hits.total.value, results = hits.len(), "got hits from index");
 
       global::meter("motiva").u64_histogram("index_hits").build().record(hits.len() as u64, &[]);
       global::meter("motiva").u64_histogram("index_latency").build().record(body.took, &[]);

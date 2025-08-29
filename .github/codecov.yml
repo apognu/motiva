@@ -1,0 +1,6 @@
+coverage:
+  precision: 0
+
+ignore:
+  - tests
+  - benches
