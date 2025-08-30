@@ -4,3 +4,8 @@ coverage:
 ignore:
   - tests
   - benches
+
+comment:
+  layout: diff
+  behavior: default
+  require_changes: true

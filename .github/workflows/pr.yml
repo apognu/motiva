@@ -1,7 +1,7 @@
 name: PR continuous testing
 
 on:
-  workflow_call:
+  pull_request:
 
 jobs:
   test:

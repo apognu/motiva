@@ -1,3 +1,5 @@
+#![allow(unexpected_cfgs)]
+
 mod api;
 mod catalog;
 mod index;

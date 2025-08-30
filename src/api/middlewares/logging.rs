@@ -14,13 +14,19 @@ use tokio::time::Instant;
 use tracing::Span;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-use crate::api::{
-  AppState,
-  config::{Config, TracingExporter},
-  middlewares::RequestId,
+use crate::{
+  api::{
+    AppState,
+    config::{Config, TracingExporter},
+    middlewares::RequestId,
+  },
+  index::IndexProvider,
 };
 
-pub async fn api_logger(State(state): State<AppState>, request: Request<Body>, next: Next) -> Result<Response, StatusCode> {
+pub async fn api_logger<P>(State(state): State<AppState<P>>, request: Request<Body>, next: Next) -> Result<Response, StatusCode>
+where
+  P: IndexProvider,
+{
   let span = Span::current();
   let trace_id = trace_id_for_logs(&state.config, span.context().span().span_context().trace_id());
 

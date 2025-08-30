@@ -9,6 +9,7 @@ use axum_extra::extract::WithRejection;
 use itertools::Itertools;
 use tracing::{Instrument, instrument};
 
+use crate::index::IndexProvider;
 use crate::matching::logic_v1::LogicV1;
 use crate::{
   api::{
@@ -17,14 +18,13 @@ use crate::{
     errors::AppError,
     middlewares::json_rejection::TypedJson,
   },
-  index,
   matching::{name_based::NameBased, name_qualified::NameQualified},
   scoring,
 };
 
 #[instrument(skip_all)]
-pub async fn match_entities(
-  State(state): State<AppState>,
+pub async fn match_entities<P: IndexProvider + 'static>(
+  State(state): State<AppState<P>>,
   Path((scope,)): Path<(String,)>,
   WithRejection(Query(mut query), _): WithRejection<Query<MatchParams>, QueryRejection>,
   TypedJson(mut body): TypedJson<Payload>,
@@ -42,7 +42,7 @@ pub async fn match_entities(
       let query = query.clone();
 
       async move {
-        let hits = match index::search::search(&state, &entity, &query).await {
+        let hits = match state.index.search(&state, &entity, &query).await {
           Ok(hits) => hits,
 
           Err(err) => {

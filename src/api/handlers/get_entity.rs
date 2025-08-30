@@ -15,14 +15,14 @@ use tracing::instrument;
 
 use crate::{
   api::{AppState, dto::GetEntityParams, errors::AppError},
-  index::{self, get::GetEntityResult},
+  index::{IndexProvider, search::GetEntityResult},
   model::{Entity, HasProperties},
   schemas::SCHEMAS,
 };
 
 #[instrument(skip_all)]
-pub async fn get_entity(State(state): State<AppState>, Path(id): Path<String>, Query(params): Query<GetEntityParams>) -> Result<impl IntoResponse, AppError> {
-  match index::get::get_entity(&state, &id).await? {
+pub async fn get_entity<P: IndexProvider>(State(state): State<AppState<P>>, Path(id): Path<String>, Query(params): Query<GetEntityParams>) -> Result<impl IntoResponse, AppError> {
+  match state.index.get_entity(&id).await? {
     GetEntityResult::Referent(id) => Ok(Redirect::permanent(&format!("/entities/{id}")).into_response()),
 
     GetEntityResult::Nominal(mut entity) => {
@@ -51,7 +51,7 @@ pub async fn get_entity(State(state): State<AppState>, Path(id): Path<String>, Q
         }
 
         while !ids.is_empty() {
-          let associations = index::get::get_related_entities(&state, root, &ids, &seen).await?.into_iter().map(Entity::from).collect::<Vec<_>>();
+          let associations = state.index.get_related_entities(root, &ids, &seen).await?.into_iter().map(Entity::from).collect::<Vec<_>>();
 
           root = None;
           ids.clear();

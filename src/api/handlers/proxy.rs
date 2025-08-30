@@ -2,9 +2,12 @@ use anyhow::Context;
 use axum::{extract::State, response::IntoResponse};
 use reqwest::{StatusCode, header};
 
-use crate::api::{AppState, errors::AppError};
+use crate::{
+  api::{AppState, errors::AppError},
+  index::IndexProvider,
+};
 
-pub async fn catalog(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
+pub async fn catalog<P: IndexProvider>(State(state): State<AppState<P>>) -> Result<impl IntoResponse, AppError> {
   match state.config.yente_url {
     None => Err(AppError::ResourceNotFound),
 

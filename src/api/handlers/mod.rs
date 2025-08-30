@@ -5,15 +5,15 @@ mod proxy;
 use anyhow::Context;
 use axum::extract::State;
 use axum::response::IntoResponse;
-use elasticsearch::cluster::ClusterHealthParts;
 use reqwest::StatusCode;
 use serde::Deserialize;
 
 use crate::api::AppState;
 use crate::api::errors::AppError;
+use crate::index::IndexProvider;
 
 pub(super) use self::get_entity::get_entity;
-pub(super) use self::match_entities::match_entities;
+pub use self::match_entities::match_entities;
 pub(super) use self::proxy::catalog;
 
 pub async fn not_found() -> impl IntoResponse {
@@ -29,15 +29,8 @@ pub async fn healthz() -> StatusCode {
   StatusCode::OK
 }
 
-pub async fn readyz(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
-  let Ok(health) = state
-    .es
-    .cluster()
-    .health(ClusterHealthParts::Index(&["yente-entities"]))
-    .send()
-    .await
-    .context("could not get cluster health")
-  else {
+pub async fn readyz<P: IndexProvider>(State(state): State<AppState<P>>) -> Result<impl IntoResponse, AppError> {
+  let Ok(health) = state.index.health().await.context("could not get cluster health") else {
     return Ok(StatusCode::SERVICE_UNAVAILABLE);
   };
 

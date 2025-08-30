@@ -45,7 +45,7 @@ pub struct GetEntityParams {
 }
 
 #[derive(Clone, Debug, Deserialize, Validate)]
-pub(super) struct Payload {
+pub(crate) struct Payload {
   #[validate(nested, length(min = 1, message = "at least one query must be provided"))]
   pub queries: HashMap<String, SearchEntity, RandomState>,
 }
