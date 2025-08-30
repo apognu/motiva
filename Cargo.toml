@@ -91,4 +91,5 @@ bon = "3.6.5"
 criterion = "0.7.0"
 float-cmp = "0.10.0"
 pyo3 = { version = "0.25.1" }
+sealed_test = "1.1.0"
 serial_test = "3.2.0"
