@@ -42,7 +42,7 @@ impl Config {
       index_client_id: env::var("INDEX_CLIENT_ID").map(Some).unwrap_or_default(),
       index_client_secret: env::var("INDEX_CLIENT_SECRET").map(Some).unwrap_or_default(),
       enable_tracing: env::var("ENABLE_TRACING").unwrap_or_default() == "1",
-      tracing_exporter: TracingExporter::try_from(parse_env("TRACING_EXPORTER", "otlp".to_string())?)?,
+      tracing_exporter: env::var("TRACING_EXPORTER").unwrap_or("otlp".into()).parse()?,
       #[cfg(feature = "gcp")]
       gcp_project_id: detect_gcp_project_id().await,
     };
@@ -59,7 +59,7 @@ impl Config {
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Env {
   Dev,
   Production,
@@ -75,7 +75,7 @@ impl From<String> for Env {
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EsAuthMethod {
   None,
   Basic,
@@ -99,18 +99,18 @@ impl FromStr for EsAuthMethod {
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TracingExporter {
   Otlp,
   #[cfg(feature = "gcp")]
   Gcp,
 }
 
-impl TryFrom<String> for TracingExporter {
-  type Error = AppError;
+impl FromStr for TracingExporter {
+  type Err = AppError;
 
-  fn try_from(value: String) -> Result<Self, Self::Error> {
-    match value.as_ref() {
+  fn from_str(value: &str) -> Result<Self, Self::Err> {
+    match value {
       "otlp" => Ok(TracingExporter::Otlp),
       #[cfg(feature = "gcp")]
       "gcp" => Ok(TracingExporter::Gcp),
@@ -145,5 +145,125 @@ async fn detect_gcp_project_id() -> String {
       },
       _ => String::new(),
     },
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    env,
+    net::{IpAddr, Ipv4Addr},
+  };
+
+  use super::{Config, Env, EsAuthMethod, TracingExporter};
+
+  #[serial_test::serial]
+  #[tokio::test]
+  async fn parse_config_from_env() {
+    unsafe {
+      env::set_var("ENV", "production");
+      env::set_var("LISTEN_ADDR", "0.0.0.0:8080");
+      env::set_var("MATCH_CANDIDATES", "3");
+      env::set_var("YENTE_URL", "http://yente");
+      env::set_var("CATALOG_URL", "http://catalog");
+      env::set_var("INDEX_URL", "http://index");
+      env::set_var("INDEX_AUTH_METHOD", "encoded_api_key");
+      env::set_var("INDEX_CLIENT_SECRET", "secret");
+      env::set_var("ENABLE_TRACING", "1");
+    }
+
+    let config = Config::from_env().await.unwrap();
+
+    assert_eq!(config.env, Env::Production);
+    assert_eq!(config.listen_addr, "0.0.0.0:8080");
+    assert_eq!(config.match_candidates, 3);
+    assert_eq!(config.yente_url, Some("http://yente".to_string()));
+    assert_eq!(config.catalog_url, Some("http://catalog".to_string()));
+    assert_eq!(config.index_url, "http://index");
+    assert_eq!(config.index_auth_method, EsAuthMethod::EncodedApiKey);
+    assert_eq!(config.index_client_id, None);
+    assert_eq!(config.index_client_secret, Some("secret".to_string()));
+    assert_eq!(config.enable_tracing, true);
+  }
+
+  #[tokio::test]
+  #[serial_test::serial]
+  async fn invalid_es_auth_method_combination() {
+    unsafe {
+      env::set_var("INDEX_AUTH_METHOD", "basic");
+      env::set_var("INDEX_CLIENT_SECRET", "secret");
+    }
+
+    assert!(matches!(Config::from_env().await, Err(_)));
+
+    unsafe {
+      env::set_var("INDEX_AUTH_METHOD", "api_key");
+      env::set_var("INDEX_CLIENT_SECRET", "secret");
+    }
+
+    assert!(matches!(Config::from_env().await, Err(_)));
+
+    unsafe {
+      env::set_var("INDEX_AUTH_METHOD", "basic");
+      env::set_var("INDEX_CLIENT_ID", "secret");
+      env::set_var("INDEX_CLIENT_SECRET", "secret");
+    }
+
+    let config = Config::from_env().await.unwrap();
+
+    assert_eq!(config.index_auth_method, EsAuthMethod::Basic);
+    assert_eq!(config.index_client_id, Some("secret".to_string()));
+    assert_eq!(config.index_client_secret, Some("secret".to_string()));
+
+    unsafe {
+      env::set_var("INDEX_AUTH_METHOD", "api_key");
+      env::set_var("INDEX_CLIENT_ID", "secret");
+      env::set_var("INDEX_CLIENT_SECRET", "secret");
+    }
+
+    let config = Config::from_env().await.unwrap();
+
+    assert_eq!(config.index_auth_method, EsAuthMethod::ApiKey);
+    assert_eq!(config.index_client_id, Some("secret".to_string()));
+    assert_eq!(config.index_client_secret, Some("secret".to_string()));
+
+    unsafe {
+      env::remove_var("INDEX_AUTH_METHOD");
+      env::remove_var("INDEX_CLIENT_ID");
+      env::remove_var("INDEX_CLIENT_SECRET");
+    }
+  }
+
+  #[tokio::test]
+  #[serial_test::serial]
+  async fn parse_env() {
+    unsafe {
+      env::set_var("INT", "42");
+      env::set_var("BOOL", "true");
+      env::set_var("IP", "1.2.3.4");
+    }
+
+    assert_eq!(super::parse_env::<u32>("INT", 0).unwrap(), 42);
+    assert_eq!(super::parse_env::<bool>("BOOL", true).unwrap(), true);
+    assert_eq!(super::parse_env::<IpAddr>("IP", IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4))).unwrap(), IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)));
+
+    assert!(matches!(super::parse_env::<u32>("BOOL", 0), Err(_)));
+  }
+
+  #[test]
+  fn es_auth_method_from_str() {
+    assert!(matches!("otlp".parse(), Ok(TracingExporter::Otlp)));
+    assert!(matches!("other".parse::<TracingExporter>(), Err(_)));
+  }
+
+  #[test]
+  fn tracing_exporter_from_str() {
+    assert!(matches!("none".parse(), Ok(EsAuthMethod::None)));
+    assert!(matches!("basic".parse(), Ok(EsAuthMethod::Basic)));
+    assert!(matches!("bearer".parse(), Ok(EsAuthMethod::Bearer)));
+    assert!(matches!("api_key".parse(), Ok(EsAuthMethod::ApiKey)));
+    assert!(matches!("encoded_api_key".parse(), Ok(EsAuthMethod::EncodedApiKey)));
+
+    assert!(matches!("other".parse::<EsAuthMethod>(), Err(_)));
   }
 }
