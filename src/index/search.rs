@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use elasticsearch::SearchParts;
+use elasticsearch::{SearchParts, params::SearchType};
 use itertools::Itertools;
 use opentelemetry::global;
 use rphonetic::Metaphone;
@@ -25,7 +25,15 @@ pub async fn search(AppState { es, catalog, .. }: &AppState, entity: &SearchEnti
 
   tracing::trace!(%query, "running query");
 
-  let response = es.search(SearchParts::Index(&["yente-entities"])).from(0).size(params.limit as i64).body(query).send().await?;
+  let response = es
+    .search(SearchParts::Index(&["yente-entities"]))
+    .from(0)
+    .size(params.limit as i64)
+    .sort(&["_score:desc", "entity_id:asc,unmapped_type:keyword"])
+    .search_type(SearchType::DfsQueryThenFetch)
+    .body(query)
+    .send()
+    .await?;
 
   let status = response.status_code();
   let body: EsResponse = response.json().await?;
