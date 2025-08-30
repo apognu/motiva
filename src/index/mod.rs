@@ -1,13 +1,26 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ahash::RandomState;
+use elasticsearch::http::response::Response;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize};
 
-use crate::{model::Schema, schemas::SCHEMAS};
+use crate::{
+  api::{AppState, dto::MatchParams, errors::AppError},
+  index::search::GetEntityResult,
+  model::{Entity, Schema, SearchEntity},
+  schemas::SCHEMAS,
+};
 
-pub(super) mod get;
 pub(super) mod search;
+
+pub trait IndexProvider: Clone + Send + Sync {
+  async fn health(&self) -> Result<Response, elasticsearch::Error>;
+  async fn get_entity(&self, id: &str) -> Result<GetEntityResult, AppError>;
+  async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> anyhow::Result<Vec<EsEntity>>;
+
+  fn search(&self, state: &AppState<Self>, entity: &SearchEntity, params: &MatchParams) -> impl Future<Output = Result<Vec<Entity>, AppError>> + Send;
+}
 
 #[derive(Deserialize)]
 pub struct EsResponse {

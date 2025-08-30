@@ -1,7 +1,8 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
+use ahash::RandomState;
 use axum::http::StatusCode;
-use elasticsearch::{SearchParts, params::SearchType};
+use elasticsearch::{Elasticsearch, SearchParts, cluster::ClusterHealthParts, http::response::Response, params::SearchType};
 use itertools::Itertools;
 use opentelemetry::global;
 use rphonetic::Metaphone;
@@ -13,48 +14,157 @@ use unicode_normalization::UnicodeNormalization;
 use crate::{
   api::{AppState, dto::MatchParams, errors::AppError},
   catalog::Collections,
-  index::EsResponse,
+  index::{EsEntity, EsResponse, IndexProvider},
   matching::extractors,
   model::{Entity, SearchEntity},
   schemas::SCHEMAS,
 };
 
-#[instrument(skip_all)]
-pub async fn search(AppState { es, catalog, .. }: &AppState, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, AppError> {
-  let query = build_query(catalog, entity, params).await?;
+pub enum GetEntityResult {
+  Nominal(Box<Entity>),
+  Referent(String),
+}
 
-  tracing::trace!(%query, "running query");
+#[derive(Clone)]
+pub struct ElasticsearchProvider {
+  pub es: Elasticsearch,
+}
 
-  let response = es
-    .search(SearchParts::Index(&["yente-entities"]))
-    .from(0)
-    .size(params.limit as i64)
-    .sort(&["_score:desc", "entity_id:asc,unmapped_type:keyword"])
-    .search_type(SearchType::DfsQueryThenFetch)
-    .body(query)
-    .send()
-    .await?;
-
-  let status = response.status_code();
-  let body: EsResponse = response.json().await?;
-
-  if status != StatusCode::OK
-    && let Some(error) = body.error
-  {
-    Err(AppError::OtherError(anyhow::anyhow!(error.reason)))?;
+impl IndexProvider for ElasticsearchProvider {
+  #[instrument(skip_all)]
+  async fn health(&self) -> Result<Response, elasticsearch::Error> {
+    self.es.cluster().health(ClusterHealthParts::Index(&["yente-entities"])).send().await
   }
 
-  match body.hits.hits {
-    Some(hits) => {
-      tracing::debug!(latency = body.took, hits = body.hits.total.value, results = hits.len(), "got hits from index");
+  #[instrument(skip_all)]
+  async fn search(&self, AppState { catalog, .. }: &AppState<Self>, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, AppError> {
+    let query = build_query(catalog, entity, params).await?;
 
-      global::meter("motiva").u64_histogram("index_hits").build().record(hits.len() as u64, &[]);
-      global::meter("motiva").u64_histogram("index_latency").build().record(body.took, &[]);
+    tracing::trace!(%query, "running query");
 
-      Ok(hits.into_iter().map(Entity::from).collect())
+    let response = self
+      .es
+      .search(SearchParts::Index(&["yente-entities"]))
+      .from(0)
+      .size(params.limit as i64)
+      .sort(&["_score:desc", "entity_id:asc,unmapped_type:keyword"])
+      .search_type(SearchType::DfsQueryThenFetch)
+      .body(query)
+      .send()
+      .await?;
+
+    let status = response.status_code();
+    let body: EsResponse = response.json().await?;
+
+    if status != StatusCode::OK
+      && let Some(error) = body.error
+    {
+      Err(AppError::OtherError(anyhow::anyhow!(error.reason)))?;
     }
 
-    None => Err(AppError::OtherError(anyhow::anyhow!("invalid response from elasticsearch"))),
+    match body.hits.hits {
+      Some(hits) => {
+        tracing::debug!(latency = body.took, hits = body.hits.total.value, results = hits.len(), "got hits from index");
+
+        global::meter("motiva").u64_histogram("index_hits").build().record(hits.len() as u64, &[]);
+        global::meter("motiva").u64_histogram("index_latency").build().record(body.took, &[]);
+
+        Ok(hits.into_iter().map(Entity::from).collect())
+      }
+
+      None => Err(AppError::OtherError(anyhow::anyhow!("invalid response from elasticsearch"))),
+    }
+  }
+
+  #[instrument(skip_all)]
+  async fn get_entity(&self, id: &str) -> Result<GetEntityResult, AppError> {
+    let query = json!({
+      "query": {
+          "bool": {
+              "should": [
+                  { "ids": { "values": [id] } },
+                  { "term": { "referents": { "value": id } } }
+              ],
+              "minimum_should_match": 1
+          }
+      }
+    });
+
+    let response = self.es.search(SearchParts::Index(&["yente-entities"])).from(0).size(1).body(query).send().await?;
+
+    let status = response.status_code();
+    let body: EsResponse = response.json().await?;
+
+    if status != StatusCode::OK
+      && let Some(error) = body.error
+    {
+      Err(AppError::OtherError(anyhow::anyhow!(error.reason)))?;
+    }
+
+    match body.hits.hits {
+      Some(hits) => {
+        tracing::trace!(latency = body.took, hits = body.hits.total.value, results = hits.len(), "got response from index");
+
+        if let Some(entity) = hits.into_iter().next() {
+          if entity.id != id {
+            return Ok(GetEntityResult::Referent(entity.id));
+          }
+
+          return Ok(GetEntityResult::Nominal(Box::new(entity.into())));
+        }
+
+        Err(AppError::ResourceNotFound)
+      }
+
+      None => Err(AppError::OtherError(anyhow::anyhow!("invalid response from elasticsearch"))),
+    }
+  }
+
+  #[instrument(skip_all)]
+  async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> anyhow::Result<Vec<EsEntity>> {
+    let mut shoulds = vec![json!({ "ids": { "values": values } })];
+
+    if let Some(root) = root {
+      shoulds.push(json!(
+          { "terms": { "entities": [root] } }
+      ))
+    }
+
+    let query = json!({
+      "query": {
+          "bool": {
+              "should": shoulds,
+              "must_not": { "ids": { "values": negatives } },
+              "minimum_should_match": 1
+          },
+      }
+    });
+
+    let results = self.es.search(SearchParts::Index(&["yente-entities"])).from(0).size(10).body(query).send().await?;
+    let status = results.status_code();
+    let body = results.json::<serde_json::Value>().await?;
+
+    if status != StatusCode::OK {
+      let err = body["error"]["reason"].as_str().unwrap().to_string();
+
+      Err(AppError::OtherError(anyhow::anyhow!(err)))?;
+    }
+
+    tracing::trace!(
+      latency = body["took"].as_u64(),
+      hits = body["hits"]["total"]["value"].as_u64(),
+      results = body["hits"]["hits"].as_array().iter().count(),
+      "got response from index"
+    );
+
+    Ok(
+      body["hits"]["hits"]
+        .as_array()
+        .ok_or(anyhow::anyhow!("invalid response"))?
+        .iter()
+        .map(|hit| serde_json::from_value::<EsEntity>(hit.clone()))
+        .collect::<Result<Vec<_>, _>>()?,
+    )
   }
 }
 

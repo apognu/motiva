@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use axum::{
   Router,
-  extract::{FromRef, Request},
+  extract::Request,
   middleware,
   routing::{get, post},
 };
@@ -17,24 +17,21 @@ use uuid::Uuid;
 use crate::{
   api::config::{Config, EsAuthMethod},
   catalog::{Collections, fetch_catalog},
+  index::{IndexProvider, search::ElasticsearchProvider},
 };
 
 pub mod config;
 pub mod dto;
 pub mod errors;
 
-mod handlers;
+pub mod handlers;
 mod middlewares;
 
 #[derive(Clone)]
-pub struct AppState {
+pub struct AppState<P: IndexProvider> {
   pub config: Config,
-  pub es: Elasticsearch,
+  pub index: P,
   pub catalog: Arc<RwLock<Collections>>,
-}
-
-impl FromRef<AppState> for () {
-  fn from_ref(_: &AppState) -> Self {}
 }
 
 pub fn routes(config: &Config, catalog: Collections) -> anyhow::Result<Router> {
@@ -58,7 +55,7 @@ pub fn routes(config: &Config, catalog: Collections) -> anyhow::Result<Router> {
 
   let state = AppState {
     config: config.clone(),
-    es,
+    index: ElasticsearchProvider { es },
     catalog: Arc::clone(&catalog),
   };
 
