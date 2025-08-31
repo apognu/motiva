@@ -4,7 +4,6 @@ use std::{
 };
 
 use ahash::RandomState;
-use elasticsearch::http::response::Response;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -19,14 +18,20 @@ use crate::{
 };
 
 pub mod elastic;
+pub mod mock;
 
 #[allow(async_fn_in_trait)]
 pub trait IndexProvider: Clone + Send + Sync {
-  async fn health(&self) -> Result<Response, elasticsearch::Error>;
+  async fn health(&self) -> Result<bool, MotivaError>;
   async fn get_entity(&self, id: &str) -> Result<GetEntityResult, MotivaError>;
-  async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> anyhow::Result<Vec<EsEntity>>;
+  async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> anyhow::Result<Vec<Entity>>;
 
   fn search(&self, catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity, params: &MatchParams) -> impl Future<Output = Result<Vec<Entity>, MotivaError>> + Send;
+}
+
+#[derive(Deserialize)]
+struct EsHealth {
+  status: String,
 }
 
 #[derive(Deserialize)]
@@ -53,7 +58,7 @@ struct EsCounts {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct EsEntity {
+pub(crate) struct EsEntity {
   #[serde(rename(deserialize = "_id"))]
   pub id: String,
   pub _source: EsEntitySource,
@@ -85,7 +90,7 @@ impl EsEntity {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct EsEntitySource {
+pub(crate) struct EsEntitySource {
   pub caption: String,
   pub schema: Schema,
   pub datasets: Vec<String>,

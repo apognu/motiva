@@ -1,7 +1,8 @@
 use std::{collections::HashSet, sync::Arc};
 
 use ahash::RandomState;
-use elasticsearch::{Elasticsearch, SearchParts, cluster::ClusterHealthParts, http::response::Response, params::SearchType};
+use anyhow::Context;
+use elasticsearch::{Elasticsearch, SearchParts, cluster::ClusterHealthParts, params::SearchType};
 use itertools::Itertools;
 use opentelemetry::global;
 use reqwest::StatusCode;
@@ -14,7 +15,7 @@ use unicode_normalization::UnicodeNormalization;
 use crate::{
   catalog::Collections,
   error::MotivaError,
-  index::{EsEntity, EsResponse, IndexProvider},
+  index::{EsEntity, EsHealth, EsResponse, IndexProvider},
   matching::{MatchParams, extractors},
   model::{Entity, SearchEntity},
   schemas::SCHEMAS,
@@ -32,8 +33,26 @@ pub struct ElasticsearchProvider {
 
 impl IndexProvider for ElasticsearchProvider {
   #[instrument(skip_all)]
-  async fn health(&self) -> Result<Response, elasticsearch::Error> {
-    self.es.cluster().health(ClusterHealthParts::Index(&["yente-entities"])).send().await
+  async fn health(&self) -> Result<bool, MotivaError> {
+    let Ok(health) = self
+      .es
+      .cluster()
+      .health(ClusterHealthParts::Index(&["yente-entities"]))
+      .send()
+      .await
+      .context("could not get cluster health")
+    else {
+      return Ok(false);
+    };
+
+    let Ok(health): Result<EsHealth, _> = health.json().await.context("could not deserialize cluster health") else {
+      return Ok(false);
+    };
+
+    match health.status.as_str() {
+      "green" | "yellow" => Ok(true),
+      _ => Ok(false),
+    }
   }
 
   #[instrument(skip_all)]
@@ -121,7 +140,7 @@ impl IndexProvider for ElasticsearchProvider {
   }
 
   #[instrument(skip_all)]
-  async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> anyhow::Result<Vec<EsEntity>> {
+  async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> anyhow::Result<Vec<Entity>> {
     let mut shoulds = vec![json!({ "ids": { "values": values } })];
 
     if let Some(root) = root {
@@ -162,7 +181,7 @@ impl IndexProvider for ElasticsearchProvider {
         .as_array()
         .ok_or(anyhow::anyhow!("invalid response"))?
         .iter()
-        .map(|hit| serde_json::from_value::<EsEntity>(hit.clone()))
+        .map(|hit| serde_json::from_value::<EsEntity>(hit.clone()).map(Entity::from))
         .collect::<Result<Vec<_>, _>>()?,
     )
   }

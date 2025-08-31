@@ -31,6 +31,5 @@ pub mod prelude {
   pub use crate::matching::{Algorithm, MatchParams, MatchingAlgorithm, logic_v1::LogicV1, name_based::NameBased, name_qualified::NameQualified};
   pub use crate::model::{Entity, HasProperties, SearchEntity};
 
-  // TODO: remove when the mock is in libmotiva
-  pub use crate::index::EsEntity;
+  pub use crate::index::mock::MockedElasticsearch;
 }

@@ -5,10 +5,7 @@ use axum_test::TestServer;
 use libmotiva::prelude::*;
 use serde_json::json;
 
-use crate::{
-  api::{AppState, config::Config, handlers},
-  tests::MockedElasticsearch,
-};
+use crate::api::{AppState, config::Config, handlers};
 
 #[tokio::test]
 async fn api_simple() {

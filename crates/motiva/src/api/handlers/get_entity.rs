@@ -47,7 +47,7 @@ pub async fn get_entity<P: IndexProvider>(State(state): State<AppState<P>>, Path
         }
 
         while !ids.is_empty() {
-          let associations = state.index.get_related_entities(root, &ids, &seen).await?.into_iter().map(Entity::from).collect::<Vec<_>>();
+          let associations = state.index.get_related_entities(root, &ids, &seen).await?.into_iter().collect::<Vec<_>>();
 
           root = None;
           ids.clear();
