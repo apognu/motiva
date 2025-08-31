@@ -109,7 +109,7 @@ jobs:
 
       - name: Test
         env:
-          PYTHONPATH: "./.venv/lib/python3.13/site-packages"
+          PYTHONPATH: "${{ github.workspace }}/.venv/lib/python3.13/site-packages"
         run: cargo llvm-cov --locked --lcov --output-path lcov.info
 
       - uses: codecov/codecov-action@v5
