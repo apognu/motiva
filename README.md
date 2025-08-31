@@ -72,7 +72,7 @@ To run the tests, a Python environment must be set up with the required dependen
 
 ```
 $ poetry install
-$ export PYTHONPATH='.venv/lib/python3.13/site-packages'
+$ export PYTHONPATH="$(pwd).venv/lib/python3.13/site-packages"
 $ cargo test
 ```
 
