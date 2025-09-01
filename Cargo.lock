@@ -1639,6 +1639,7 @@ dependencies = [
  "rust-embed",
  "serde",
  "serde-inline-default",
+ "serde-json-assert",
  "serde_json",
  "serde_yaml",
  "serial_test",
@@ -2909,6 +2910,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.104",
+]
+
+[[package]]
+name = "serde-json-assert"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1868f55385c1cbda8c62aec205ab5874536f3492e11456e04265509848fe982"
+dependencies = [
+ "float-cmp",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

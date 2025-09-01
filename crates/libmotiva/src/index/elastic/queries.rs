@@ -326,7 +326,93 @@ fn resolve_schemas(schema: &str, root: bool) -> Result<Vec<String>, MotivaError>
 
 #[cfg(test)]
 mod tests {
-  use crate::index::elastic::queries::resolve_schemas;
+  use std::sync::Arc;
+
+  use serde_json::json;
+  use serde_json_assert::assert_json_eq;
+  use tokio::sync::RwLock;
+
+  use crate::{
+    catalog::{Collections, Dataset},
+    index::elastic::queries::resolve_schemas,
+    model::SearchEntity,
+    prelude::MatchParams,
+  };
+
+  #[test]
+  fn build_schemas() {
+    let entity = SearchEntity::builder("Person").properties(&[]).build();
+    let mut schemas = Vec::new();
+
+    super::build_schemas(&entity, &mut schemas).unwrap();
+
+    assert_eq!(schemas.len(), 1);
+    assert_json_eq!(schemas[0], json!({ "terms": { "schema": ["Person", "LegalEntity"] } }));
+  }
+
+  #[tokio::test]
+  async fn build_datasets() {
+    let catalog = Arc::new(RwLock::new({
+      let mut catalog = Collections::default();
+
+      catalog.insert(
+        "myscope".to_string(),
+        Dataset {
+          name: "Real Dataset".to_string(),
+          children: Some(vec!["realdataset".to_string()]),
+        },
+      );
+
+      catalog.insert(
+        "otherscope".to_string(),
+        Dataset {
+          name: "Other Dataset".to_string(),
+          children: Some(vec!["otherdataset".to_string()]),
+        },
+      );
+
+      catalog
+    }));
+
+    let params = MatchParams {
+      scope: "myscope".to_string(),
+      include_dataset: vec!["fakedataset".to_string(), "realdataset".to_string()],
+      ..Default::default()
+    };
+
+    let mut datasets = Vec::new();
+
+    super::build_datasets(&catalog, &mut datasets, &params).await;
+
+    assert_eq!(datasets.len(), 1);
+    assert_json_eq!(datasets[0], json!({ "terms": { "datasets": ["realdataset"] } }));
+  }
+
+  #[test]
+  fn build_topics() {
+    let mut filters = Vec::new();
+    let params = MatchParams {
+      topics: Some(vec!["topic1".to_string(), "topic2".to_string()]),
+      ..Default::default()
+    };
+
+    super::build_topics(&params, &mut filters);
+
+    assert_eq!(filters.len(), 1);
+    assert_json_eq!(filters[0], json!({ "terms": { "topics": ["topic1", "topic2"] } }));
+  }
+
+  #[test]
+  fn add_term() {
+    let mut terms = Vec::new();
+
+    super::add_term(&mut terms, "a", "b", 3.0);
+    super::add_term(&mut terms, "c", "d", -10.0);
+
+    assert_eq!(terms.len(), 2);
+    assert_json_eq!(terms[0], json!({ "term": { "a": { "value": "b", "boost": 3.0 } } }));
+    assert_json_eq!(terms[1], json!({ "term": { "c": { "value": "d", "boost": -10.0 } } }));
+  }
 
   #[test]
   fn resolve_schema_chain() {
