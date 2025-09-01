@@ -3,6 +3,10 @@ name: Publish to Docker Hub
 on:
   workflow_call:
 
+
+permissions:
+  contents: read
+
 jobs:
   docker-base:
     runs-on: ubuntu-latest
