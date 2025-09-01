@@ -18,7 +18,7 @@ use crate::api::{AppState, dto::GetEntityParams, errors::AppError};
 
 #[instrument(skip_all)]
 pub async fn get_entity<P: IndexProvider>(State(state): State<AppState<P>>, Path(id): Path<String>, Query(params): Query<GetEntityParams>) -> Result<impl IntoResponse, AppError> {
-  match state.index.get_entity(&id).await.map_err(Into::<AppError>::into)? {
+  match state.motiva.get_entity(&id).await.map_err(Into::<AppError>::into)? {
     GetEntityResult::Referent(id) => Ok(Redirect::permanent(&format!("/entities/{id}")).into_response()),
 
     GetEntityResult::Nominal(mut entity) => {
@@ -47,7 +47,7 @@ pub async fn get_entity<P: IndexProvider>(State(state): State<AppState<P>>, Path
         }
 
         while !ids.is_empty() {
-          let associations = state.index.get_related_entities(root, &ids, &seen).await?.into_iter().collect::<Vec<_>>();
+          let associations = state.motiva.get_related_entities(root, &ids, &seen).await?.into_iter().collect::<Vec<_>>();
 
           root = None;
           ids.clear();

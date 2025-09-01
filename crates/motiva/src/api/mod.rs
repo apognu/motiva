@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use axum::{
   Router,
@@ -6,16 +6,14 @@ use axum::{
   middleware,
   routing::{get, post},
 };
-use elasticsearch::{Elasticsearch, auth::Credentials, http::transport::Transport};
-use libmotiva::{catalog, prelude::*};
+use libmotiva::{Motiva, prelude::*};
 use opentelemetry::global;
 use opentelemetry_http::HeaderExtractor;
-use tokio::sync::RwLock;
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uuid::Uuid;
 
-use crate::api::config::{Config, EsAuthMethod};
+use crate::api::config::Config;
 
 pub mod config;
 pub mod dto;
@@ -27,53 +25,27 @@ mod middlewares;
 #[derive(Clone)]
 pub struct AppState<P: IndexProvider> {
   pub config: Config,
-  pub index: P,
-  pub catalog: Arc<RwLock<Collections>>,
+  pub motiva: Motiva<P>,
 }
 
-pub fn routes(config: &Config, catalog: Collections) -> anyhow::Result<Router> {
-  let catalog = Arc::new(RwLock::new(catalog));
-
-  let es = {
-    let transport = Transport::single_node(&config.index_url)?;
-    let client_id = config.index_client_id.clone().unwrap_or_default();
-    let client_secret = config.index_client_secret.clone().unwrap_or_default();
-
-    match config.index_auth_method {
-      EsAuthMethod::Basic => transport.set_auth(Credentials::Basic(client_id, client_secret)),
-      EsAuthMethod::Bearer => transport.set_auth(Credentials::Bearer(client_secret)),
-      EsAuthMethod::ApiKey => transport.set_auth(Credentials::ApiKey(client_id, client_secret)),
-      EsAuthMethod::EncodedApiKey => transport.set_auth(Credentials::EncodedApiKey(client_secret)),
-      _ => {}
-    }
-
-    Elasticsearch::new(transport)
-  };
-
-  let state = AppState {
-    config: config.clone(),
-    index: ElasticsearchProvider { es },
-    catalog: Arc::clone(&catalog),
-  };
+pub async fn routes(config: &Config) -> anyhow::Result<Router> {
+  let motiva = Motiva::new(ElasticsearchProvider::new(&config.index_url, config.index_auth_method.clone())?, config.yente_url.clone())
+    .await
+    .unwrap();
 
   tokio::spawn({
-    let catalog_url = config.catalog_url.clone();
+    let motiva = motiva.clone();
 
     async move {
       loop {
-        tokio::time::sleep(Duration::from_secs(60 * 60)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
 
-        match catalog::fetch_catalog(&catalog_url).await {
-          Ok(new_catalog) => {
-            let mut guard = catalog.write().await;
-            *guard = new_catalog;
-          }
-
-          Err(err) => tracing::error!(error = err.to_string(), "could not refresh catalog"),
-        }
+        motiva.refresh_catalog().await;
       }
     }
   });
+
+  let state = AppState { config: config.clone(), motiva };
 
   Ok(
     Router::new()

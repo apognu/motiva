@@ -14,12 +14,13 @@ pub(crate) mod name_qualified;
 pub(crate) mod replacers;
 pub(crate) mod validators;
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
 pub enum Algorithm {
   #[serde(rename = "name-based")]
   NameBased,
   #[serde(rename = "name-qualified")]
   NameQualified,
+  #[default]
   #[serde(rename = "logic-v1")]
   LogicV1,
 }
@@ -54,7 +55,7 @@ fn run_features<'e>(bump: &Bump, lhs: &'e SearchEntity, rhs: &'e Entity, cutoff:
 }
 
 #[serde_inline_default]
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct MatchParams {
   #[serde(skip_deserializing)]
   pub scope: String,

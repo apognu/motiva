@@ -7,7 +7,7 @@ use axum_extra::extract::Query;
 use axum_extra::extract::QueryRejection;
 use axum_extra::extract::WithRejection;
 use itertools::Itertools;
-use libmotiva::{prelude::*, scoring};
+use libmotiva::prelude::*;
 use tracing::{Instrument, instrument};
 
 use crate::api::errors::AppError;
@@ -37,7 +37,7 @@ pub async fn match_entities<P: IndexProvider + 'static>(
       let query = query.clone();
 
       async move {
-        let hits = match state.index.search(&state.catalog, &entity, &query).await {
+        let hits = match state.motiva.search(&entity, &query).await {
           Ok(hits) => hits,
 
           Err(err) => {
@@ -48,9 +48,9 @@ pub async fn match_entities<P: IndexProvider + 'static>(
         };
 
         let scores = match query.algorithm {
-          Algorithm::NameBased => scoring::score::<NameBased>(&entity, hits, query.cutoff),
-          Algorithm::NameQualified => scoring::score::<NameQualified>(&entity, hits, query.cutoff),
-          Algorithm::LogicV1 => scoring::score::<LogicV1>(&entity, hits, query.cutoff),
+          Algorithm::NameBased => state.motiva.score::<NameBased>(&entity, hits, query.cutoff),
+          Algorithm::NameQualified => state.motiva.score::<NameQualified>(&entity, hits, query.cutoff),
+          Algorithm::LogicV1 => state.motiva.score::<LogicV1>(&entity, hits, query.cutoff),
         };
 
         match scores {

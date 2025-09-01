@@ -27,8 +27,8 @@ pub enum AppError {
 
   #[error("invalid configuration: {0}")]
   ConfigError(String),
-  #[error(transparent)]
-  IndexError(#[from] elasticsearch::Error),
+  #[error("error from indexer: {0}")]
+  IndexError(String),
 
   #[error("invalid query parameter")]
   InvalidQuery(#[from] axum::extract::rejection::QueryRejection),
@@ -37,7 +37,8 @@ pub enum AppError {
 impl From<MotivaError> for AppError {
   fn from(value: MotivaError) -> Self {
     match value {
-      MotivaError::IndexError(err) => AppError::IndexError(err),
+      MotivaError::ConfigError(err) => AppError::ConfigError(err),
+      MotivaError::IndexError(err) => AppError::IndexError(err.to_string()),
       MotivaError::InvalidSchema(_) => AppError::BadRequest,
       MotivaError::ResourceNotFound => AppError::ResourceNotFound,
       MotivaError::OtherError(err) => AppError::OtherError(err),
