@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 use crate::{
   catalog::Collections,
   error::MotivaError,
-  index::{GetEntityResult, IndexProvider},
+  index::{EntityHandle, IndexProvider},
   matching::MatchParams,
   model::{Entity, SearchEntity},
 };
@@ -31,7 +31,7 @@ impl IndexProvider for MockedElasticsearch {
     Ok(self.entities.clone())
   }
 
-  async fn get_entity(&self, _: &str) -> Result<GetEntityResult, MotivaError> {
+  async fn get_entity(&self, _: &str) -> Result<EntityHandle, MotivaError> {
     unimplemented!();
   }
 

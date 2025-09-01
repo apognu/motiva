@@ -19,9 +19,9 @@ use crate::api::{AppState, dto::GetEntityParams, errors::AppError};
 #[instrument(skip_all)]
 pub async fn get_entity<P: IndexProvider>(State(state): State<AppState<P>>, Path(id): Path<String>, Query(params): Query<GetEntityParams>) -> Result<impl IntoResponse, AppError> {
   match state.motiva.get_entity(&id).await.map_err(Into::<AppError>::into)? {
-    GetEntityResult::Referent(id) => Ok(Redirect::permanent(&format!("/entities/{id}")).into_response()),
+    EntityHandle::Referent(id) => Ok(Redirect::permanent(&format!("/entities/{id}")).into_response()),
 
-    GetEntityResult::Nominal(mut entity) => {
+    EntityHandle::Nominal(mut entity) => {
       if !params.nested {
         return Ok((StatusCode::OK, Json(entity)).into_response());
       }
