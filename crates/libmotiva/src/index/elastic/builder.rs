@@ -30,3 +30,19 @@ pub enum EsAuthMethod {
   ApiKey(String, String),
   EncodedApiKey(String),
 }
+
+#[cfg(test)]
+mod tests {
+  use crate::prelude::{ElasticsearchProvider, EsAuthMethod};
+
+  #[test]
+  fn es_builder() {
+    let (u, p) = ("secret".to_string(), "secret".to_string());
+
+    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::None).unwrap();
+    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::Basic(u.clone(), p.clone())).unwrap();
+    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::Bearer(p.clone())).unwrap();
+    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::ApiKey(u.clone(), p.clone())).unwrap();
+    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::EncodedApiKey(p.clone())).unwrap();
+  }
+}

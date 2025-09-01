@@ -114,3 +114,63 @@ pub(crate) struct EsEntitySource {
   pub last_change: Option<DateTime>,
   pub properties: HashMap<String, Vec<String>, RandomState>,
 }
+
+#[cfg(test)]
+mod tests {
+  use std::collections::HashMap;
+
+  use crate::{
+    index::elastic::{EsEntity, EsEntitySource},
+    model::{Entity, HasProperties, Schema},
+  };
+
+  fn build_entity() -> EsEntity {
+    EsEntity {
+      id: "id".to_string(),
+      _source: EsEntitySource {
+        schema: Schema::from("Person"),
+        caption: "The Caption".to_string(),
+        referents: vec!["ref1".to_string()],
+        datasets: vec!["ds1".to_string()],
+        target: false,
+        last_change: None,
+        first_seen: None,
+        last_seen: None,
+        properties: {
+          let mut props = HashMap::default();
+
+          props.insert("name".to_string(), vec!["The Name".to_string()]);
+          props
+        },
+      },
+    }
+  }
+
+  #[test]
+  fn get_caption() {
+    let mut entity = build_entity();
+
+    assert_eq!(entity.caption(), "The Caption");
+
+    entity._source.caption = String::new();
+
+    assert_eq!(entity.caption(), "The Name");
+
+    entity._source.properties.remove("name");
+    entity._source.properties.insert("email".to_string(), vec!["bob@example.com".to_string()]);
+
+    assert_eq!(entity.caption(), "bob@example.com");
+
+    entity._source.properties.insert("lastName".to_string(), vec!["The Builder".to_string()]);
+
+    assert_eq!(entity.caption(), "The Builder");
+  }
+
+  #[test]
+  fn es_doc_to_entity() {
+    let entity: Entity = build_entity().into();
+
+    assert_eq!(entity.id, "id");
+    assert!(entity.property("name").contains(&"The Name".to_string()));
+  }
+}
