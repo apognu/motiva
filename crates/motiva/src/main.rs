@@ -4,7 +4,6 @@ mod trace;
 #[cfg(test)]
 mod tests;
 
-use libmotiva::catalog::fetch_catalog;
 use tokio::signal;
 
 use crate::api::config::Config;
@@ -18,10 +17,7 @@ async fn main() -> anyhow::Result<()> {
 
   let config = Config::from_env().await?;
   let (_logger, tracer) = trace::init_logger(&config).await;
-
-  let catalog = fetch_catalog(&config.catalog_url).await.expect("could not fetch initial catalog");
-
-  let app = api::routes(&config, catalog)?;
+  let app = api::routes(&config).await?;
 
   tracing::info!("listening on {}", config.listen_addr);
 

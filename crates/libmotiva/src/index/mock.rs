@@ -6,12 +6,12 @@ use tokio::sync::RwLock;
 use crate::{
   catalog::Collections,
   error::MotivaError,
-  index::IndexProvider,
+  index::{GetEntityResult, IndexProvider},
+  matching::MatchParams,
   model::{Entity, SearchEntity},
-  prelude::{GetEntityResult, MatchParams},
 };
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct MockedElasticsearch {
   entities: Vec<Entity>,
 }

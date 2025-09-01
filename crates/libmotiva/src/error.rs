@@ -1,5 +1,7 @@
 #[derive(Debug, thiserror::Error)]
 pub enum MotivaError {
+  #[error("invalid configuration: {0}")]
+  ConfigError(String),
   #[error("resource not found")]
   ResourceNotFound,
   #[error("invalid schema: {0}")]

@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use validator::Validate;
 
 use crate::{
-  index::EsEntity,
   matching::extractors,
   schemas::{FtmProperty, SCHEMAS},
 };
@@ -179,29 +178,6 @@ fn features_to_map<S: Serializer>(input: &[(&'static str, f64)], ser: S) -> Resu
     map.serialize_entry(k, &v)?;
   }
   map.end()
-}
-
-impl From<EsEntity> for Entity {
-  fn from(entity: EsEntity) -> Self {
-    let caption = entity.caption().to_string();
-
-    Self {
-      id: entity.id,
-      caption,
-      schema: entity._source.schema,
-      datasets: entity._source.datasets,
-      referents: entity._source.referents,
-      target: entity._source.target,
-      first_seen: entity._source.first_seen,
-      last_seen: entity._source.last_seen,
-      last_change: entity._source.last_change,
-      properties: Properties {
-        strings: entity._source.properties,
-        ..Default::default()
-      },
-      ..Default::default()
-    }
-  }
 }
 
 impl HasProperties for Entity {

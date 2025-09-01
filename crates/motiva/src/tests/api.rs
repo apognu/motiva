@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use axum::{Router, routing::post};
 use axum_test::TestServer;
-use libmotiva::prelude::*;
+use libmotiva::{Motiva, prelude::*};
 use serde_json::json;
 
 use crate::api::{AppState, config::Config, handlers};
@@ -16,8 +14,7 @@ async fn api_simple() {
 
   let state = AppState {
     config: Config::from_env().await.unwrap(),
-    catalog: Arc::default(),
-    index,
+    motiva: Motiva::new(index, None).await.unwrap(),
   };
 
   let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);

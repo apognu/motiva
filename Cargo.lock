@@ -508,6 +508,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tinytemplate",
+ "tokio",
  "walkdir",
 ]
 
@@ -1765,7 +1766,6 @@ dependencies = [
  "axum",
  "axum-extra",
  "axum-test",
- "elasticsearch",
  "gcp_auth",
  "itertools 0.14.0",
  "jiff",

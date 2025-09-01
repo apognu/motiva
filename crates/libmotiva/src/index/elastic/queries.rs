@@ -2,7 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use ahash::RandomState;
 use anyhow::Context;
-use elasticsearch::{Elasticsearch, SearchParts, cluster::ClusterHealthParts, params::SearchType};
+use elasticsearch::{SearchParts, cluster::ClusterHealthParts, params::SearchType};
 use itertools::Itertools;
 use opentelemetry::global;
 use reqwest::StatusCode;
@@ -15,21 +15,15 @@ use unicode_normalization::UnicodeNormalization;
 use crate::{
   catalog::Collections,
   error::MotivaError,
-  index::{EsEntity, EsHealth, EsResponse, IndexProvider},
+  index::{
+    GetEntityResult, IndexProvider,
+    elastic::{EsEntity, EsHealth, EsResponse},
+  },
   matching::{MatchParams, extractors},
   model::{Entity, SearchEntity},
+  prelude::ElasticsearchProvider,
   schemas::SCHEMAS,
 };
-
-pub enum GetEntityResult {
-  Nominal(Box<Entity>),
-  Referent(String),
-}
-
-#[derive(Clone)]
-pub struct ElasticsearchProvider {
-  pub es: Elasticsearch,
-}
 
 impl IndexProvider for ElasticsearchProvider {
   #[instrument(skip_all)]
@@ -332,7 +326,7 @@ fn resolve_schemas(schema: &str, root: bool) -> Result<Vec<String>, MotivaError>
 
 #[cfg(test)]
 mod tests {
-  use crate::index::elastic::resolve_schemas;
+  use crate::index::elastic::queries::resolve_schemas;
 
   #[test]
   fn resolve_schema_chain() {

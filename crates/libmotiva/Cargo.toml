@@ -47,7 +47,7 @@ serde-inline-default = "0.2.3"
 bon = { version = "3.6.5" }
 
 [dev-dependencies]
-criterion = "0.7.0"
+criterion = { version = "0.7.0", features = ["async_tokio"] }
 float-cmp = "0.10.0"
 pyo3 = { version = "0.25.1" }
 serial_test = "3.2.0"

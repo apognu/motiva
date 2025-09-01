@@ -23,7 +23,7 @@ pub async fn healthz() -> StatusCode {
 }
 
 pub async fn readyz<P: IndexProvider>(State(state): State<AppState<P>>) -> Result<impl IntoResponse, AppError> {
-  match state.index.health().await? {
+  match state.motiva.health().await? {
     true => Ok(StatusCode::OK),
     false => Ok(StatusCode::SERVICE_UNAVAILABLE),
   }

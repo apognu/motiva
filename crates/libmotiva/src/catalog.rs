@@ -17,7 +17,7 @@ pub struct Dataset {
   pub children: Option<Vec<String>>,
 }
 
-pub async fn fetch_catalog(url: &Option<String>) -> anyhow::Result<Collections> {
+pub(crate) async fn fetch_catalog(url: &Option<String>) -> anyhow::Result<Collections> {
   let catalog = reqwest::get(url.as_ref().map_or(OPENSANCTIONS_CATALOG_URL, |url| url))
     .await?
     .json::<Catalog>()
