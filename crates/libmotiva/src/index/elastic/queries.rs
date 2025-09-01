@@ -16,7 +16,7 @@ use crate::{
   catalog::Collections,
   error::MotivaError,
   index::{
-    GetEntityResult, IndexProvider,
+    EntityHandle, IndexProvider,
     elastic::{EsEntity, EsHealth, EsResponse},
   },
   matching::{MatchParams, extractors},
@@ -90,7 +90,7 @@ impl IndexProvider for ElasticsearchProvider {
   }
 
   #[instrument(skip_all)]
-  async fn get_entity(&self, id: &str) -> Result<GetEntityResult, MotivaError> {
+  async fn get_entity(&self, id: &str) -> Result<EntityHandle, MotivaError> {
     let query = json!({
       "query": {
           "bool": {
@@ -120,10 +120,10 @@ impl IndexProvider for ElasticsearchProvider {
 
         if let Some(entity) = hits.into_iter().next() {
           if entity.id != id {
-            return Ok(GetEntityResult::Referent(entity.id));
+            return Ok(EntityHandle::Referent(entity.id));
           }
 
-          return Ok(GetEntityResult::Nominal(Box::new(entity.into())));
+          return Ok(EntityHandle::Nominal(Box::new(entity.into())));
         }
 
         Err(MotivaError::ResourceNotFound)

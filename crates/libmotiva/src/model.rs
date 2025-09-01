@@ -228,12 +228,44 @@ impl Entity {
 
 #[cfg(test)]
 mod tests {
-  use crate::model::Entity;
+  use crate::model::{Entity, Schema};
 
   #[test]
   fn entity_is_a() {
     let entity = Entity::builder("Company").properties(&[]).build();
 
     assert!(entity.schema.is_a("Organization"));
+    assert!(!entity.schema.is_a("Nothing"));
+  }
+
+  #[test]
+  fn schema_properties() {
+    let schema = Schema::from("Person");
+    let properties = schema.properties().unwrap();
+
+    assert!(properties.iter().any(|(name, _)| name == "secondName"));
+    assert!(properties.iter().any(|(name, _)| name == "topics"));
+    assert!(properties.iter().any(|(name, _)| name == "socialSecurityNumber"));
+    assert!(!properties.iter().any(|(name, _)| name == "mmsi"));
+  }
+
+  #[test]
+  fn schema_property() {
+    let schema = Schema::from("Person");
+
+    assert!(schema.property("mmsi").is_none());
+
+    let (name, prop) = schema.property("socialSecurityNumber").unwrap();
+
+    assert_eq!(name, "socialSecurityNumber");
+    assert!(prop.matchable);
+    assert!(prop.reverse.is_none());
+
+    let schema = Schema::from("LegalEntity");
+    let (name, prop) = schema.property("parent").unwrap();
+
+    assert_eq!(name, "parent");
+    assert!(prop.reverse.is_some());
+    assert_eq!(prop.reverse.unwrap().name, "subsidiaries");
   }
 }
