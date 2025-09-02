@@ -22,8 +22,9 @@ impl ElasticsearchProvider {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum EsAuthMethod {
+  #[default]
   None,
   Basic(String, String),
   Bearer(String),

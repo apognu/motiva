@@ -13,8 +13,6 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-  libmotiva::init();
-
   let config = Config::from_env().await?;
   let (_logger, tracer) = trace::init_logger(&config).await;
   let app = api::routes(&config).await?;

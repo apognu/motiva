@@ -15,7 +15,6 @@ any_ascii = "0.3.3"
 anyhow = "1.0.98"
 axum = { version = "0.8.4", features = ["macros"] }
 axum-extra = { version = "0.10.1", features = ["query"] }
-# elasticsearch = { version = "9.1.0-alpha.1", default-features = false }
 itertools = "0.14.0"
 jiff = { version = "0.2.15", features = ["serde"] }
 serde = { version = "1.0.219", features = ["rc"] }

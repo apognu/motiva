@@ -1,19 +1,53 @@
 use axum::{Router, routing::post};
 use axum_test::TestServer;
-use libmotiva::{Motiva, prelude::*};
+use libmotiva::prelude::*;
 use serde_json::json;
 
 use crate::api::{AppState, config::Config, handlers};
 
 #[tokio::test]
-async fn api_simple() {
-  let index = MockedElasticsearch::with_entities(vec![
-    Entity::builder("Person").id("Q7747").properties(&[("name", &["Vladimir Putin"])]).build(),
-    Entity::builder("Person").id("A1234").properties(&[("name", &["Bob the Builder"])]).build(),
-  ]);
+async fn api_health_unhealthy() {
+  let index = MockedElasticsearch::builder().healthy(false).build();
 
   let state = AppState {
-    config: Config::from_env().await.unwrap(),
+    config: Config::default(),
+    motiva: Motiva::new(index, None).await.unwrap(),
+  };
+
+  let app = Router::new().route("/readyz", post(handlers::readyz)).with_state(state);
+  let server = TestServer::new(app).unwrap();
+  let response = server.post("/readyz").await;
+
+  assert_eq!(response.status_code(), 503);
+}
+
+#[tokio::test]
+async fn api_health_healthy() {
+  let index = MockedElasticsearch::builder().healthy(true).build();
+
+  let state = AppState {
+    config: Config::default(),
+    motiva: Motiva::new(index, None).await.unwrap(),
+  };
+
+  let app = Router::new().route("/readyz", post(handlers::readyz)).with_state(state);
+  let server = TestServer::new(app).unwrap();
+  let response = server.post("/readyz").await;
+
+  assert_eq!(response.status_code(), 200);
+}
+
+#[tokio::test]
+async fn api_match() {
+  let index = MockedElasticsearch::builder()
+    .entities(vec![
+      Entity::builder("Person").id("Q7747").properties(&[("name", &["Vladimir Putin"])]).build(),
+      Entity::builder("Person").id("A1234").properties(&[("name", &["Bob the Builder"])]).build(),
+    ])
+    .build();
+
+  let state = AppState {
+    config: Config::default(),
     motiva: Motiva::new(index, None).await.unwrap(),
   };
 
