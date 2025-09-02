@@ -3,9 +3,9 @@ name: Publish to Docker Hub
 on:
   workflow_call:
 
-
 permissions:
   contents: read
+  packages: write
 
 jobs:
   docker-base:
@@ -22,12 +22,21 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
+      - name: "Login to GitHub Container Registry"
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          tags: apognu/motiva:latest
+          tags: |
+            apognu/motiva:latest
+            ghcr.io/apognu/motiva:latest
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -46,12 +55,21 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
+      - name: "Login to GitHub Container Registry"
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          tags: apognu/motiva:latest-gcp
+          tags: |
+            apognu/motiva:latest-gcp
+            ghcr.io/apognu/motiva:latest-gcp
           build-args: |
             "CARGO_ARGS=--features gcp"
           push: true

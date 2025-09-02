@@ -43,8 +43,6 @@ impl Config {
       gcp_project_id: detect_gcp_project_id().await,
     };
 
-    println!("{config:#?}");
-
     Ok(config)
   }
 }
