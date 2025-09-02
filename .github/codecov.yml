@@ -1,6 +1,9 @@
 coverage:
   precision: 0
   patch: off
+  project:
+    default:
+      only_pulls: true
 
 ignore:
   - tests
