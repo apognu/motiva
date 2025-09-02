@@ -1,6 +1,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use ahash::RandomState;
+use bon::Builder;
 use tokio::sync::RwLock;
 
 use crate::{
@@ -11,20 +12,19 @@ use crate::{
   model::{Entity, SearchEntity},
 };
 
-#[derive(Clone, Default)]
+#[derive(Clone, Builder, Default)]
 pub struct MockedElasticsearch {
+  healthy: Option<bool>,
+  #[builder(default)]
   entities: Vec<Entity>,
-}
-
-impl MockedElasticsearch {
-  pub fn with_entities(entities: Vec<Entity>) -> MockedElasticsearch {
-    MockedElasticsearch { entities }
-  }
 }
 
 impl IndexProvider for MockedElasticsearch {
   async fn health(&self) -> Result<bool, MotivaError> {
-    unimplemented!();
+    match self.healthy {
+      None => Err(MotivaError::OtherError(anyhow::anyhow!("an error"))),
+      Some(health) => Ok(health),
+    }
   }
 
   async fn search(&self, _: &Arc<RwLock<Collections>>, _: &SearchEntity, _: &MatchParams) -> Result<Vec<Entity>, MotivaError> {

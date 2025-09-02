@@ -208,8 +208,8 @@ mod tests {
     }
   }
 
-  #[cfg(not(coverage))]
   #[test]
+  #[ignore]
   fn extensive_entity_matching_test() {
     pyo3::prepare_freethreaded_python();
 

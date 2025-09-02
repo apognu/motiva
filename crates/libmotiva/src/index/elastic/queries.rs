@@ -350,6 +350,70 @@ mod tests {
     assert_json_eq!(schemas[0], json!({ "terms": { "schema": ["Person", "LegalEntity"] } }));
   }
 
+  #[test]
+  fn build_should() {
+    let entity = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
+    let shoulds = super::build_shoulds(&entity).unwrap();
+
+    println!("{shoulds:#?}");
+
+    assert_json_eq!(
+      shoulds,
+      json!([
+          {
+              "match":  {
+                  "names":  {
+                      "boost": 3.0,
+                      "fuzziness": "AUTO",
+                      "operator": "AND",
+                      "query": "Vladimir Putin",
+                  },
+              },
+          },
+          {
+              "term":  {
+                  "name_keys":  {
+                      "boost": 4.0,
+                      "value": "putinvladimir",
+                  },
+              },
+          },
+          {
+              "term":  {
+                  "name_parts":  {
+                      "boost": 1.0,
+                      "value": "vladimir",
+                  },
+              },
+          },
+          {
+              "term": {
+                  "name_parts":  {
+                      "boost": 1.0,
+                      "value": "putin",
+                  },
+              },
+          },
+          {
+              "term": {
+                  "name_phonetic":  {
+                      "boost": 0.8,
+                      "value": "FLTMR",
+                  },
+              },
+          },
+          {
+              "term": {
+                  "name_phonetic":  {
+                      "boost": 0.8,
+                      "value": "PTN",
+                  },
+              },
+          },
+      ])
+    );
+  }
+
   #[tokio::test]
   async fn build_datasets() {
     let catalog = Arc::new(RwLock::new({

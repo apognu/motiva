@@ -3,6 +3,9 @@ name: PR continuous testing
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     uses: ./.github/workflows/build.yml

@@ -6,7 +6,7 @@ use axum::{
   middleware,
   routing::{get, post},
 };
-use libmotiva::{Motiva, prelude::*};
+use libmotiva::prelude::*;
 use opentelemetry::global;
 use opentelemetry_http::HeaderExtractor;
 use tower_http::trace::TraceLayer;

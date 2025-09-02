@@ -1,7 +1,7 @@
 use libmotiva::prelude::*;
 
 #[tokio::test]
-async fn plop() {
+async fn scoring() {
   let lhs = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
 
   let rhs = vec![
@@ -9,7 +9,7 @@ async fn plop() {
     Entity::builder("Person").id("A1234").properties(&[("name", &["Bob the Builder"])]).build(),
   ];
 
-  let motiva = Motiva::new(MockedElasticsearch::with_entities(rhs), None).await.unwrap();
+  let motiva = Motiva::new(MockedElasticsearch::builder().entities(rhs).build(), None).await.unwrap();
   let rhs = motiva.search(&lhs, &MatchParams::default()).await.unwrap();
   let scores = motiva.score::<LogicV1>(&lhs, rhs, 0.5).unwrap();
 
@@ -22,4 +22,35 @@ async fn plop() {
   assert_eq!(scores[1].1, 0.0);
   assert_eq!(scores[1].0.id, "A1234");
   assert_eq!(scores[1].0.property("name"), ["Bob the Builder"]);
+}
+
+#[tokio::test]
+async fn health() {
+  let motiva = Motiva::new(MockedElasticsearch::builder().healthy(true).build(), None).await.unwrap();
+
+  assert!(matches!(motiva.health().await, Ok(true)));
+
+  let motiva = Motiva::new(MockedElasticsearch::builder().healthy(false).build(), None).await.unwrap();
+
+  assert!(matches!(motiva.health().await, Ok(false)));
+
+  let motiva = Motiva::new(MockedElasticsearch::default(), None).await.unwrap();
+
+  assert!(matches!(motiva.health().await, Err(_)));
+}
+
+#[tokio::test]
+#[should_panic]
+// Should panic because mock function is not implemented.
+async fn get_entity() {
+  let motiva = Motiva::new(MockedElasticsearch::default(), None).await.unwrap();
+  let _ = motiva.get_entity("", false).await;
+}
+
+#[tokio::test]
+#[should_panic]
+// Should panic because mock function is not implemented.
+async fn get_related_entities() {
+  let motiva = Motiva::new(MockedElasticsearch::default(), None).await.unwrap();
+  let _ = motiva.get_entity("", true).await;
 }

@@ -76,7 +76,7 @@ $ export PYTHONPATH="$(pwd).venv/lib/python3.13/site-packages"
 $ cargo test
 ```
 
-Note that this will run a pretty lengty test by default (scoring the cartesian product of 50x50 entities against each other) and compare it against nomenklatura. You can skip this test by running `cargo test -- --skip extensive`.
+One quite lengthy test is ignored by default (scoring the cartesian product of 50x50 entities against each other) and compare it against nomenklatura. You can still run this test by running `cargo test -- --include-ignored`.
 
 ### Contributing
 

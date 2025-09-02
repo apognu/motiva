@@ -8,7 +8,7 @@ use libmotiva::prelude::EsAuthMethod;
 
 use crate::api::errors::AppError;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct Config {
   pub env: Env,
   pub listen_addr: String,
@@ -47,8 +47,9 @@ impl Config {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum Env {
+  #[default]
   Dev,
   Production,
 }
@@ -86,8 +87,9 @@ impl FromStr for WrappedEsAuthMethod {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum TracingExporter {
+  #[default]
   Otlp,
   #[cfg(feature = "gcp")]
   Gcp,
@@ -170,6 +172,18 @@ mod tests {
     assert_eq!(config.index_url, "http://index");
     assert_eq!(config.index_auth_method, EsAuthMethod::EncodedApiKey("secret".to_string()));
     assert_eq!(config.enable_tracing, true);
+
+    unsafe {
+      env::remove_var("ENV");
+      env::remove_var("LISTEN_ADDR");
+      env::remove_var("MATCH_CANDIDATES");
+      env::remove_var("YENTE_URL");
+      env::remove_var("CATALOG_URL");
+      env::remove_var("INDEX_URL");
+      env::remove_var("INDEX_AUTH_METHOD");
+      env::remove_var("INDEX_CLIENT_SECRET");
+      env::remove_var("ENABLE_TRACING");
+    }
   }
 
   #[tokio::test]
@@ -230,6 +244,12 @@ mod tests {
     assert_eq!(super::parse_env::<IpAddr>("IP", IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4))).unwrap(), IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)));
 
     assert!(matches!(super::parse_env::<u32>("BOOL", 0), Err(_)));
+
+    unsafe {
+      env::remove_var("INT");
+      env::remove_var("BOOL");
+      env::remove_var("IP");
+    }
   }
 
   #[test]
