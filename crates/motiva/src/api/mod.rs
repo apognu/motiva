@@ -38,7 +38,7 @@ pub async fn routes(config: &Config) -> anyhow::Result<Router> {
 
     async move {
       loop {
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        tokio::time::sleep(Duration::from_secs(60 * 60)).await;
 
         motiva.refresh_catalog().await;
       }
