@@ -23,25 +23,25 @@ struct EsHealth {
   status: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct EsResponse {
   error: Option<EsError>,
   hits: EsResults,
   took: u64,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct EsError {
   reason: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct EsResults {
   hits: Option<Vec<EsEntity>>,
   total: EsCounts,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct EsCounts {
   value: u64,
 }

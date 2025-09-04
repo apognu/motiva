@@ -60,12 +60,12 @@ impl IndexProvider for ElasticsearchProvider {
       .search(SearchParts::Index(&["yente-entities"]))
       .from(0)
       .size(params.limit as i64)
-      .sort(&["_score:desc", "entity_id:asc,unmapped_type:keyword"])
       .search_type(SearchType::DfsQueryThenFetch)
       .body(query)
       .send()
       .await?;
 
+    // Handle ES errors better, right now it does not do the right thing.
     let status = response.status_code();
     let body: EsResponse = response.json().await?;
 
@@ -100,7 +100,11 @@ impl IndexProvider for ElasticsearchProvider {
               ],
               "minimum_should_match": 1
           }
-      }
+      },
+      "sort": [
+          { "_score": { "order": "desc" } },
+          { "entity_id": { "order": "asc", "unmapped_type": "keyword" } }
+      ]
     });
 
     let response = self.es.search(SearchParts::Index(&["yente-entities"])).from(0).size(1).body(query).send().await?;
