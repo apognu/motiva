@@ -1,7 +1,7 @@
 pub(crate) mod builder;
 pub(crate) mod queries;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Debug};
 
 use ahash::RandomState;
 use elasticsearch::Elasticsearch;
@@ -23,25 +23,32 @@ struct EsHealth {
   status: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+struct EsErrorResponse {
+  error: EsError,
+}
+
+#[derive(Deserialize)]
 struct EsResponse {
-  error: Option<EsError>,
   hits: EsResults,
   took: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+#[derive(Deserialize)]
 struct EsError {
+  #[serde(rename = "type")]
+  type_: String,
   reason: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct EsResults {
   hits: Option<Vec<EsEntity>>,
   total: EsCounts,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct EsCounts {
   value: u64,
 }

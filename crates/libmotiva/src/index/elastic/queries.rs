@@ -17,7 +17,7 @@ use crate::{
   error::MotivaError,
   index::{
     EntityHandle, IndexProvider,
-    elastic::{EsEntity, EsHealth, EsResponse},
+    elastic::{EsEntity, EsErrorResponse, EsHealth, EsResponse},
   },
   matching::{MatchParams, extractors},
   model::{Entity, SearchEntity},
@@ -65,15 +65,13 @@ impl IndexProvider for ElasticsearchProvider {
       .send()
       .await?;
 
-    // Handle ES errors better, right now it does not do the right thing.
-    let status = response.status_code();
-    let body: EsResponse = response.json().await?;
+    if response.status_code() != StatusCode::OK {
+      let body: EsErrorResponse = response.json().await?;
 
-    if status != StatusCode::OK
-      && let Some(error) = body.error
-    {
-      Err(MotivaError::OtherError(anyhow::anyhow!(error.reason)))?;
+      return Err(MotivaError::OtherError(anyhow::anyhow!(body.error.reason)));
     }
+
+    let body: EsResponse = response.json().await?;
 
     match body.hits.hits {
       Some(hits) => {
@@ -109,14 +107,13 @@ impl IndexProvider for ElasticsearchProvider {
 
     let response = self.es.search(SearchParts::Index(&["yente-entities"])).from(0).size(1).body(query).send().await?;
 
-    let status = response.status_code();
-    let body: EsResponse = response.json().await?;
+    if response.status_code() != StatusCode::OK {
+      let body: EsErrorResponse = response.json().await?;
 
-    if status != StatusCode::OK
-      && let Some(error) = body.error
-    {
-      Err(MotivaError::OtherError(anyhow::anyhow!(error.reason)))?;
+      return Err(MotivaError::OtherError(anyhow::anyhow!(body.error.reason)));
     }
+
+    let body: EsResponse = response.json().await?;
 
     match body.hits.hits {
       Some(hits) => {
@@ -138,7 +135,7 @@ impl IndexProvider for ElasticsearchProvider {
   }
 
   #[instrument(skip_all)]
-  async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> anyhow::Result<Vec<Entity>> {
+  async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> Result<Vec<Entity>, MotivaError> {
     let mut shoulds = vec![json!({ "ids": { "values": values } })];
 
     if let Some(root) = root {
@@ -157,15 +154,15 @@ impl IndexProvider for ElasticsearchProvider {
       }
     });
 
-    let results = self.es.search(SearchParts::Index(&["yente-entities"])).from(0).size(10).body(query).send().await?;
-    let status = results.status_code();
-    let body = results.json::<serde_json::Value>().await?;
+    let response = self.es.search(SearchParts::Index(&["yente-entities"])).from(0).size(10).body(query).send().await?;
 
-    if status != StatusCode::OK {
-      let err = body["error"]["reason"].as_str().unwrap().to_string();
+    if response.status_code() != StatusCode::OK {
+      let body: EsErrorResponse = response.json().await?;
 
-      Err(MotivaError::OtherError(anyhow::anyhow!(err)))?;
+      return Err(MotivaError::OtherError(anyhow::anyhow!(body.error.reason)));
     }
+
+    let body = response.json::<serde_json::Value>().await?;
 
     tracing::trace!(
       latency = body["took"].as_u64(),
@@ -180,7 +177,8 @@ impl IndexProvider for ElasticsearchProvider {
         .ok_or(anyhow::anyhow!("invalid response"))?
         .iter()
         .map(|hit| serde_json::from_value::<EsEntity>(hit.clone()).map(Entity::from))
-        .collect::<Result<Vec<_>, _>>()?,
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| anyhow::anyhow!(err))?,
     )
   }
 }

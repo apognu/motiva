@@ -35,7 +35,7 @@ impl IndexProvider for MockedElasticsearch {
     unimplemented!();
   }
 
-  async fn get_related_entities(&self, _: Option<&String>, _: &[String], _: &HashSet<String, RandomState>) -> anyhow::Result<Vec<Entity>> {
+  async fn get_related_entities(&self, _: Option<&String>, _: &[String], _: &HashSet<String, RandomState>) -> Result<Vec<Entity>, MotivaError> {
     unimplemented!();
   }
 }
