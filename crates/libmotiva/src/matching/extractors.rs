@@ -5,12 +5,17 @@ use itertools::Itertools;
 use regex::Regex;
 use rphonetic::{Encoder, Metaphone};
 
+// TODO: better support for separators
+fn is_name_separator(c: char) -> bool {
+  ['-', '.'].contains(&c) || c.is_whitespace()
+}
+
 pub(crate) fn tokenize_names<'s, I, S>(names: I) -> impl Iterator<Item = impl Iterator<Item = &'s str>>
 where
   S: Borrow<str> + 's,
   I: Iterator<Item = &'s S> + 's,
 {
-  names.map(|s| s.borrow().split_whitespace())
+  names.map(|s| s.borrow().split(is_name_separator))
 }
 
 #[inline(always)]
@@ -64,6 +69,7 @@ where
   names
     .flat_map(|s| s.borrow().split_whitespace())
     .map(|s| any_ascii(s).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
+    .filter(|s| s.len() >= 2)
     .unique()
 }
 
@@ -72,7 +78,9 @@ where
   S: Borrow<str> + 's,
   I: Iterator<Item = &'s S> + 's,
 {
-  tokenize_names(names).flat_map(|s| s.map(|s| metaphone.encode(s)))
+  tokenize_names(names)
+    .flat_map(|s| s.filter(|s| s.len() >= 3).map(|s| metaphone.encode(&any_ascii(s))))
+    .filter(|phoneme| phoneme.len() > 2)
 }
 
 pub(crate) fn phonetic_names_tuples<'s, I, S>(metaphone: &Metaphone, names: I) -> Vec<Vec<(&'s str, Option<String>)>>
@@ -85,7 +93,7 @@ where
       s.filter(|name| name.len() >= 2)
         .map(|s| {
           (s, {
-            let phoneme = metaphone.encode(s);
+            let phoneme = metaphone.encode(&any_ascii(s));
 
             if phoneme.len() < 3 { None } else { Some(phoneme) }
           })
@@ -100,12 +108,14 @@ where
   S: Borrow<str> + 's,
   I: Iterator<Item = &'s S> + 's,
 {
-  tokenize_names(names).map(|tokens| {
-    let mut tokens = tokens.map(|token| any_ascii(token).to_lowercase()).collect::<Vec<_>>();
+  tokenize_names(names)
+    .map(|tokens| {
+      let mut tokens = tokens.map(|token| any_ascii(token).to_lowercase()).collect::<Vec<_>>();
 
-    tokens.sort();
-    tokens.join("")
-  })
+      tokens.sort();
+      tokens.join("")
+    })
+    .filter(|keys| keys.len() > 5)
 }
 
 pub(crate) fn name_parts_flat<'s, I, S>(names: I) -> impl Iterator<Item = String>

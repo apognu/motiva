@@ -41,7 +41,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 
 #[scoring_feature(PersonNameJaroWinkler, name = "person_name_jaro_winkler")]
 fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
-  if !lhs.schema.is_a("Person") || !rhs.schema.is_a("Person") {
+  if !lhs.schema.is_a("Person") && !rhs.schema.is_a("Person") {
     return 0.0;
   }
 

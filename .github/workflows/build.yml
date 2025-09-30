@@ -41,6 +41,8 @@ jobs:
           submodules: true
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Cache build artifacts
         id: build-artifacts
