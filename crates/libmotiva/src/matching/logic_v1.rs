@@ -126,7 +126,11 @@ mod tests {
       .properties(&[("name", &["Google LLC"]), ("leiCode", &["529900T8BM49AURSDO55"]), ("ogrnCode", &["2022200525818"])])
       .build();
     let rhs = Entity::builder("Company")
-      .properties(&[("name", &["Gogole SAS"]), ("leiCode", &["LEI1234"]), ("innCode", &["529900T8BM49AURSDO55", "2022200525818"])])
+      .properties(&[
+        ("name", &["Gogole LIMITED LIABILITY COMPANY"]),
+        ("leiCode", &["LEI1234"]),
+        ("innCode", &["529900T8BM49AURSDO55", "2022200525818"]),
+      ])
       .build();
 
     let (score, features) = super::LogicV1::score(&Bump::new(), &lhs, &rhs, 0.0);

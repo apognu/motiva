@@ -7,7 +7,7 @@ use crate::{
     Feature,
     comparers::{default_levenshtein_similarity, levenshtein_similarity},
     extractors::{clean_names, tokenize_clean_names},
-    replacers::{self, company_types::ORG_TYPES, stopwords::STOPWORDS, symbols::ORG_SYMBOLS},
+    replacers::{self, company_types::ORG_TYPES, stopwords::STOPWORDS},
   },
   model::{Entity, HasProperties, SearchEntity},
 };
@@ -20,7 +20,8 @@ fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 fn fingerprint_name(name: &str) -> String {
   let output = replacers::replace(&STOPWORDS.0, &STOPWORDS.1, name);
   let output = replacers::replace(&ORG_TYPES.0, &ORG_TYPES.1, &output);
-  let output = replacers::replace(&ORG_SYMBOLS.0, &ORG_SYMBOLS.1, &output);
+  // This was not supposed to be here.
+  // let output = replacers::replace(&ORG_SYMBOLS.0, &ORG_SYMBOLS.1, &output);
 
   output.trim().to_string()
 }
@@ -100,7 +101,7 @@ mod tests {
   fn fingerprint_name() {
     assert_eq!(
       super::fingerprint_name("ACME Inc. Comandita por Acciones General Partnership Anything Free Zone Co. andelslag"),
-      "ACME llc jsc  Partnership Anything llc coop"
+      "ACME inc s.c.a.  Partnership Anything fzco anl"
     );
   }
 
@@ -110,7 +111,7 @@ mod tests {
     pyo3::prepare_freethreaded_python();
 
     let lhs = SearchEntity::builder("Company").properties(&[("name", &["AGoogle LLC"])]).build();
-    let rhs = Entity::builder("Company").properties(&[("name", &["Gooogle SAS"])]).build();
+    let rhs = Entity::builder("Company").properties(&[("name", &["Gooogle LIMITED LIABILITY COMPANY"])]).build();
 
     let nscore = nomenklatura_comparer("compare.names", "name_fingerprint_levenshtein", &lhs, &rhs).unwrap();
 

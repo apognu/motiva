@@ -13,15 +13,10 @@ pub(crate) static ORG_TYPES: LazyLock<(AhoCorasick, Vec<String>)> = LazyLock::ne
   let mut replacements = Vec::new();
 
   for item in dictionary.types {
-    if let Some(generic) = &item.generic {
-      if let Some(display) = item.display {
-        patterns.push(display.to_lowercase());
-        replacements.push(generic.to_lowercase());
-      }
-
+    if let Some(display) = &item.display {
       for alias in item.aliases {
         patterns.push(alias.to_lowercase());
-        replacements.push(generic.to_lowercase());
+        replacements.push(display.to_lowercase());
       }
     }
   }
@@ -40,6 +35,5 @@ struct OrgTypeDictionary {
 #[derive(Deserialize)]
 struct OrgTypeDictionaryEntry {
   display: Option<String>,
-  generic: Option<String>,
   aliases: Vec<String>,
 }

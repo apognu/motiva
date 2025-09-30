@@ -1,6 +1,5 @@
-use std::{collections::HashMap, env, path::PathBuf};
+use std::{env, path::PathBuf};
 
-use ahash::RandomState;
 use anyhow::Context;
 use pyo3::{prelude::*, types::IntoPyDict};
 
@@ -31,14 +30,6 @@ impl Algorithm {
       Algorithm::LogicV1 => "LogicV1",
     }
   }
-}
-
-#[derive(Clone, Debug, Default, IntoPyObject)]
-struct PyEntity {
-  pub id: String,
-  pub caption: String,
-  pub schema: String,
-  pub properties: HashMap<String, Vec<String>, RandomState>,
 }
 
 #[derive(Clone, FromPyObject)]

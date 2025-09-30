@@ -357,8 +357,6 @@ mod tests {
     let entity = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
     let shoulds = super::build_shoulds(&entity).unwrap();
 
-    println!("{shoulds:#?}");
-
     assert_json_eq!(
       shoulds,
       json!([

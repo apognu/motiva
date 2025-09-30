@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use crate::matching::replacers::Dictionaries;
 
+#[allow(dead_code)]
 pub(crate) static ORG_SYMBOLS: LazyLock<(AhoCorasick, Vec<String>)> = LazyLock::new(|| {
   let file = Dictionaries::get("names/symbols.yml").expect("could not read org symbols dictionary");
   let dictionary = serde_yaml::from_slice::<OrgSymbolDictionary>(&file.data).expect("could not unmarshal org symbols dictionary");
