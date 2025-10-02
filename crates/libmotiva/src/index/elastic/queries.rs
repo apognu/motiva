@@ -59,7 +59,7 @@ impl IndexProvider for ElasticsearchProvider {
       .es
       .search(SearchParts::Index(&["yente-entities"]))
       .from(0)
-      .size(params.limit as i64)
+      .size(params.candidate_limit() as i64)
       .search_type(SearchType::DfsQueryThenFetch)
       .body(query)
       .send()
