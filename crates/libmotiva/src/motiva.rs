@@ -17,6 +17,11 @@ use crate::{
   scoring,
 };
 
+pub enum GetEntityBehavior {
+  RootOnly,
+  FetchNestedEntity,
+}
+
 /// The main entrypoint for using the Motiva library.
 ///
 /// `motiva` provides functionality to search for entities within sanctioned lists
@@ -92,14 +97,14 @@ impl<P: IndexProvider> Motiva<P> {
     self.index.search(&self.catalog, entity, params).await
   }
 
-  pub async fn get_entity(&self, id: &str, nested: bool) -> Result<EntityHandle, MotivaError> {
+  pub async fn get_entity(&self, id: &str, behavior: GetEntityBehavior) -> Result<EntityHandle, MotivaError> {
     match self.index.get_entity(id).await? {
       EntityHandle::Referent(id) => Ok(EntityHandle::Referent(id)),
 
       EntityHandle::Nominal(mut entity) => {
         let id = id.to_string();
 
-        if !nested {
+        if let GetEntityBehavior::RootOnly = behavior {
           return Ok(EntityHandle::Nominal(entity));
         }
 

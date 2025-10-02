@@ -20,7 +20,7 @@ pub(crate) fn init() {
 }
 
 pub mod prelude {
-  pub use crate::motiva::Motiva;
+  pub use crate::motiva::{GetEntityBehavior, Motiva};
 
   pub use crate::error::MotivaError;
   pub use crate::index::{

@@ -211,7 +211,7 @@ async fn build_filters(catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity
 
 fn build_schemas(entity: &SearchEntity, filters: &mut Vec<serde_json::Value>) -> Result<(), MotivaError> {
   let schema = SCHEMAS.get(entity.schema.as_str()).ok_or(MotivaError::InvalidSchema(entity.schema.as_str().to_string()))?;
-  let mut schemas = resolve_schemas(entity.schema.as_str(), true)?;
+  let mut schemas = resolve_schemas(entity.schema.as_str(), ResolveSchemaLevel::Root)?;
   schemas.extend(schema.descendants.clone());
 
   filters.push(json!({ "terms": { "schema": schemas } }));
@@ -310,8 +310,15 @@ fn add_term(queries: &mut Vec<serde_json::Value>, key: &str, name: &str, boost: 
   }));
 }
 
-fn resolve_schemas(schema: &str, root: bool) -> Result<Vec<String>, MotivaError> {
+#[derive(Eq, PartialEq)]
+enum ResolveSchemaLevel {
+  Root,
+  Deep,
+}
+
+fn resolve_schemas(schema: &str, level: ResolveSchemaLevel) -> Result<Vec<String>, MotivaError> {
   let mut out = Vec::with_capacity(8);
+  let root = level == ResolveSchemaLevel::Root;
 
   if let Some(def) = SCHEMAS.get(schema) {
     if root && schema != "Thing" && !def.matchable {
@@ -323,7 +330,7 @@ fn resolve_schemas(schema: &str, root: bool) -> Result<Vec<String>, MotivaError>
     }
 
     for parent in &def.extends {
-      out.extend(resolve_schemas(parent, false)?);
+      out.extend(resolve_schemas(parent, ResolveSchemaLevel::Deep)?);
     }
   }
 
@@ -340,7 +347,7 @@ mod tests {
 
   use crate::{
     catalog::{Collections, Dataset},
-    index::elastic::queries::resolve_schemas,
+    index::elastic::queries::{ResolveSchemaLevel, resolve_schemas},
     model::SearchEntity,
     prelude::MatchParams,
   };
@@ -484,10 +491,10 @@ mod tests {
 
   #[test]
   fn resolve_schema_chain() {
-    assert_eq!(resolve_schemas("Person", true).unwrap(), &["Person", "LegalEntity"]);
-    assert_eq!(resolve_schemas("Company", true).unwrap(), &["Company", "Organization", "LegalEntity"]);
-    assert_eq!(resolve_schemas("Airplane", true).unwrap(), &["Airplane"]);
-    assert!(resolve_schemas("Vehicle", true).is_err());
-    assert_eq!(resolve_schemas("Thing", true).unwrap(), &["Thing"]);
+    assert_eq!(resolve_schemas("Person", ResolveSchemaLevel::Root).unwrap(), &["Person", "LegalEntity"]);
+    assert_eq!(resolve_schemas("Company", ResolveSchemaLevel::Root).unwrap(), &["Company", "Organization", "LegalEntity"]);
+    assert_eq!(resolve_schemas("Airplane", ResolveSchemaLevel::Root).unwrap(), &["Airplane"]);
+    assert!(resolve_schemas("Vehicle", ResolveSchemaLevel::Root).is_err());
+    assert_eq!(resolve_schemas("Thing", ResolveSchemaLevel::Root).unwrap(), &["Thing"]);
   }
 }
