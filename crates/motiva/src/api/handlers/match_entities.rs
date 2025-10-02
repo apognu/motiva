@@ -24,10 +24,8 @@ pub async fn match_entities<P: IndexProvider + 'static>(
   WithRejection(Query(mut query), _): WithRejection<Query<MatchParams>, QueryRejection>,
   TypedJson(mut body): TypedJson<Payload>,
 ) -> Result<(StatusCode, impl IntoResponse), AppError> {
-  let limit = query.limit;
-
   query.scope = scope;
-  query.limit = (query.limit * state.config.match_candidates).clamp(20, 9999);
+  query.candidate_factor = state.config.match_candidates;
 
   body.queries.iter_mut().for_each(|(_, entity)| {
     entity.precompute();
@@ -61,7 +59,7 @@ pub async fn match_entities<P: IndexProvider + 'static>(
               .into_iter()
               .filter(|(_, score)| score > &query.cutoff)
               .sorted_by(|(_, lhs), (_, rhs)| lhs.total_cmp(rhs).reverse())
-              .take(limit)
+              .take(query.limit)
               .map(|(entity, score)| MatchHit {
                 entity,
                 score,

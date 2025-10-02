@@ -61,6 +61,8 @@ pub struct MatchParams {
   pub scope: String,
   #[serde_inline_default(5)]
   pub limit: usize,
+  #[serde(skip)]
+  pub candidate_factor: usize,
   #[serde_inline_default(0.7)]
   pub threshold: f64,
   #[serde_inline_default(0.5)]
@@ -72,4 +74,10 @@ pub struct MatchParams {
   pub include_dataset: Vec<String>,
   #[serde(default)]
   pub exclude_dataset: Vec<String>,
+}
+
+impl MatchParams {
+  pub fn candidate_limit(&self) -> usize {
+    (self.limit * self.candidate_factor).clamp(20, 9999)
+  }
 }
