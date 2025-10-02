@@ -28,3 +28,11 @@ pub async fn readyz<P: IndexProvider>(State(state): State<AppState<P>>) -> Resul
     false => Ok(StatusCode::SERVICE_UNAVAILABLE),
   }
 }
+
+pub async fn prometheus<P: IndexProvider>(State(state): State<AppState<P>>) -> (StatusCode, String) {
+  let Some(prometheus) = state.prometheus else {
+    return (StatusCode::NOT_FOUND, String::default());
+  };
+
+  (StatusCode::OK, prometheus.render())
+}

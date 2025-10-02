@@ -1,4 +1,5 @@
 use bumpalo::Bump;
+use metrics::histogram;
 use opentelemetry::global;
 use tokio::time::Instant;
 use tracing::{Span, instrument};
@@ -27,8 +28,12 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, cut
 
     bump.reset();
 
+    histogram!("motiva_scoring_scores").record(score);
+
     (hit, score)
   });
+
+  histogram!("motiva_scoring_latency_seconds").record(then.elapsed().as_secs_f64());
 
   global::meter("motiva").f64_histogram("scoring_latency").build().record(then.elapsed().as_secs_f64() * 1000.0, &[]);
 

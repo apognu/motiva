@@ -24,12 +24,12 @@ Some liberty was taken to adapt some logic and algorithms from Yente, so do not 
 
 ### Implementation matrix
 
- - [x] POST /match/{dataset}
- - [x] GET /entities/{id}
- - [x] GET /catalog _(proxy)_
- - [x] name-based
- - [x] name-qualified
- - [x] logic-v1 <sup>[1]</sup>
+- [x] POST /match/{dataset}
+- [x] GET /entities/{id}
+- [x] GET /catalog _(proxy)_
+- [x] name-based
+- [x] name-qualified
+- [x] logic-v1 <sup>[1]</sup>
 
 <sup>[1]</sup>: Features that are disabled by default were omited for now.
 
@@ -48,6 +48,7 @@ Motiva is configured via environment variables. The following variables are supp
 | `YENTE_URL`           | Optional URL to a Yente instance for score comparison                                  | _(none)_                |
 | `CATALOG_URL`         | Optional URL to a catalog service                                                      | _(none)_                |
 | `MATCH_CANDIDATES`    | Number of candidates to consider for matching                                          | `10`                    |
+| `ENABLE_PROMETHEUS`   | Enable Prometheus metrics collection and /metrics endpoint                             | `0`                     |
 | `ENABLE_TRACING`      | Set to `1` to enable tracing                                                           | _(none)_                |
 | `TRACING_EXPORTER`    | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)            | `otlp`                  |
 

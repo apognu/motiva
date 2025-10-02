@@ -8,6 +8,7 @@ use axum_extra::extract::QueryRejection;
 use axum_extra::extract::WithRejection;
 use itertools::Itertools;
 use libmotiva::prelude::*;
+use metrics::histogram;
 use tracing::{Instrument, instrument};
 
 use crate::api::errors::AppError;
@@ -55,6 +56,8 @@ pub async fn match_entities<P: IndexProvider + 'static>(
 
         match scores {
           Ok(scores) => {
+            let pre_cutoff_count = scores.len();
+
             let hits = scores
               .into_iter()
               .filter(|(_, score)| score > &query.cutoff)
@@ -66,6 +69,9 @@ pub async fn match_entities<P: IndexProvider + 'static>(
                 match_: score > query.threshold,
               })
               .collect::<Vec<_>>();
+
+            histogram!("motiva_matches_above_cutoff_total").record(hits.len() as f64);
+            histogram!("motiva_matches_below_cutoff_total").record((pre_cutoff_count - hits.len()) as f64);
 
             (
               id,

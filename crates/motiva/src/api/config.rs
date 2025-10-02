@@ -21,7 +21,8 @@ pub struct Config {
   pub yente_url: Option<String>,
   pub match_candidates: usize,
 
-  // Debugging
+  // Observability
+  pub enable_prometheus: bool,
   pub enable_tracing: bool,
   pub tracing_exporter: TracingExporter,
   #[cfg(feature = "gcp")]
@@ -37,6 +38,7 @@ impl Config {
       yente_url: env::var("YENTE_URL").ok(),
       index_url: env::var("INDEX_URL").unwrap_or("http://localhost:9200".into()),
       index_auth_method: env::var("INDEX_AUTH_METHOD").unwrap_or("none".into()).parse::<WrappedEsAuthMethod>()?.0,
+      enable_prometheus: env::var("ENABLE_PROMETHEUS").unwrap_or_default() == "1",
       enable_tracing: env::var("ENABLE_TRACING").unwrap_or_default() == "1",
       tracing_exporter: env::var("TRACING_EXPORTER").unwrap_or("otlp".into()).parse()?,
       #[cfg(feature = "gcp")]
