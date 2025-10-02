@@ -56,6 +56,8 @@ serde-inline-default = "0.2.3"
 mimalloc = { version = "0.1.48", features = ["v3"] }
 opentelemetry-gcloud-trace = { version = "0.21.0", optional = true }
 gcp_auth = { version = "0.12.3", optional = true }
+metrics = "0.24.2"
+metrics-exporter-prometheus = { version = "0.17.2", default-features = false, features = ["http-listener"] }
 
 [dev-dependencies]
 axum-test = "18.0.2"

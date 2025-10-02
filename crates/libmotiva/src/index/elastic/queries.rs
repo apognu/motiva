@@ -4,6 +4,7 @@ use ahash::RandomState;
 use anyhow::Context;
 use elasticsearch::{SearchParts, cluster::ClusterHealthParts, params::SearchType};
 use itertools::Itertools;
+use metrics::{counter, histogram};
 use opentelemetry::global;
 use reqwest::StatusCode;
 use rphonetic::Metaphone;
@@ -76,6 +77,9 @@ impl IndexProvider for ElasticsearchProvider {
     match body.hits.hits {
       Some(hits) => {
         tracing::debug!(latency = body.took, hits = body.hits.total.value, results = hits.len(), "got hits from index");
+
+        counter!("motiva_indexer_matches_total").increment(hits.len() as u64);
+        histogram!("motiva_indexer_latency_seconds").record(body.took as f64 / 1000.0);
 
         global::meter("motiva").u64_histogram("index_hits").build().record(hits.len() as u64, &[]);
         global::meter("motiva").u64_histogram("index_latency").build().record(body.took, &[]);

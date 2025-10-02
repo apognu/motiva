@@ -11,6 +11,7 @@ async fn api_health_unhealthy() {
 
   let state = AppState {
     config: Config::default(),
+    prometheus: None,
     motiva: Motiva::new(index, None).await.unwrap(),
   };
 
@@ -27,6 +28,7 @@ async fn api_health_healthy() {
 
   let state = AppState {
     config: Config::default(),
+    prometheus: None,
     motiva: Motiva::new(index, None).await.unwrap(),
   };
 
@@ -48,6 +50,7 @@ async fn api_match() {
 
   let state = AppState {
     config: Config::default(),
+    prometheus: None,
     motiva: Motiva::new(index, None).await.unwrap(),
   };
 
