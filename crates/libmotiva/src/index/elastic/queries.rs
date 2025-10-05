@@ -193,6 +193,7 @@ async fn build_query(catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity, 
           "bool": {
               "filter": build_filters(catalog, entity, params).await?,
               "should": build_shoulds(entity)?,
+              "must_not": build_must_nots(params),
               "minimum_should_match": 1,
           }
       }
@@ -206,7 +207,21 @@ async fn build_filters(catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity
   build_datasets(catalog, &mut filters, params).await;
   build_topics(params, &mut filters);
 
+  if let Some(since) = params.changed_since {
+    filters.push(json!({"range": { "last_change": { "gt": since } } }));
+  }
+
   Ok(filters)
+}
+
+fn build_must_nots(params: &MatchParams) -> Vec<serde_json::Value> {
+  let mut filters = Vec::<serde_json::Value>::new();
+
+  if !params.exclude_schema.is_empty() {
+    filters.push(json!({ "terms": { "schema": params.exclude_schema } }));
+  }
+
+  filters
 }
 
 fn build_schemas(entity: &SearchEntity, filters: &mut Vec<serde_json::Value>) -> Result<(), MotivaError> {
@@ -342,7 +357,7 @@ mod tests {
   use std::sync::Arc;
 
   use serde_json::json;
-  use serde_json_assert::assert_json_eq;
+  use serde_json_assert::{assert_json_eq, assert_json_include};
   use tokio::sync::RwLock;
 
   use crate::{
@@ -351,6 +366,30 @@ mod tests {
     model::SearchEntity,
     prelude::MatchParams,
   };
+
+  fn fake_catalog() -> Arc<RwLock<Collections>> {
+    Arc::new(RwLock::new({
+      let mut catalog = Collections::default();
+
+      catalog.insert(
+        "myscope".to_string(),
+        Dataset {
+          name: "Real Dataset".to_string(),
+          children: Some(vec!["realdataset".to_string()]),
+        },
+      );
+
+      catalog.insert(
+        "otherscope".to_string(),
+        Dataset {
+          name: "Other Dataset".to_string(),
+          children: Some(vec!["otherdataset".to_string()]),
+        },
+      );
+
+      catalog
+    }))
+  }
 
   #[test]
   fn build_schemas() {
@@ -361,6 +400,27 @@ mod tests {
 
     assert_eq!(schemas.len(), 1);
     assert_json_eq!(schemas[0], json!({ "terms": { "schema": ["Person", "LegalEntity"] } }));
+  }
+
+  #[test]
+  fn build_must_nots() {
+    let params = MatchParams {
+      exclude_schema: vec!["Person".into(), "Company".into()],
+      ..Default::default()
+    };
+
+    let must_nots = super::build_must_nots(&params);
+
+    assert_json_eq!(
+      must_nots,
+      json!([
+          { "terms": { "schema": ["Person", "Company"] } }
+      ])
+    );
+
+    let must_nots = super::build_must_nots(&MatchParams::default());
+
+    assert_json_eq!(must_nots, json!([]));
   }
 
   #[test]
@@ -427,27 +487,7 @@ mod tests {
 
   #[tokio::test]
   async fn build_datasets() {
-    let catalog = Arc::new(RwLock::new({
-      let mut catalog = Collections::default();
-
-      catalog.insert(
-        "myscope".to_string(),
-        Dataset {
-          name: "Real Dataset".to_string(),
-          children: Some(vec!["realdataset".to_string()]),
-        },
-      );
-
-      catalog.insert(
-        "otherscope".to_string(),
-        Dataset {
-          name: "Other Dataset".to_string(),
-          children: Some(vec!["otherdataset".to_string()]),
-        },
-      );
-
-      catalog
-    }));
+    let catalog = fake_catalog();
 
     let params = MatchParams {
       scope: "myscope".to_string(),
@@ -475,6 +515,21 @@ mod tests {
 
     assert_eq!(filters.len(), 1);
     assert_json_eq!(filters[0], json!({ "terms": { "topics": ["topic1", "topic2"] } }));
+  }
+
+  #[tokio::test]
+  async fn build_filters() {
+    let catalog = fake_catalog();
+    let entity = SearchEntity::builder("Person").properties(&[]).build();
+
+    let params = MatchParams {
+      changed_since: Some(jiff::Timestamp::UNIX_EPOCH),
+      ..Default::default()
+    };
+
+    let filters = super::build_filters(&catalog, &entity, &params).await.unwrap();
+
+    assert_json_include!(actual: filters, expected: json!([{}, {}, { "range": { "last_change": { "gt": "1970-01-01T00:00:00Z" } } }]));
   }
 
   #[test]

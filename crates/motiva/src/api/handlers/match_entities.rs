@@ -3,9 +3,6 @@ use std::collections::HashMap;
 use ahash::RandomState;
 use axum::extract::Path;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
-use axum_extra::extract::Query;
-use axum_extra::extract::QueryRejection;
-use axum_extra::extract::WithRejection;
 use itertools::Itertools;
 use libmotiva::prelude::*;
 use metrics::histogram;
@@ -13,10 +10,11 @@ use tracing::{Instrument, instrument};
 
 use crate::api::errors::AppError;
 use crate::api::middlewares::auth::Auth;
+use crate::api::middlewares::types::Query;
 use crate::api::{
   AppState,
   dto::{MatchHit, MatchResponse, MatchResults, MatchTotal, Payload},
-  middlewares::json_rejection::TypedJson,
+  middlewares::types::TypedJson,
 };
 
 #[instrument(skip_all)]
@@ -24,7 +22,7 @@ pub async fn match_entities<P: IndexProvider + 'static>(
   State(state): State<AppState<P>>,
   _: Auth<P>,
   Path((scope,)): Path<(String,)>,
-  WithRejection(Query(mut query), _): WithRejection<Query<MatchParams>, QueryRejection>,
+  Query(mut query): Query<MatchParams>,
   TypedJson(mut body): TypedJson<Payload>,
 ) -> Result<(StatusCode, impl IntoResponse), AppError> {
   query.scope = scope;

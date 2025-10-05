@@ -1887,6 +1887,7 @@ dependencies = [
  "anyhow",
  "axum",
  "axum-extra",
+ "axum-macros",
  "axum-test",
  "gcp_auth",
  "itertools 0.14.0",

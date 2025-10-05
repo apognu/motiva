@@ -8,8 +8,8 @@ use metrics::counter;
 use uuid::Uuid;
 
 pub(super) mod auth;
-pub(super) mod json_rejection;
 pub(super) mod logging;
+pub(super) mod types;
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
