@@ -12,6 +12,7 @@ use crate::api::errors::AppError;
 pub struct Config {
   pub env: Env,
   pub listen_addr: String,
+  pub api_key: Option<String>,
 
   // Elasticsearch
   pub index_url: String,
@@ -34,6 +35,7 @@ impl Config {
     let config = Config {
       env: Env::from(env::var("ENV").unwrap_or("dev".into())),
       listen_addr: env::var("LISTEN_ADDR").unwrap_or("0.0.0.0:8000".into()),
+      api_key: env::var("API_KEY").ok(),
       match_candidates: parse_env("MATCH_CANDIDATES", 10)?,
       yente_url: env::var("YENTE_URL").ok(),
       index_url: env::var("INDEX_URL").unwrap_or("http://localhost:9200".into()),

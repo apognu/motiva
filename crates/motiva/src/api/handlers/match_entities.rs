@@ -12,6 +12,7 @@ use metrics::histogram;
 use tracing::{Instrument, instrument};
 
 use crate::api::errors::AppError;
+use crate::api::middlewares::auth::Auth;
 use crate::api::{
   AppState,
   dto::{MatchHit, MatchResponse, MatchResults, MatchTotal, Payload},
@@ -21,6 +22,7 @@ use crate::api::{
 #[instrument(skip_all)]
 pub async fn match_entities<P: IndexProvider + 'static>(
   State(state): State<AppState<P>>,
+  _: Auth<P>,
   Path((scope,)): Path<(String,)>,
   WithRejection(Query(mut query), _): WithRejection<Query<MatchParams>, QueryRejection>,
   TypedJson(mut body): TypedJson<Payload>,
