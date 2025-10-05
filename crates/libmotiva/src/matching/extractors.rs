@@ -16,10 +16,7 @@ fn is_modern_alphabet(input: &str) -> bool {
     return true;
   };
 
-  match info.script() {
-    Script::Latin | Script::Greek | Script::Armenian | Script::Cyrillic => true,
-    _ => false,
-  }
+  matches!(info.script(), Script::Latin | Script::Greek | Script::Armenian | Script::Cyrillic)
 }
 
 pub(crate) fn tokenize_names<'s, I, S>(names: I) -> impl Iterator<Item = impl Iterator<Item = &'s str>>

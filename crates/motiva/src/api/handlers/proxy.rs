@@ -3,9 +3,9 @@ use axum::{extract::State, response::IntoResponse};
 use libmotiva::prelude::*;
 use reqwest::{StatusCode, header};
 
-use crate::api::{AppState, errors::AppError};
+use crate::api::{AppState, errors::AppError, middlewares::auth::Auth};
 
-pub async fn catalog<P: IndexProvider>(State(state): State<AppState<P>>) -> Result<impl IntoResponse, AppError> {
+pub async fn catalog<P: IndexProvider>(State(state): State<AppState<P>>, _: Auth<P>) -> Result<impl IntoResponse, AppError> {
   match state.config.yente_url {
     None => Err(AppError::ResourceNotFound),
 

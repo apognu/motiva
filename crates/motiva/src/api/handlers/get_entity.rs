@@ -8,10 +8,10 @@ use libmotiva::prelude::*;
 use reqwest::StatusCode;
 use tracing::instrument;
 
-use crate::api::{AppState, dto::GetEntityParams, errors::AppError};
+use crate::api::{AppState, dto::GetEntityParams, errors::AppError, middlewares::auth::Auth};
 
 #[instrument(skip_all)]
-pub async fn get_entity<P: IndexProvider>(State(state): State<AppState<P>>, Path(id): Path<String>, Query(params): Query<GetEntityParams>) -> Result<impl IntoResponse, AppError> {
+pub async fn get_entity<P: IndexProvider>(State(state): State<AppState<P>>, _: Auth<P>, Path(id): Path<String>, Query(params): Query<GetEntityParams>) -> Result<impl IntoResponse, AppError> {
   let behavior = if params.nested { GetEntityBehavior::FetchNestedEntity } else { GetEntityBehavior::RootOnly };
 
   match state.motiva.get_entity(&id, behavior).await.map_err(Into::<AppError>::into)? {

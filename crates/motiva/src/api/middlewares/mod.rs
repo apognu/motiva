@@ -7,6 +7,7 @@ use axum::{
 use metrics::counter;
 use uuid::Uuid;
 
+pub(super) mod auth;
 pub(super) mod json_rejection;
 pub(super) mod logging;
 
