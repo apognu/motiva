@@ -1,6 +1,7 @@
 mod matchers;
 
 use bumpalo::Bump;
+use jiff::Timestamp;
 use serde::Deserialize;
 use serde_inline_default::serde_inline_default;
 
@@ -74,6 +75,9 @@ pub struct MatchParams {
   pub include_dataset: Vec<String>,
   #[serde(default)]
   pub exclude_dataset: Vec<String>,
+  pub changed_since: Option<Timestamp>,
+  #[serde(default)]
+  pub exclude_schema: Vec<String>,
 }
 
 impl MatchParams {

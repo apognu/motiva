@@ -96,3 +96,77 @@ async fn api_match() {
       }
   }));
 }
+
+#[tokio::test]
+async fn api_invalid_query() {
+  let index = MockedElasticsearch::builder().healthy(false).build();
+
+  let state = AppState {
+    config: Config::default(),
+    prometheus: None,
+    motiva: Motiva::new(index, None).await.unwrap(),
+  };
+
+  let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
+  let server = TestServer::new(app).unwrap();
+  let response = server.post("/match/default?changed_since=invalid").await;
+
+  assert_eq!(response.status_code(), 400);
+
+  response.assert_text_contains("failed to parse year in date");
+}
+
+#[tokio::test]
+async fn api_unparsable_payload() {
+  let index = MockedElasticsearch::builder().healthy(false).build();
+
+  let state = AppState {
+    config: Config::default(),
+    prometheus: None,
+    motiva: Motiva::new(index, None).await.unwrap(),
+  };
+
+  let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
+  let server = TestServer::new(app).unwrap();
+
+  let payloads = &[r#"{ "queries": { "test": { "schema": } } }"#, r#"{ "queries": { "test": { "schema": 12 } } }"#];
+
+  for payload in payloads {
+    let response = server.post("/match/default?changed_since=invalid").json(payload).await;
+
+    assert_eq!(response.status_code(), 400);
+  }
+
+  let response = server.post("/match/default?changed_since=invalid").text("{}").await;
+
+  assert_eq!(response.status_code(), 400);
+}
+
+#[tokio::test]
+async fn api_invalid_payload() {
+  let index = MockedElasticsearch::builder().healthy(false).build();
+
+  let state = AppState {
+    config: Config::default(),
+    prometheus: None,
+    motiva: Motiva::new(index, None).await.unwrap(),
+  };
+
+  let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
+  let server = TestServer::new(app).unwrap();
+
+  let response = server
+    .post("/match/default")
+    .json(&json!({
+        "queries": {}
+    }))
+    .await;
+
+  assert_eq!(response.status_code(), 422);
+
+  response.assert_json_contains(&json!({
+      "details": [
+          "at least one query must be provided"
+      ]
+  }));
+}

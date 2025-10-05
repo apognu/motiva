@@ -5,9 +5,10 @@ use axum::{
   body::Body,
   extract::{FromRequest, rejection::JsonRejection},
   http::{Request, StatusCode},
-  response::IntoResponse,
+  response::{IntoResponse, Response},
 };
-use serde::de::DeserializeOwned;
+use axum_macros::FromRequestParts;
+use serde::{Deserialize, de::DeserializeOwned};
 use validator::{Validate, ValidationErrors};
 
 use crate::api::errors::ApiError;
@@ -20,7 +21,7 @@ pub enum TypedJsonRejection {
 }
 
 impl IntoResponse for TypedJsonRejection {
-  fn into_response(self) -> axum::response::Response {
+  fn into_response(self) -> Response {
     match self {
       TypedJsonRejection::JsonRejection(err) => match err {
         JsonRejection::JsonSyntaxError(_) => ApiError(StatusCode::BAD_REQUEST, "invalid payload format".to_string(), None).into_response(),
@@ -54,5 +55,23 @@ where
 
       Err(err) => Err(TypedJsonRejection::JsonRejection(err)),
     }
+  }
+}
+
+#[derive(Deserialize, FromRequestParts)]
+#[from_request(via(axum_extra::extract::Query), rejection(QueryRejection))]
+pub struct Query<T>(pub T);
+
+pub struct QueryRejection(axum_extra::extract::QueryRejection);
+
+impl From<axum_extra::extract::QueryRejection> for QueryRejection {
+  fn from(value: axum_extra::extract::QueryRejection) -> Self {
+    QueryRejection(value)
+  }
+}
+
+impl IntoResponse for QueryRejection {
+  fn into_response(self) -> Response {
+    ApiError(StatusCode::BAD_REQUEST, "invalid query parameter".to_string(), Some(vec![self.0.to_string()])).into_response()
   }
 }
