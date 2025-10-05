@@ -264,10 +264,10 @@ fn build_shoulds(entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>
     }));
   }
 
-  for name in extractors::name_keys(names.iter()) {
+  for name in extractors::index_name_keys(names.iter()) {
     add_term(&mut should, "name_keys", &name, 4.0);
   }
-  for name in extractors::name_parts_flat(names.iter()) {
+  for name in extractors::index_name_parts(names.iter()) {
     add_term(&mut should, "name_parts", &name, 1.0);
   }
   for name in extractors::phonetic_name(&Metaphone::new(None), names.iter()) {
