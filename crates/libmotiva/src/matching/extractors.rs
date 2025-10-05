@@ -4,10 +4,22 @@ use any_ascii::any_ascii;
 use itertools::Itertools;
 use regex::Regex;
 use rphonetic::{Encoder, Metaphone};
+use whatlang::Script;
 
 // TODO: better support for separators
 fn is_name_separator(c: char) -> bool {
   ['-', '.'].contains(&c) || c.is_whitespace()
+}
+
+fn is_modern_alphabet(input: &str) -> bool {
+  let Some(info) = whatlang::detect(input) else {
+    return true;
+  };
+
+  match info.script() {
+    Script::Latin | Script::Greek | Script::Armenian | Script::Cyrillic => true,
+    _ => false,
+  }
 }
 
 pub(crate) fn tokenize_names<'s, I, S>(names: I) -> impl Iterator<Item = impl Iterator<Item = &'s str>>
@@ -79,7 +91,7 @@ where
   I: Iterator<Item = &'s S> + 's,
 {
   tokenize_names(names)
-    .flat_map(|s| s.filter(|s| s.len() >= 3).map(|s| metaphone.encode(&any_ascii(s))))
+    .flat_map(|s| s.filter(|s| is_modern_alphabet(s) && s.chars().count() >= 3).map(|s| metaphone.encode(&any_ascii(s))))
     .filter(|phoneme| phoneme.len() > 2)
 }
 
@@ -90,32 +102,56 @@ where
 {
   tokenize_names(names)
     .map(|s| {
-      s.filter(|name| name.len() >= 2)
+      s.filter(|name| name.chars().count() >= 2)
         .map(|s| {
-          (s, {
-            let phoneme = metaphone.encode(&any_ascii(s));
+          (
+            s,
+            match is_modern_alphabet(s) {
+              true => {
+                let phoneme = metaphone.encode(&any_ascii(s));
 
-            if phoneme.len() < 3 { None } else { Some(phoneme) }
-          })
+                if phoneme.len() < 3 { None } else { Some(phoneme) }
+              }
+
+              false => None,
+            },
+          )
         })
         .collect()
     })
     .collect()
 }
 
-pub(crate) fn name_keys<'s, I, S>(names: I) -> impl Iterator<Item = String>
+pub(crate) fn index_name_keys<'s, I, S>(names: I) -> impl Iterator<Item = String>
 where
   S: Borrow<str> + 's,
   I: Iterator<Item = &'s S> + 's,
 {
   tokenize_names(names)
     .map(|tokens| {
-      let mut tokens = tokens.map(|token| any_ascii(token).to_lowercase()).collect::<Vec<_>>();
+      let mut tokens = tokens
+        .map(|token| if is_modern_alphabet(token) { any_ascii(token).to_lowercase() } else { token.to_lowercase() })
+        .collect::<Vec<_>>();
 
       tokens.sort();
       tokens.join("")
     })
     .filter(|keys| keys.len() > 5)
+}
+
+pub(crate) fn index_name_parts<'s, I, S>(names: I) -> impl Iterator<Item = String>
+where
+  S: Borrow<str> + 's,
+  I: Iterator<Item = &'s S> + 's,
+{
+  tokenize_names(names)
+    .flatten()
+    .filter(|s| s.chars().count() > 1)
+    .map(|s| match is_modern_alphabet(s) {
+      true => any_ascii(s).to_lowercase(),
+      false => s.to_lowercase(),
+    })
+    .unique()
 }
 
 pub(crate) fn name_parts_flat<'s, I, S>(names: I) -> impl Iterator<Item = String>
@@ -125,7 +161,7 @@ where
 {
   tokenize_names(names)
     .flatten()
-    .filter(|s| s.len() > 1)
+    .filter(|s| s.chars().count() > 1)
     .map(|s| any_ascii(s).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
     .unique()
 }
@@ -170,6 +206,22 @@ mod tests {
   use rphonetic::Metaphone;
 
   #[test]
+  fn is_modern_alphabet() {
+    let input = &[
+      ("Nicolas Sarkozy", true),
+      ("Μιχαήλ Στασινόπουλος", true),
+      ("Владимир Путин", true),
+      ("Czas do szkoły", true),
+      ("標準語", false),
+      ("ในหนึ่งสัปดาห์มีเจ็ดวัน", false),
+    ];
+
+    for (text, expected) in input {
+      assert_eq!(super::is_modern_alphabet(text), *expected);
+    }
+  }
+
+  #[test]
   fn tokenize_names() {
     let names = super::tokenize_names(["Barack Hussein Obama"].iter()).map(|n| n.collect::<Vec<_>>()).collect::<Vec<_>>();
 
@@ -192,7 +244,7 @@ mod tests {
 
   #[test]
   fn name_keys() {
-    let names = super::name_keys(["Владимир Путин"].iter()).collect::<Vec<_>>();
+    let names = super::index_name_keys(["Владимир Путин"].iter()).collect::<Vec<_>>();
 
     assert_eq!(names, vec!["putinvladimir"]);
   }

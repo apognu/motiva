@@ -61,7 +61,8 @@ pub async fn match_entities<P: IndexProvider + 'static>(
             let hits = scores
               .into_iter()
               .filter(|(_, score)| score > &query.cutoff)
-              .sorted_by(|(_, lhs), (_, rhs)| lhs.total_cmp(rhs).reverse())
+              // Yente's implementation sorts by descending score, but let's order by (-score, id) so we get stable ordering
+              .sorted_by(|(lhs, lscore), (rhs, rscore)| lscore.total_cmp(rscore).reverse().then_with(|| lhs.id.cmp(&rhs.id)))
               .take(query.limit)
               .map(|(entity, score)| MatchHit {
                 entity,

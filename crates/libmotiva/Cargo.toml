@@ -46,6 +46,7 @@ bumpalo = { version = "3.19.0", features = ["collections"] }
 serde-inline-default = "0.2.3"
 bon = { version = "3.6.5" }
 metrics = "0.24.2"
+whatlang = "0.16.4"
 
 [dev-dependencies]
 criterion = { version = "0.7.0", features = ["async_tokio"] }
