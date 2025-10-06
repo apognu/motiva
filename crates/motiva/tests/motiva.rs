@@ -1,4 +1,4 @@
-use libmotiva::prelude::*;
+use libmotiva::{MockedElasticsearch, prelude::*};
 
 #[tokio::test]
 async fn scoring() {

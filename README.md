@@ -1,5 +1,7 @@
 # Motiva
 
+[![codecov](https://codecov.io/gh/apognu/motiva/graph/badge.svg?token=YVR2HP5E2U)](https://codecov.io/gh/apognu/motiva)
+
 From the Greek _μοτίβα_, meaning _patterns_, or the recognization of similar features between objects.
 
 This is a scoped-down reimplementation of [Yente](https://github.com/opensanctions/yente) and [nomenklatura](https://github.com/opensanctions/nomenklatura), used to match entities against sanctions lists.

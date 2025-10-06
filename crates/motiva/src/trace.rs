@@ -1,3 +1,6 @@
+use std::io::Write;
+
+use metrics_exporter_prometheus::{BuildError, Matcher, PrometheusBuilder, PrometheusHandle};
 use opentelemetry::{KeyValue, global, trace::TracerProvider};
 use opentelemetry_sdk::{
   Resource,
@@ -14,14 +17,28 @@ use opentelemetry_gcloud_trace::GcpCloudTraceExporterBuilder;
 
 use crate::api::config::{self, Config, Env, TracingExporter};
 
-pub async fn init_logger(config: &Config) -> (WorkerGuard, Option<SdkTracerProvider>) {
+pub fn build_prometheus() -> Result<PrometheusHandle, BuildError> {
+  let builder = PrometheusBuilder::new()
+    .add_global_label("service", "motiva")
+    .set_buckets_for_metric(Matcher::Full("motiva_scoring_scores".into()), &[0.2, 0.5, 0.7, 0.9])?
+    .set_buckets_for_metric(Matcher::Full("motiva_scoring_latency_seconds".into()), &[0.000001, 0.000005, 0.000015, 0.0000050, 0.000100])?
+    .set_buckets_for_metric(Matcher::Full("motiva_indexer_latency_seconds".into()), &[0.03, 0.06, 0.1, 0.2, 0.3])?;
+
+  builder.install_recorder()
+}
+
+pub async fn init_tracing(config: &Config, writer: impl Write + Send + 'static) -> (WorkerGuard, Option<SdkTracerProvider>) {
   use tracing_subscriber::{EnvFilter, prelude::*};
 
-  let (appender, logging_guard) = tracing_appender::non_blocking(std::io::stdout());
+  let (appender, logging_guard) = tracing_appender::non_blocking(writer);
 
   let formatter = match config.env {
-    Env::Dev => fmt::layer().compact().with_writer(appender).boxed(),
+    #[cfg(not(test))]
+    Env::Dev => fmt::layer().compact().with_writer(appender).with_ansi(true).boxed(),
     Env::Production => fmt::layer().json().with_writer(appender).flatten_event(true).with_current_span(false).with_span_list(false).boxed(),
+
+    #[cfg(test)]
+    Env::Dev => fmt::layer().compact().with_writer(appender).with_ansi(false).boxed(),
   };
 
   let (tracing_layer, tracing_provider, metrics_layer, metrics_provider, error) = match config.enable_tracing {

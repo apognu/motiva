@@ -1905,6 +1905,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde-inline-default",
+ "serde-json-assert",
  "serde_json",
  "serial_test",
  "strsim 0.11.1",

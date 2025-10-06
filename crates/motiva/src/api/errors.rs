@@ -86,3 +86,44 @@ impl IntoResponse for ApiError {
     (self.0, Json(payload)).into_response()
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use axum::{
+    body::to_bytes,
+    response::{IntoResponse, Response},
+  };
+  use reqwest::StatusCode;
+  use serde_json::json;
+  use serde_json_assert::assert_json_include;
+
+  use crate::api::errors::AppError;
+
+  #[tokio::test]
+  async fn error_to_response() {
+    let expecteds = vec![
+      (AppError::BadRequest, StatusCode::BAD_REQUEST, "bad request"),
+      (AppError::ResourceNotFound, StatusCode::NOT_FOUND, "missing resource"),
+      (AppError::InvalidCredentials, StatusCode::UNAUTHORIZED, "invalid credentials"),
+      (AppError::IndexError("index error".into()), StatusCode::INTERNAL_SERVER_ERROR, "error from indexer: index error"),
+      (AppError::ConfigError("config error".into()), StatusCode::INTERNAL_SERVER_ERROR, "invalid configuration: config error"),
+      (AppError::ServerError, StatusCode::INTERNAL_SERVER_ERROR, "server error, please check your logs for more information"),
+      (AppError::OtherError(anyhow::anyhow!("any error")), StatusCode::INTERNAL_SERVER_ERROR, "any error"),
+    ];
+
+    for expected in expecteds {
+      let resp: Response = expected.0.into_response();
+
+      assert_eq!(resp.status(), expected.1);
+
+      let body: serde_json::Value = serde_json::from_slice(&to_bytes(resp.into_body(), 128).await.unwrap()).unwrap();
+
+      assert_json_include!(
+          actual: body,
+          expected: json!({
+              "message": expected.2
+          })
+      );
+    }
+  }
+}
