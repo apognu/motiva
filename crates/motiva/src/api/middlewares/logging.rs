@@ -51,7 +51,7 @@ where
     time = time,
     remote = ip,
     method = %method,
-    path = uri.to_string(),
+    path = uri.path(),
     status = response.status().as_u16(),
     latency = then.elapsed().as_millis(),
     size = response.size_hint().exact().unwrap_or(0),

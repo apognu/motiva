@@ -14,11 +14,10 @@ use crate::{
 };
 
 #[allow(async_fn_in_trait)]
-pub trait IndexProvider: Clone + Send + Sync {
-  async fn health(&self) -> Result<bool, MotivaError>;
-  async fn get_entity(&self, id: &str) -> Result<EntityHandle, MotivaError>;
-  async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> Result<Vec<Entity>, MotivaError>;
-
+pub trait IndexProvider: Clone + Send + Sync + 'static {
+  fn health(&self) -> impl Future<Output = Result<bool, MotivaError>> + Send;
+  fn get_entity(&self, id: &str) -> impl Future<Output = Result<EntityHandle, MotivaError>> + Send;
+  fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> impl Future<Output = Result<Vec<Entity>, MotivaError>> + Send;
   fn search(&self, catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity, params: &MatchParams) -> impl Future<Output = Result<Vec<Entity>, MotivaError>> + Send;
 }
 

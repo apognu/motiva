@@ -1,6 +1,6 @@
 use axum::{Router, routing::post};
 use axum_test::TestServer;
-use libmotiva::prelude::*;
+use libmotiva::{MockedElasticsearch, prelude::*};
 use serde_json::json;
 
 use crate::api::{AppState, config::Config, handlers};

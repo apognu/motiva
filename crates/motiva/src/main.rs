@@ -14,7 +14,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
   let config = Config::from_env().await?;
-  let (_logger, tracer) = trace::init_logger(&config).await;
+  let (_logger, tracer) = trace::init_tracing(&config, std::io::stdout()).await;
   let app = api::routes(&config).await?;
 
   tracing::info!("listening on {}", config.listen_addr);

@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 
-use libmotiva::prelude::*;
+use libmotiva::{MockedElasticsearch, prelude::*};
 use tokio::runtime::Runtime;
 
 fn name_based(c: &mut Criterion) {

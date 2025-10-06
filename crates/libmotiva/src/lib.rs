@@ -26,11 +26,12 @@ pub mod prelude {
   pub use crate::index::{
     EntityHandle, IndexProvider,
     elastic::{ElasticsearchProvider, builder::EsAuthMethod},
-    mock::MockedElasticsearch,
   };
   pub use crate::matching::{Algorithm, MatchParams, MatchingAlgorithm, logic_v1::LogicV1, name_based::NameBased, name_qualified::NameQualified};
   pub use crate::model::{Entity, HasProperties, SearchEntity};
 }
+
+pub use crate::index::mock::MockedElasticsearch;
 
 #[cfg(test)]
 mod testing {
