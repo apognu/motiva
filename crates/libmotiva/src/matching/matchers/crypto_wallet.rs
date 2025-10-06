@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use bumpalo::Bump;
-use macros::scoring_feature;
+use libmotiva_macros::scoring_feature;
 
 use crate::{
   matching::Feature,

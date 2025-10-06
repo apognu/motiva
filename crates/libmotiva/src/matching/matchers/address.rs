@@ -6,7 +6,7 @@ use bumpalo::{
   collections::{CollectIn, Vec},
 };
 use itertools::Itertools;
-use macros::scoring_feature;
+use libmotiva_macros::scoring_feature;
 
 use crate::{
   matching::{

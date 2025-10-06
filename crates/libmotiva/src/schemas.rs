@@ -8,7 +8,7 @@ use rust_embed::Embed;
 use serde::Deserialize;
 
 #[derive(Embed)]
-#[folder = "../../assets/followthemoney/followthemoney/schema"]
+#[folder = "./assets/followthemoney/followthemoney/schema"]
 struct Schemas;
 
 pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema, RandomState>> = LazyLock::new(|| {

@@ -1,7 +1,15 @@
 [package]
 name = "libmotiva"
+description = "Sanctioned entities matching utilities"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+readme = "README.md"
+
+authors = ["Antoine POPINEAU"]
+homepage = "https://github.com/apognu/motiva"
+repository = "https://github.com/apognu/motiva"
+documentation = "https://docs.rs/libmotiva"
 
 [features]
 benchmarks = []
@@ -12,7 +20,7 @@ harness = false
 required-features = ["benchmarks"]
 
 [dependencies]
-macros = { path = "../macros" }
+libmotiva-macros = "0.1.0"
 
 any_ascii = "0.3.3"
 anyhow = "1.0.98"

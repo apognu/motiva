@@ -1,7 +1,13 @@
 [package]
-name = "macros"
+name = "libmotiva-macros"
+description = "Macros used by the libmotiva crate"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+
+authors = ["Antoine POPINEAU"]
+homepage = "https://github.com/apognu/motiva"
+repository = "https://github.com/apognu/motiva"
 
 [lib]
 proc-macro = true
