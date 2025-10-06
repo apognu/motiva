@@ -1,7 +1,13 @@
 [package]
 name = "motiva"
+description = "Sanctioned entities matching API"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+
+authors = ["Antoine POPINEAU"]
+homepage = "https://github.com/apognu/motiva"
+repository = "https://github.com/apognu/motiva"
 
 [features]
 benchmarks = []
@@ -9,7 +15,6 @@ gcp = ["gcp_auth", "opentelemetry-gcloud-trace"]
 
 [dependencies]
 libmotiva = { path = "../libmotiva" }
-macros = { path = "../macros" }
 
 any_ascii = "0.3.3"
 anyhow = "1.0.98"

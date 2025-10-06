@@ -8,7 +8,7 @@ pub(crate) mod stopwords;
 pub(crate) mod symbols;
 
 #[derive(Embed)]
-#[folder = "../../assets/rigour/resources"]
+#[folder = "./assets/rigour/resources"]
 struct Dictionaries;
 
 pub(crate) fn replace<R>(aho: &AhoCorasick, replacements: &[R], haystack: &str) -> String

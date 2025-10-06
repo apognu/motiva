@@ -1,6 +1,6 @@
-[submodule "assets/followthemoney"]
-	path = assets/followthemoney
-	url = https://github.com/alephdata/followthemoney.git
-[submodule "assets/rigour"]
-	path = assets/rigour
+[submodule "crates/libmotiva/assets/followthemoney"]
+	path = crates/libmotiva/assets/followthemoney
+	url = https://github.com/opensanctions/followthemoney
+[submodule "crates/libmotiva/assets/rigour"]
+	path = crates/libmotiva/assets/rigour
 	url = https://github.com/opensanctions/rigour

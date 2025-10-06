@@ -5,7 +5,7 @@ use bumpalo::{
   collections::{CollectIn, Vec},
 };
 use compact_str::CompactString;
-use macros::scoring_feature;
+use libmotiva_macros::scoring_feature;
 use tracing::instrument;
 
 use crate::{

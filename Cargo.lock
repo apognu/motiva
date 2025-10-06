@@ -1679,8 +1679,8 @@ dependencies = [
  "itertools 0.14.0",
  "jiff",
  "lei",
+ "libmotiva-macros 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "luhn",
- "macros",
  "metrics",
  "opentelemetry",
  "pyo3",
@@ -1702,6 +1702,28 @@ dependencies = [
  "unicode-normalization",
  "validator",
  "whatlang",
+]
+
+[[package]]
+name = "libmotiva-macros"
+version = "0.1.0"
+dependencies = [
+ "deluxe",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
+]
+
+[[package]]
+name = "libmotiva-macros"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac7a5f5fb6b7f3c64ee154d44c8285ee011434d4aceaf7144280782634ab9750"
+dependencies = [
+ "deluxe",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -1745,16 +1767,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d10b831402a3b10e018c8bc7f0ec3344a67d0725919cbaf393accb9baf8700b"
 dependencies = [
  "digits_iterator",
-]
-
-[[package]]
-name = "macros"
-version = "0.1.0"
-dependencies = [
- "deluxe",
- "proc-macro2",
- "quote",
- "syn 2.0.104",
 ]
 
 [[package]]
@@ -1893,7 +1905,6 @@ dependencies = [
  "itertools 0.14.0",
  "jiff",
  "libmotiva",
- "macros",
  "metrics",
  "metrics-exporter-prometheus",
  "mimalloc",
