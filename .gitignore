@@ -1,7 +1,4 @@
 /target
 /poetry.lock
 
-/assets
-/crates/libmotiva/assets
-
 .DS_Store
