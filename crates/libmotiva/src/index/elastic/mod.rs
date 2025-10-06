@@ -13,6 +13,7 @@ use crate::{
   schemas::SCHEMAS,
 };
 
+/// Main index provider using Elasticsearch
 #[derive(Clone)]
 pub struct ElasticsearchProvider {
   pub es: Elasticsearch,

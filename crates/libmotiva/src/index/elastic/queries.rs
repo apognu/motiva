@@ -27,6 +27,9 @@ use crate::{
 };
 
 impl IndexProvider for ElasticsearchProvider {
+  /// Whether the Elasticsearch cluster is up and healthy.
+  ///
+  /// The cluster will only be considered healthy if the index is `green` or `yellow`.
   #[instrument(skip_all)]
   async fn health(&self) -> Result<bool, MotivaError> {
     let Ok(health) = self
@@ -50,6 +53,7 @@ impl IndexProvider for ElasticsearchProvider {
     }
   }
 
+  /// Search for candidate entities matching input parameters.
   #[instrument(skip_all)]
   async fn search(&self, catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, MotivaError> {
     let query = build_query(catalog, entity, params).await?;
@@ -91,6 +95,11 @@ impl IndexProvider for ElasticsearchProvider {
     }
   }
 
+  /// Get an entity from its ID.
+  ///
+  /// This will only return the requested entity, without recursing to nested
+  /// entities. This has the effect that most links will only be represented
+  /// with their IDs, and not their actual data.
   #[instrument(skip_all)]
   async fn get_entity(&self, id: &str) -> Result<EntityHandle, MotivaError> {
     let query = json!({
@@ -138,6 +147,7 @@ impl IndexProvider for ElasticsearchProvider {
     }
   }
 
+  /// Get entities related to an entity.
   #[instrument(skip_all)]
   async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> Result<Vec<Entity>, MotivaError> {
     let mut shoulds = vec![json!({ "ids": { "values": values } })];

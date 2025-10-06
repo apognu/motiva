@@ -12,6 +12,7 @@ use crate::{
   model::{Entity, SearchEntity},
 };
 
+#[doc(hidden)]
 #[derive(Clone, Builder, Default)]
 pub struct MockedElasticsearch {
   healthy: Option<bool>,

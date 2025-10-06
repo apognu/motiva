@@ -17,8 +17,11 @@ use crate::{
   scoring,
 };
 
+/// Whether to fetch related entities.
 pub enum GetEntityBehavior {
+  /// Only fetch the requested entity
   RootOnly,
+  /// Recursive into related entities and join them to the requested one.
   FetchNestedEntity,
 }
 
@@ -93,10 +96,16 @@ impl<P: IndexProvider> Motiva<P> {
     self.index.health().await
   }
 
+  /// Perform an entity search and return the candidates.
   pub async fn search(&self, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, MotivaError> {
     self.index.search(&self.catalog, entity, params).await
   }
 
+  /// Get an entity from its ID.
+  ///
+  /// The `behavior` parameter defines whether to recurse into related entities
+  /// to fetch their details. It returns an [`EntityHandle`], that can either be
+  /// the entity, or the ID of another entity.
   pub async fn get_entity(&self, id: &str, behavior: GetEntityBehavior) -> Result<EntityHandle, MotivaError> {
     match self.index.get_entity(id).await? {
       EntityHandle::Referent(id) => Ok(EntityHandle::Referent(id)),
@@ -184,6 +193,7 @@ impl<P: IndexProvider> Motiva<P> {
     }
   }
 
+  /// Refresh the local catalog from upstream.
   pub async fn refresh_catalog(&self) {
     match fetch_catalog(&self.yente.as_ref().map(|y| format!("{y}/catalog"))).await {
       Ok(catalog) => {
@@ -194,6 +204,7 @@ impl<P: IndexProvider> Motiva<P> {
     }
   }
 
+  /// Perform the scoring of all candidates against the search parameters.
   pub fn score<A: MatchingAlgorithm>(&self, entity: &SearchEntity, hits: Vec<Entity>, cutoff: f64) -> anyhow::Result<Vec<(Entity, f64)>> {
     scoring::score::<A>(entity, hits, cutoff)
   }
