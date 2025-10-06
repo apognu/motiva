@@ -1664,7 +1664,7 @@ dependencies = [
 
 [[package]]
 name = "libmotiva"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ahash",
  "aho-corasick",
