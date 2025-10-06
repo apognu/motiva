@@ -21,7 +21,13 @@ pub trait IndexProvider: Clone + Send + Sync + 'static {
   fn search(&self, catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity, params: &MatchParams) -> impl Future<Output = Result<Vec<Entity>, MotivaError>> + Send;
 }
 
+/// Reference to an entity
+///
+/// If an entity changes IDs over time, it will not be found at previous IDs.
+/// Instead, a `Referent` will be returned with the entity's canonical ID.
 pub enum EntityHandle {
+  /// The data of the actual entity that was requested
   Nominal(Box<Entity>),
+  /// The canonical ID of the requested entity that should be requested
   Referent(String),
 }

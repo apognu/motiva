@@ -70,6 +70,7 @@ impl Schema {
   }
 }
 
+/// Search terms
 #[derive(Clone, Debug, Deserialize, Serialize, Validate)]
 pub struct SearchEntity {
   pub schema: Schema,
@@ -78,7 +79,7 @@ pub struct SearchEntity {
 
   // Those attributes will be precomputed when receiving the request to skip the computation for every matching entity.
   #[serde(skip)]
-  pub name_parts: HashSet<String>,
+  pub(crate) name_parts: HashSet<String>,
 }
 
 impl SearchEntity {
@@ -134,6 +135,7 @@ impl SearchEntity {
   }
 }
 
+/// An Entity returned from the index
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(bound(deserialize = "'de: 'static"))]
 pub struct Entity {

@@ -1,4 +1,5 @@
 #![allow(unexpected_cfgs)]
+#![doc = include_str!("../README.md")]
 
 mod catalog;
 mod error;
@@ -19,6 +20,7 @@ pub(crate) fn init() {
   let _ = *crate::matching::replacers::ordinals::ORDINALS;
 }
 
+/// Module including most features needed to use the library.
 pub mod prelude {
   pub use crate::motiva::{GetEntityBehavior, Motiva};
 
@@ -27,10 +29,14 @@ pub mod prelude {
     EntityHandle, IndexProvider,
     elastic::{ElasticsearchProvider, builder::EsAuthMethod},
   };
-  pub use crate::matching::{Algorithm, MatchParams, MatchingAlgorithm, logic_v1::LogicV1, name_based::NameBased, name_qualified::NameQualified};
+  pub use crate::matching::{Algorithm, Feature, MatchParams, MatchingAlgorithm, logic_v1::LogicV1, name_based::NameBased, name_qualified::NameQualified};
   pub use crate::model::{Entity, HasProperties, SearchEntity};
 }
 
+#[doc(inline)]
+pub use self::prelude::*;
+
+#[doc(hidden)]
 pub use crate::index::mock::MockedElasticsearch;
 
 #[cfg(test)]

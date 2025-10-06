@@ -19,6 +19,7 @@ use crate::matching::{
   validators::{validate_bic, validate_imo_mmsi, validate_inn, validate_isin, validate_ogrn},
 };
 
+/// Default matching algorithm
 pub struct LogicV1;
 
 impl MatchingAlgorithm for LogicV1 {

@@ -22,13 +22,19 @@ impl ElasticsearchProvider {
   }
 }
 
+/// Authentication method to Elasticsearch
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum EsAuthMethod {
+  /// Unauthenticated
   #[default]
   None,
+  /// Basic authentication (username and password)
   Basic(String, String),
+  /// Bearer token
   Bearer(String),
+  /// API key (client ID and API key)
   ApiKey(String, String),
+  /// API key
   EncodedApiKey(String),
 }
 

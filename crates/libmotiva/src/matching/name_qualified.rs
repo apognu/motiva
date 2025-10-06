@@ -15,6 +15,7 @@ use crate::{
   model::{Entity, SearchEntity},
 };
 
+/// Simple matching algorithm using name similarity, and penalty for disjoint attributes
 pub struct NameQualified;
 
 impl MatchingAlgorithm for NameQualified {

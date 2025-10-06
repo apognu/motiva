@@ -10,6 +10,7 @@ use crate::{
   model::{Entity, SearchEntity},
 };
 
+/// Simple matching algorithm using name similarity
 pub struct NameBased;
 
 impl MatchingAlgorithm for NameBased {
