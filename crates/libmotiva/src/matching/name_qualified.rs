@@ -25,6 +25,10 @@ impl MatchingAlgorithm for NameQualified {
 
   #[instrument(name = "score_hit", skip_all, fields(algorithm = Self::name(), entity_id = rhs.id))]
   fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, cutoff: f64) -> (f64, Vec<(&'static str, f64)>) {
+    if !lhs.schema.is_a(rhs.schema.as_str()) {
+      return (0.0, vec![]);
+    }
+
     let features: &[(&dyn Feature, f64)] = &[
       (&SoundexNameParts, 0.5),
       (&JaroNameParts, 0.5),

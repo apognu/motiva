@@ -1,8 +1,13 @@
-use std::sync::{Arc, Mutex};
+use std::{
+  sync::{Arc, Mutex},
+  time::Duration,
+};
 
 use axum_test::TestServer;
 use libmotiva::{MockedElasticsearch, prelude::*};
-use reqwest::header::AUTHORIZATION;
+use nix::{sys::signal, unistd::Pid};
+use reqwest::{StatusCode, header::AUTHORIZATION};
+use rusty_fork::rusty_fork_test;
 
 use crate::{
   api::{self, AppState, config::Config},
@@ -58,52 +63,105 @@ async fn api_valid_credentials() {
   assert_eq!(response.status_code(), 415);
 }
 
-#[tokio::test]
-async fn logging() {
-  let index = MockedElasticsearch::builder().healthy(true).build();
-  let buf = Arc::new(Mutex::new(Vec::default()));
+// The following tests need to be run into a fork because the tracing framework
+// sets up global state that cannot be duplicated.
+rusty_fork_test! {
+    #[test]
+    fn server() {
+        let rt  = tokio::runtime::Runtime::new().unwrap();
 
-  let state = AppState {
-    config: Config {
-      enable_tracing: true,
-      ..Default::default()
-    },
-    prometheus: None,
-    motiva: Motiva::new(index, None).await.unwrap(),
-  };
+        rt.block_on(async {
+            let config = Config {
+                index_url: "http://localhost:9200".into(),
+                listen_addr: "0.0.0.0:8080".into(),
+                ..Default::default()
+            };
 
-  let (_guard, _) = init_tracing(&state.config, VecLogWriter::new(Arc::clone(&buf))).await;
+            tokio::task::spawn(async {
+                crate::run(config).await.unwrap();
+            });
 
-  let app = api::router(state);
-  let server = TestServer::new(app).unwrap();
-  let _ = server.post("/match/default").add_header("traceparent", "01-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01").await;
+            tokio::select! {
+                response = async {
+                    loop {
+                        match reqwest::get("http://localhost:8080/healthz").await {
+                            Ok(response) => return response,
+                            Err(_) => continue,
+                        };
+                    }
+                } => {
+                    assert_eq!(response.status(), StatusCode::OK);
+                }
 
-  let lines = buf.lock().unwrap();
+                _ = tokio::time::sleep(Duration::from_secs(5)) => {
+                    panic!("server did not respond within deadline");
+                }
+            };
 
-  assert_eq!(lines.len(), 1);
-  assert!(lines[0].contains("POST http://localhost/match/default"));
-  assert!(lines[0].contains("request_id="));
-  assert!(lines[0].contains("trace=0af7651916cd43dd8448eb211c80319c"));
-  assert!(lines[0].contains(r#"remote="-" method=POST path="/match/default" status=415"#));
-}
+            signal::kill(Pid::from_raw(std::process::id() as i32), Some(signal::Signal::SIGINT)).unwrap();
 
-#[tokio::test]
-async fn metrics() {
-  let index = MockedElasticsearch::builder().healthy(true).build();
+            assert!(matches!(reqwest::get("http://localhost:8080/healthz").await, Err(_)));
+        });
+    }
 
-  let state = AppState {
-    config: Config {
-      enable_prometheus: true,
-      ..Default::default()
-    },
-    prometheus: Some(build_prometheus().unwrap()),
-    motiva: Motiva::new(index, None).await.unwrap(),
-  };
+    #[test]
+    fn logging() {
+        let rt  = tokio::runtime::Runtime::new().unwrap();
 
-  let app = api::router(state);
-  let server = TestServer::new(app).unwrap();
-  let _ = server.post("/match/default").await;
-  let resp = server.get("/metrics").await;
+        rt.block_on(async {
+            let index = MockedElasticsearch::builder().healthy(true).build();
 
-  assert!(resp.text().contains(r#"http_requests_total{service="motiva",status="415"}"#))
+            let state = AppState {
+                config: Config {
+                    enable_tracing: true,
+                    ..Default::default()
+                },
+                prometheus: None,
+                motiva: Motiva::new(index, None).await.unwrap(),
+            };
+
+            let buf = Arc::new(Mutex::new(Vec::default()));
+            let (writer, wait) = VecLogWriter::new(Arc::clone(&buf));
+            let (_guard, _) = init_tracing(&state.config, writer).await;
+
+            let app = api::router(state);
+            let server = TestServer::new(app).unwrap();
+            let _ = server.post("/match/default").add_header("traceparent", "01-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01").await;
+
+            wait.recv().unwrap();
+
+            let lines = buf.lock().unwrap().clone();
+
+            assert_eq!(lines.len(), 1);
+            assert!(lines[0].contains("POST http://localhost/match/default"));
+            assert!(lines[0].contains("request_id="));
+            assert!(lines[0].contains("trace=0af7651916cd43dd8448eb211c80319c"));
+            assert!(lines[0].contains(r#"remote="-" method=POST path="/match/default" status=415"#));
+        });
+    }
+
+    #[test]
+    fn metrics() {
+        let rt  = tokio::runtime::Runtime::new().unwrap();
+
+        rt.block_on(async {
+            let index = MockedElasticsearch::builder().healthy(true).build();
+
+            let state = AppState {
+                config: Config {
+                enable_prometheus: true,
+                ..Default::default()
+                },
+                prometheus: Some(build_prometheus().unwrap()),
+                motiva: Motiva::new(index, None).await.unwrap(),
+            };
+
+            let app = api::router(state);
+            let server = TestServer::new(app).unwrap();
+            let _ = server.post("/match/default").await;
+            let resp = server.get("/metrics").await;
+
+            assert!(resp.text().contains(r#"http_requests_total{service="motiva",status="415"}"#))
+        });
+    }
 }

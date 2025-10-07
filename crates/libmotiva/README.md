@@ -6,7 +6,6 @@ From the Greek _μοτίβα_, meaning _patterns_, or the recognization of simil
 [![Documentation](https://docs.rs/libmotiva/badge.svg)](https://docs.rs/libmotiva)
 [![Coverage](https://codecov.io/gh/apognu/motiva/graph/badge.svg?token=YVR2HP5E2U)](https://codecov.io/gh/apognu/motiva)
 
-
 This is a scoped-down reimplementation of [Yente](https://github.com/opensanctions/yente) and [nomenklatura](https://github.com/opensanctions/nomenklatura), used to match entities against sanctions lists.
 
 Most of the algorithms are taken directly from those repositories, and simply reimplemented, and the credit should go to the Open Sanctions's team.
@@ -46,6 +45,7 @@ Motiva is configured via environment variables. The following variables are supp
 | --------------------- | -------------------------------------------------------------------------------------- | ----------------------- |
 | `ENV`                 | Environment (`dev` or `production`)                                                    | `dev`                   |
 | `LISTEN_ADDR`         | Address to bind the API server                                                         | `0.0.0.0:8000`          |
+| `API_KEY`             | Bearer token used to authenticate requests                                             | _(none)_                |
 | `INDEX_URL`           | Elasticsearch URL                                                                      | `http://localhost:9200` |
 | `INDEX_AUTH_METHOD`   | Elasticsearch authentication (`none`, `basic`, `bearer`, `api_key`, `encoded_api_key`) | `none`                  |
 | `INDEX_CLIENT_ID`     | Elasticsearch client ID (required for `basic` or `api_key`)                            | _(none)_                |
