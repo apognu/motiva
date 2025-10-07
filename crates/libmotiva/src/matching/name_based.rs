@@ -20,6 +20,10 @@ impl MatchingAlgorithm for NameBased {
 
   #[instrument(name = "score_hit", skip_all)]
   fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, cutoff: f64) -> (f64, Vec<(&'static str, f64)>) {
+    if !lhs.schema.is_a(rhs.schema.as_str()) {
+      return (0.0, vec![]);
+    }
+
     let features: &[(&dyn Feature, f64)] = &[(&SoundexNameParts, 0.5), (&JaroNameParts, 0.5)];
     let mut results = Vec::with_capacity(features.len());
     let score = run_features(bump, lhs, rhs, 0.0, cutoff, features, &mut results);

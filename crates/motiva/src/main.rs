@@ -14,12 +14,16 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
   let config = Config::from_env().await?;
+
+  run(config).await
+}
+
+async fn run(config: Config) -> anyhow::Result<()> {
   let (_logger, tracer) = trace::init_tracing(&config, std::io::stdout()).await;
   let app = api::routes(&config).await?;
-
-  tracing::info!("listening on {}", config.listen_addr);
-
   let listener = tokio::net::TcpListener::bind(&config.listen_addr).await.expect("could not create listener");
+
+  tracing::info!("listening on {}", listener.local_addr()?.to_string());
 
   axum::serve(listener, app).with_graceful_shutdown(shutdown()).await.expect("could not start app");
 

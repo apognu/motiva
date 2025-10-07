@@ -1,5 +1,8 @@
 mod matchers;
 
+#[cfg(test)]
+mod tests;
+
 use bumpalo::Bump;
 use jiff::Timestamp;
 use serde::Deserialize;

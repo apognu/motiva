@@ -1,20 +1,27 @@
 use std::{
   io,
-  sync::{Arc, Mutex},
+  sync::{Arc, Mutex, mpsc},
 };
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub(super) struct VecLogWriter {
   buffer: Arc<Mutex<Vec<u8>>>,
   lines: Arc<Mutex<Vec<String>>>,
+  done: mpsc::Sender<()>,
 }
 
 impl VecLogWriter {
-  pub(super) fn new(lines: Arc<Mutex<Vec<String>>>) -> Self {
-    Self {
-      buffer: Arc::new(Mutex::new(Vec::new())),
-      lines,
-    }
+  pub(super) fn new(lines: Arc<Mutex<Vec<String>>>) -> (Self, mpsc::Receiver<()>) {
+    let (tx, rx) = mpsc::channel();
+
+    (
+      Self {
+        buffer: Arc::new(Mutex::new(Vec::new())),
+        lines,
+        done: tx,
+      },
+      rx,
+    )
   }
 }
 
@@ -31,6 +38,7 @@ impl io::Write for VecLogWriter {
       println!("{}", line);
 
       self.lines.lock().unwrap().push(line);
+      self.done.send(()).unwrap();
     }
 
     Ok(buf.len())
