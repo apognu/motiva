@@ -51,7 +51,7 @@ mod testing {
     super::init();
 
     assert!(SCHEMAS.len() > 50);
-    assert!(ORG_TYPES.1.len() > 1000);
+    assert!(ORG_TYPES.1.len() > 250);
     assert!(ORDINALS.1.len() > 4000);
     assert!(ADDRESS_FORMS.1.len() > 300);
 

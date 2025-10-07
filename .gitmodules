@@ -4,3 +4,6 @@
 [submodule "crates/libmotiva/assets/rigour"]
 	path = crates/libmotiva/assets/rigour
 	url = https://github.com/opensanctions/rigour
+[submodule "crates/libmotiva/assets/fingerprints"]
+	path = crates/libmotiva/assets/fingerprints
+	url = https://github.com/opensanctions/fingerprints

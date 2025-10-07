@@ -11,6 +11,10 @@ pub(crate) mod symbols;
 #[folder = "./assets/rigour/resources"]
 struct Dictionaries;
 
+#[derive(Embed)]
+#[folder = "./assets/fingerprints/fingerprints"]
+struct Fingerprints;
+
 pub(crate) fn replace<R>(aho: &AhoCorasick, replacements: &[R], haystack: &str) -> String
 where
   R: AsRef<str>,

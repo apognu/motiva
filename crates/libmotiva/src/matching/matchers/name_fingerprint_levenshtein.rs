@@ -101,7 +101,7 @@ mod tests {
   fn fingerprint_name() {
     assert_eq!(
       super::fingerprint_name("ACME Inc. Comandita por Acciones General Partnership Anything Free Zone Co. andelslag"),
-      "ACME inc s.c.a.  Partnership Anything fzco anl"
+      "ACME Inc. sca  Partnership Anything Free Zone Co. anl"
     );
   }
 
