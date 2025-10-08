@@ -21,6 +21,8 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, cut
     let _enter = span.enter();
 
     if !hit.schema.is_a(entity.schema.as_str()) {
+      tracing::debug!(score = 0.0, "incomparable schemas, skipping");
+
       return (hit, 0.0);
     }
 
@@ -44,4 +46,21 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, cut
   results.extend(scores);
 
   Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+  use float_cmp::approx_eq;
+
+  use crate::{Entity, LogicV1, SearchEntity};
+
+  #[test]
+  fn incomparable_schemas() {
+    let lhs = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
+    let rhs = Entity::builder("Company").properties(&[("name", &["Vladimir Putin"])]).build();
+    let result = super::score::<LogicV1>(&lhs, vec![rhs], 0.0).unwrap();
+
+    assert_eq!(result.len(), 1);
+    assert!(approx_eq!(f64, result[0].1, 0.0));
+  }
 }

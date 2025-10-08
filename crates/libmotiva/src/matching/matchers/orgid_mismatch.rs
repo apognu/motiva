@@ -33,8 +33,8 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     return 0.0;
   }
 
-  let lhs = extractors::clean_names(lhs.iter()).collect_in::<Vec<_>>(bump);
-  let rhs = extractors::clean_names(rhs.iter()).collect_in::<Vec<_>>(bump);
+  let lhs = extractors::normalize_identifiers(lhs.iter()).collect_in::<Vec<_>>(bump);
+  let rhs = extractors::normalize_identifiers(rhs.iter()).collect_in::<Vec<_>>(bump);
 
   if lhs.is_empty() || rhs.is_empty() {
     return 0.0;

@@ -6,9 +6,11 @@ use regex::Regex;
 use rphonetic::{Encoder, Metaphone};
 use whatlang::Script;
 
+const NAME_SEPARATORS: &[char] = &['-'];
+
 // TODO: better support for separators
 fn is_name_separator(c: char) -> bool {
-  ['-', '.'].contains(&c) || c.is_whitespace()
+  NAME_SEPARATORS.contains(&c) || c.is_whitespace()
 }
 
 fn is_modern_alphabet(input: &str) -> bool {
@@ -34,7 +36,25 @@ where
   I: Iterator<Item = &'s S> + Clone + 's,
 {
   names
-    .map(|s| any_ascii(s.borrow()).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
+    .map(|s| {
+      any_ascii(s.borrow())
+        .to_lowercase()
+        .split(is_name_separator)
+        .map(|s| s.chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
+        .join(" ")
+    })
+    .unique()
+}
+
+#[inline(always)]
+pub(crate) fn normalize_identifiers<'s, I, S>(ids: I) -> impl Iterator<Item = String> + Clone
+where
+  S: Borrow<str> + 's,
+  I: Iterator<Item = &'s S> + Clone + 's,
+{
+  ids
+    .map(|s| any_ascii(s.borrow()).chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_uppercase())
+    .filter(|s| s.len() >= 2)
     .unique()
 }
 
@@ -216,6 +236,16 @@ mod tests {
     for (text, expected) in input {
       assert_eq!(super::is_modern_alphabet(text), *expected);
     }
+  }
+
+  #[test]
+  fn clean_names() {
+    assert_eq!(super::clean_names(vec!["Bob-a O'Brien#"].iter()).collect::<Vec<_>>(), vec!["bob a obrien"]);
+  }
+
+  #[test]
+  fn normalize_identifiers() {
+    assert_eq!(super::normalize_identifiers(vec!["FR12-34/uc12.3 (d)"].iter()).collect::<Vec<_>>(), vec!["FR1234UC123D"]);
   }
 
   #[test]
