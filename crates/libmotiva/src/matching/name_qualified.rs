@@ -25,7 +25,7 @@ impl MatchingAlgorithm for NameQualified {
 
   #[instrument(name = "score_hit", skip_all, fields(algorithm = Self::name(), entity_id = rhs.id))]
   fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, cutoff: f64) -> (f64, Vec<(&'static str, f64)>) {
-    if !lhs.schema.is_a(rhs.schema.as_str()) {
+    if !rhs.schema.is_a(lhs.schema.as_str()) {
       return (0.0, vec![]);
     }
 

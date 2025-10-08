@@ -29,7 +29,7 @@ impl MatchingAlgorithm for LogicV1 {
 
   #[instrument(name = "score_hit", skip_all, fields(entity_id = rhs.id))]
   fn score(bump: &Bump, lhs: &crate::model::SearchEntity, rhs: &crate::model::Entity, cutoff: f64) -> (f64, Vec<(&'static str, f64)>) {
-    if !lhs.schema.is_a(rhs.schema.as_str()) {
+    if !rhs.schema.is_a(lhs.schema.as_str()) {
       return (0.0, vec![]);
     }
 
