@@ -20,7 +20,7 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, cut
   let scores = hits.into_iter().map(|mut hit| {
     let _enter = span.enter();
 
-    if !entity.schema.is_a(hit.schema.as_str()) {
+    if !hit.schema.is_a(entity.schema.as_str()) {
       return (hit, 0.0);
     }
 
