@@ -6,6 +6,8 @@ use regex::Regex;
 use rphonetic::{Encoder, Metaphone};
 use whatlang::Script;
 
+use crate::matching::latinize::latinize;
+
 const NAME_SEPARATORS: &[char] = &['-'];
 
 // TODO: better support for separators
@@ -37,7 +39,7 @@ where
 {
   names
     .map(|s| {
-      any_ascii(s.borrow())
+      latinize(s.borrow())
         .to_lowercase()
         .split(is_name_separator)
         .map(|s| s.chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
@@ -53,7 +55,7 @@ where
   I: Iterator<Item = &'s S> + Clone + 's,
 {
   ids
-    .map(|s| any_ascii(s.borrow()).chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_uppercase())
+    .map(|s| latinize(s.borrow()).chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_uppercase())
     .filter(|s| s.len() >= 2)
     .unique()
 }
@@ -77,7 +79,7 @@ where
 {
   names
     .map(|s| {
-      any_ascii(s.borrow())
+      latinize(s.borrow())
         .to_lowercase()
         .chars()
         .map(|c| match c {
@@ -97,7 +99,7 @@ where
 {
   names
     .flat_map(|s| s.borrow().split_whitespace())
-    .map(|s| any_ascii(s).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
+    .map(|s| latinize(s).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
     .filter(|s| s.len() >= 2)
     .unique()
 }
@@ -119,20 +121,13 @@ where
 {
   tokenize_names(names)
     .map(|s| {
-      s.filter(|name| name.chars().count() >= 2)
+      s.filter(|name| name.len() >= 2)
         .map(|s| {
-          (
-            s,
-            match is_modern_alphabet(s) {
-              true => {
-                let phoneme = metaphone.encode(&any_ascii(s));
+          (s, {
+            let phoneme = metaphone.encode(s);
 
-                if phoneme.len() < 3 { None } else { Some(phoneme) }
-              }
-
-              false => None,
-            },
-          )
+            if phoneme.len() < 3 { None } else { Some(phoneme) }
+          })
         })
         .collect()
     })
@@ -147,7 +142,7 @@ where
   tokenize_names(names)
     .map(|tokens| {
       let mut tokens = tokens
-        .map(|token| if is_modern_alphabet(token) { any_ascii(token).to_lowercase() } else { token.to_lowercase() })
+        .map(|token| if is_modern_alphabet(token) { latinize(token).to_lowercase() } else { token.to_lowercase() })
         .collect::<Vec<_>>();
 
       tokens.sort();
@@ -165,7 +160,7 @@ where
     .flatten()
     .filter(|s| s.chars().count() > 1)
     .map(|s| match is_modern_alphabet(s) {
-      true => any_ascii(s).to_lowercase(),
+      true => latinize(s).to_lowercase(),
       false => s.to_lowercase(),
     })
     .unique()
@@ -179,7 +174,7 @@ where
   tokenize_names(names)
     .flatten()
     .filter(|s| s.chars().count() > 1)
-    .map(|s| any_ascii(s).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
+    .map(|s| latinize(s).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
     .unique()
 }
 
@@ -190,7 +185,7 @@ where
 {
   tokenize_names(names)
     .map(|s| {
-      s.map(|s| any_ascii(s).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
+      s.map(|s| latinize(s).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
         .collect::<Vec<_>>()
     })
     .unique()

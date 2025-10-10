@@ -1,6 +1,8 @@
 use bumpalo::Bump;
+
 use metrics::histogram;
 use opentelemetry::global;
+
 use tokio::time::Instant;
 use tracing::{Span, instrument};
 
@@ -18,6 +20,7 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, cut
   let then = Instant::now();
 
   let scores = hits.into_iter().map(|mut hit| {
+    let then = Instant::now();
     let _enter = span.enter();
 
     if !hit.schema.is_a(entity.schema.as_str()) {
@@ -30,7 +33,7 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, cut
 
     hit.features = features.into_iter().filter(|(_, score)| score > &0.0).collect::<Vec<(_, _)>>();
 
-    tracing::debug!(score = score, "computed score");
+    tracing::debug!(score = score, latency = ?then.elapsed(), "computed score");
 
     bump.reset();
 

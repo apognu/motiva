@@ -3,6 +3,8 @@ mod matchers;
 #[cfg(test)]
 mod tests;
 
+use std::time::Instant;
+
 use bumpalo::Bump;
 use jiff::Timestamp;
 use serde::Deserialize;
@@ -12,6 +14,7 @@ use crate::model::{Entity, SearchEntity};
 
 pub(crate) mod comparers;
 pub(crate) mod extractors;
+pub(crate) mod latinize;
 pub(crate) mod logic_v1;
 pub(crate) mod name_based;
 pub(crate) mod name_qualified;
@@ -61,11 +64,12 @@ fn run_features<'e>(bump: &Bump, lhs: &'e SearchEntity, rhs: &'e Entity, cutoff:
       return score;
     }
 
+    let then = Instant::now();
     let feature_score = func.score_feature(bump, lhs, rhs);
 
     results.push((func.name(), feature_score));
 
-    tracing::debug!(feature = func.name(), score = feature_score, "computed feature score");
+    tracing::debug!(feature = func.name(), score = feature_score, latency = ?then.elapsed(), "computed feature score");
 
     score + (feature_score * weight)
   })

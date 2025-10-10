@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use bumpalo::Bump;
 use tracing::instrument;
 
@@ -73,19 +75,20 @@ impl MatchingAlgorithm for LogicV1 {
       (&NumbersMismatch, -0.1),
     ];
 
-    let mut results = Vec::with_capacity(features.len());
+    let mut results = Vec::with_capacity(features.len() + qualifiers.len());
     let mut score = 0.0f64;
 
     for (func, weight) in features {
+      let then = Instant::now();
       let feature_score = func.score_feature(bump, lhs, rhs);
 
       results.push((func.name(), feature_score));
 
-      tracing::debug!(feature = func.name(), score = feature_score, "computed feature score");
-
       if (feature_score * weight) > score {
         score = feature_score * weight;
       }
+
+      tracing::debug!(feature = func.name(), score = feature_score, latency = ?then.elapsed(), "computed feature score");
     }
 
     let score = run_features(bump, lhs, rhs, cutoff, score, qualifiers, &mut results);

@@ -12,6 +12,7 @@ repository = "https://github.com/apognu/motiva"
 documentation = "https://docs.rs/libmotiva"
 
 [features]
+icu = ["rust_icu_utrans", "rust_icu_sys"]
 benchmarks = []
 
 [[bench]]
@@ -55,6 +56,9 @@ serde-inline-default = "0.2.3"
 bon = { version = "3.6.5" }
 metrics = "0.24.2"
 whatlang = "0.16.4"
+
+rust_icu_sys = { version = "5.1.0", optional = true }
+rust_icu_utrans = { version = "5.1.0", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.7.0", features = ["async_tokio"] }
