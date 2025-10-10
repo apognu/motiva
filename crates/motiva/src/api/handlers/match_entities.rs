@@ -57,6 +57,7 @@ pub async fn match_entities<P: IndexProvider + 'static>(
         match scores {
           Ok(scores) => {
             let pre_cutoff_count = scores.len();
+            let post_threshold_count = scores.iter().filter(|(_, score)| score >= &query.threshold).count();
 
             let hits = scores
               .into_iter()
@@ -78,7 +79,10 @@ pub async fn match_entities<P: IndexProvider + 'static>(
               id,
               MatchResults {
                 status: 200,
-                total: Some(MatchTotal { relation: "eq", value: hits.len() }),
+                total: Some(MatchTotal {
+                  relation: "eq",
+                  value: post_threshold_count,
+                }),
                 results: hits,
               },
             )
