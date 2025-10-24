@@ -70,7 +70,7 @@ You might want to use `CATALOG_URL` if you customized Yente's catalog in any way
 
 Right now, there are _no configuration_ possible on this project, and it will remain that way until it is in a good enough shape to be used widely.
 
-```
+```sh
 $ cargo run --release
 $ echo '{"queries":{"test":{"schema":"Person","properties":{"name":["Vladimir Putin"]}}}}' | curl -XPOST 127.0.0.1:8080/match/sanctions -H content-type:application/json -d @-
 ```
@@ -81,7 +81,7 @@ $ echo '{"queries":{"test":{"schema":"Person","properties":{"name":["Vladimir Pu
 
 To run the tests, a Python environment must be set up with the required dependencies (this include `libicu`). You can install it in a virtualenv by using the Poetry file at the root of this repository and (manually) setting the `PYTHONPATH`:
 
-```
+```sh
 $ poetry install
 $ export PYTHONPATH="$(pwd).venv/lib/python3.13/site-packages"
 $ cargo test

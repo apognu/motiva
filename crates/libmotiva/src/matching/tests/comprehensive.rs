@@ -6,7 +6,7 @@ mod tests {
   use crate::{Algorithm, Entity, LogicV1, MatchingAlgorithm, SearchEntity, tests::python::nomenklatura_score};
 
   #[test]
-  #[ignore]
+  #[ignore = "comprehensive, slow test"]
   fn extensive_entity_matching_test() {
     pyo3::prepare_freethreaded_python();
 

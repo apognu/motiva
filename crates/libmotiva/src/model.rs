@@ -104,7 +104,8 @@ impl HasProperties for SearchEntity {
   }
 
   fn gather(&self, keys: &[&str]) -> Vec<String> {
-    let mut values = Vec::with_capacity(keys.len());
+    let capacity: usize = keys.iter().map(|key| self.property(key).len()).sum();
+    let mut values = Vec::with_capacity(capacity);
 
     for key in keys {
       values.extend(self.property(key).iter().cloned());
@@ -185,9 +186,12 @@ fn features_to_map<S: Serializer>(input: &[(&'static str, f64)], ser: S) -> Resu
 impl HasProperties for Entity {
   fn names_and_aliases(&self) -> Vec<String> {
     let names = self.property("name");
-    let names = names.iter().chain(self.property("alias").iter());
+    let aliases = self.property("alias");
 
-    names.cloned().collect()
+    let mut values = Vec::with_capacity(names.len() + aliases.len());
+    values.extend_from_slice(names);
+    values.extend_from_slice(aliases);
+    values
   }
 
   fn property(&self, key: &str) -> &[String] {
@@ -198,7 +202,8 @@ impl HasProperties for Entity {
   }
 
   fn gather(&self, keys: &[&str]) -> Vec<String> {
-    let mut values = Vec::with_capacity(keys.len());
+    let capacity: usize = keys.iter().map(|key| self.property(key).len()).sum();
+    let mut values = Vec::with_capacity(capacity);
 
     for key in keys {
       values.extend(self.property(key).iter().cloned());

@@ -17,18 +17,20 @@ use crate::{
 
 #[scoring_feature(JaroNameParts, name = "jaro_name_parts")]
 fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+  if lhs.name_parts.is_empty() {
+    return 0.0;
+  }
+
   let mut similarities = Vec::with_capacity_in(lhs.name_parts.len(), bump);
+  let rhs_parts = extractors::name_parts_flat(rhs.names_and_aliases().iter()).collect::<std::vec::Vec<_>>();
 
   for part in &lhs.name_parts {
     let mut best = 0.0f64;
 
-    for other in extractors::name_parts_flat(rhs.names_and_aliases().iter()) {
-      let similarity = match jaro_winkler(part, &other) {
-        score if score > 0.6 => score,
-        _ => 0.0,
-      };
+    for other in &rhs_parts {
+      let similarity = jaro_winkler(part, other);
 
-      if similarity >= 0.5 {
+      if similarity > 0.6 {
         best = best.max(similarity);
       }
     }
