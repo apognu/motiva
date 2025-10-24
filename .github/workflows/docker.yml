@@ -8,8 +8,27 @@ permissions:
   packages: write
 
 jobs:
-  docker-base:
+  generate-matrix:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.generate.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+      - name: Generate feature combinations
+        id: generate
+        run: |
+          combinations=$(python .github/scripts/featuresets.py)
+          echo "matrix=$combinations" >> $GITHUB_OUTPUT
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: generate-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        combination: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+    name: docker/features/${{ matrix.combination.features || 'base' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,43 +54,11 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           tags: |
-            apognu/motiva:latest
-            ghcr.io/apognu/motiva:latest
-          push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  docker-gcp:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: true
-
-      - name: Authenticate to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-
-      - name: "Login to GitHub Container Registry"
-        uses: docker/login-action@v1
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          tags: |
-            apognu/motiva:latest-gcp
-            ghcr.io/apognu/motiva:latest-gcp
+            apognu/motiva:latest${{ matrix.combination.suffix }}
+            ghcr.io/apognu/motiva:latest${{ matrix.combination.suffix }}
           build-args: |
-            "CARGO_ARGS=--features gcp"
+            "BASE=${{ matrix.combination.base }}"
+            ${{ matrix.combination.features != '' && format('CARGO_ARGS=--features {0}', matrix.combination.features) || '' }}
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
