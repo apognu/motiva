@@ -1,34 +1,29 @@
-use std::{borrow::Borrow, cmp::Ordering, collections::HashMap};
+use std::{borrow::Borrow, cmp::Ordering};
 
-use ahash::{HashMapExt, RandomState};
 use itertools::Itertools;
 use strsim::{jaro_winkler, levenshtein};
 
-pub(crate) fn is_disjoint<'s, S>(a: &[S], b: &[S]) -> bool
+pub(crate) fn is_disjoint<'s, S>(lhs: &[S], rhs: &[S]) -> bool
 where
   S: Borrow<str> + Ord + Clone + 's,
 {
-  let (mut shorter, longer) = if a.len() < b.len() { (a.to_vec(), b) } else { (b.to_vec(), a) };
-
-  shorter.sort_unstable();
-
-  for x in longer {
-    if shorter.binary_search(x).is_ok() {
-      return false;
+  for a in lhs {
+    for b in rhs {
+      if a == b {
+        return false;
+      }
     }
   }
 
   true
 }
 
-pub(crate) fn is_disjoint_chars(a: &[Vec<char>], b: &[Vec<char>]) -> bool {
-  let (mut shorter, longer) = if a.len() < b.len() { (a.to_vec(), b) } else { (b.to_vec(), a) };
-
-  shorter.sort_unstable();
-
-  for x in longer {
-    if shorter.binary_search(x).is_ok() {
-      return false;
+pub(crate) fn is_disjoint_chars(lhs: &[Vec<char>], rhs: &[Vec<char>]) -> bool {
+  for a in lhs {
+    for b in rhs {
+      if a == b {
+        return false;
+      }
     }
   }
 
@@ -48,6 +43,10 @@ pub(crate) fn compare_name_phonetic_tuples((l_name, l_phone): (&str, Option<&str
 }
 
 pub(crate) fn is_levenshtein_plausible(lhs: &str, rhs: &str) -> bool {
+  if lhs == rhs {
+    return true;
+  }
+
   let pct = (lhs.len().min(rhs.len()) as f32 * 0.2).ceil();
   let threshold = 4.min(pct as usize);
 
@@ -61,6 +60,9 @@ pub(crate) fn default_levenshtein_similarity(lhs: &str, rhs: &str) -> f64 {
 pub(crate) fn levenshtein_similarity(lhs: &str, rhs: &str, max_edits: usize) -> f64 {
   if lhs.is_empty() || rhs.is_empty() {
     return 0.0;
+  }
+  if lhs == rhs {
+    return 1.0;
   }
 
   let pct_edits = (lhs.len().min(rhs.len()) as f64 * 0.2).ceil();
@@ -91,12 +93,12 @@ where
   let mut result_counts = count_parts(result);
 
   let mut scores = query_counts
-    .keys()
-    .cartesian_product(result_counts.keys())
-    .filter_map(|(&qn, &rn)| {
+    .iter()
+    .cartesian_product(result_counts.iter())
+    .filter_map(|((qn, _), (rn, _))| {
       let score = jaro_winkler(qn, rn);
 
-      if score > 0.0 && is_levenshtein_plausible(qn, rn) { Some((qn, rn, score)) } else { None }
+      if score > 0.0 && is_levenshtein_plausible(qn, rn) { Some((*qn, *rn, score)) } else { None }
     })
     .collect::<Vec<_>>();
 
@@ -106,15 +108,16 @@ where
   let mut pairs: Vec<(&str, &str)> = Vec::with_capacity(query.len());
 
   for (qn, rn, score) in scores {
-    let q_count = query_counts.get_mut(qn).unwrap();
-    let r_count = result_counts.get_mut(rn).unwrap();
+    if let Some(q_entry) = query_counts.iter_mut().find(|(s, _)| *s == qn)
+      && let Some(r_entry) = result_counts.iter_mut().find(|(s, _)| *s == rn)
+    {
+      while q_entry.1 > 0 && r_entry.1 > 0 {
+        q_entry.1 -= 1;
+        r_entry.1 -= 1;
+        final_score *= score;
 
-    while *q_count > 0 && *r_count > 0 {
-      *q_count -= 1;
-      *r_count -= 1;
-      final_score *= score;
-
-      pairs.push((qn, rn));
+        pairs.push((qn, rn));
+      }
     }
   }
 
@@ -135,11 +138,16 @@ where
 }
 
 #[inline(always)]
-fn count_parts<'s, S: Borrow<str> + 's>(parts: &'s [S]) -> HashMap<&'s str, usize, RandomState> {
-  let mut counts = HashMap::<_, _, RandomState>::with_capacity(parts.len());
+fn count_parts<'s, S: Borrow<str> + 's>(parts: &'s [S]) -> Vec<(&'s str, usize)> {
+  let mut counts = Vec::with_capacity(parts.len());
+
   for part in parts {
-    *counts.entry(part.borrow()).or_default() += 1;
+    match counts.iter_mut().find(|(s, _)| *s == part.borrow()) {
+      Some(entry) => entry.1 += 1,
+      _ => counts.push((part.borrow(), 1)),
+    }
   }
+
   counts
 }
 

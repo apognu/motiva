@@ -34,7 +34,7 @@ pub enum GetEntityBehavior {
 /// # Examples
 ///
 /// ```rust
-/// # use libmotiva::prelude::*;
+/// # use libmotiva::{prelude::*, MockedElasticsearch};
 /// # use std::collections::HashMap;
 ///
 /// # tokio_test::block_on(async {
