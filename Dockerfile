@@ -1,10 +1,10 @@
 ARG BASE=native
 
 # Distroless image if not building native dependencies
-FROM rust:1.89-slim-bookworm AS base-native
+FROM rust:1.90-slim-bookworm AS base-native
 
 # Install build environment, header files and libraries if building libicu
-FROM rust:1.89-slim-bookworm AS base-icu
+FROM rust:1.90-slim-bookworm AS base-icu
 RUN apt update && apt install -y pkg-config libclang-dev libicu72 libicu-dev
 
 # Fork base layer depending on whether we build native dependencies
