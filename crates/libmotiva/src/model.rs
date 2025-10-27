@@ -5,6 +5,7 @@ use std::{
 
 use ahash::RandomState;
 use bon::bon;
+use itertools::Itertools;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use validator::Validate;
@@ -84,6 +85,26 @@ pub struct SearchEntity {
 
 impl SearchEntity {
   pub fn precompute(&mut self) {
+    let props = [
+      self.property("firstName"),
+      self.property("secondName"),
+      self.property("middleName"),
+      self.property("fatherName"),
+      self.property("lastName"),
+    ];
+
+    let mut combined = HashSet::with_capacity(props.iter().map(|n| if n.is_empty() { 1 } else { n.len() }).product());
+
+    for combination in props.into_iter().filter(|v| !v.is_empty()).multi_cartesian_product() {
+      if !combination.is_empty() {
+        combined.insert(combination.iter().join(" "));
+      }
+    }
+
+    let aliases = self.properties.entry("alias".to_string()).or_default();
+    aliases.reserve(combined.len());
+    aliases.extend(combined);
+
     self.name_parts = extractors::name_parts_flat(self.property("name").iter()).collect();
   }
 }
@@ -235,7 +256,10 @@ impl Entity {
 
 #[cfg(test)]
 mod tests {
-  use crate::model::{Entity, Schema};
+  use crate::{
+    HasProperties, SearchEntity,
+    model::{Entity, Schema},
+  };
 
   #[test]
   fn entity_is_a() {
@@ -274,5 +298,14 @@ mod tests {
     assert_eq!(name, "parent");
     assert!(prop.reverse.is_some());
     assert_eq!(prop.reverse.unwrap().name, "subsidiaries");
+  }
+
+  #[test]
+  fn precompute() {
+    let se = SearchEntity::builder("Person")
+      .properties(&[("firstName", &["Vladimir"]), ("fatherName", &["Vladimirovitch"]), ("lastName", &["Putin"])])
+      .build();
+
+    assert_eq!(se.names_and_aliases(), &["Vladimir Vladimirovitch Putin"]);
   }
 }

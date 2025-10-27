@@ -44,6 +44,6 @@ pub(crate) fn create_request_span(req: &axum::extract::Request) -> Span {
   let parent = global::get_text_map_propagator(|propagator| propagator.extract(&HeaderExtractor(req.headers())));
   let span = tracing::info_span!("request", request_id = req.extensions().get::<RequestId>().unwrap().0.to_string());
 
-  span.set_parent(parent);
+  let _ = span.set_parent(parent);
   span
 }

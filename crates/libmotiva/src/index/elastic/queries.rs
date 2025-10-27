@@ -273,30 +273,33 @@ fn build_topics(params: &MatchParams, filters: &mut Vec<serde_json::Value>) {
 }
 
 fn build_shoulds(entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>> {
-  let names = entity.properties["name"].iter().map(|s| s.nfc().collect::<String>()).collect::<Vec<_>>();
   let mut should = Vec::<serde_json::Value>::new();
 
-  for name in &names {
-    should.push(json!({
-        "match": {
-            "names": {
-                "query": name,
-                "operator": "AND",
-                "boost": 3.0,
-                "fuzziness": "AUTO",
-            }
-        }
-    }));
-  }
+  if let Some(names) = entity.properties.get("name") {
+    let names = names.iter().map(|s| s.nfc().collect::<String>()).collect::<Vec<_>>();
 
-  for name in extractors::index_name_keys(names.iter()) {
-    add_term(&mut should, "name_keys", &name, 4.0);
-  }
-  for name in extractors::index_name_parts(names.iter()) {
-    add_term(&mut should, "name_parts", &name, 1.0);
-  }
-  for name in extractors::phonetic_name(&Metaphone::new(None), names.iter()) {
-    add_term(&mut should, "name_phonetic", &name, 0.8);
+    for name in &names {
+      should.push(json!({
+          "match": {
+              "names": {
+                  "query": name,
+                  "operator": "AND",
+                  "boost": 3.0,
+                  "fuzziness": "AUTO",
+              }
+          }
+      }));
+    }
+
+    for name in extractors::index_name_keys(names.iter()) {
+      add_term(&mut should, "name_keys", &name, 4.0);
+    }
+    for name in extractors::index_name_parts(names.iter()) {
+      add_term(&mut should, "name_parts", &name, 1.0);
+    }
+    for name in extractors::phonetic_name(&Metaphone::new(None), names.iter()) {
+      add_term(&mut should, "name_phonetic", &name, 0.8);
+    }
   }
 
   let schema = SCHEMAS.get(entity.schema.as_str()).ok_or(anyhow::anyhow!("unknown schema"))?;
@@ -311,7 +314,7 @@ fn build_shoulds(entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>
       "birthDate" => "dates",
       "country" => "countries",
       "registrationNumber" => "identifiers",
-      _ => "text",
+      _ => continue, // TODO: fix
     };
 
     for value in values {
