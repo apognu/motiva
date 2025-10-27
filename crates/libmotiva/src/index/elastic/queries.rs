@@ -312,7 +312,7 @@ fn build_shoulds(entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>
     let lhs = match property.as_str() {
       "address" => "addresses",
       "birthDate" => "dates",
-      "country" => "countries",
+      "country" | "nationality" => "countries",
       "registrationNumber" => "identifiers",
       _ => continue, // TODO: fix
     };
