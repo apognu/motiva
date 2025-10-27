@@ -36,6 +36,7 @@ impl MatchingAlgorithm for NameBased {
 mod tests {
   use bumpalo::Bump;
   use float_cmp::approx_eq;
+  use pyo3::Python;
 
   use crate::{
     matching::{Algorithm, MatchingAlgorithm, name_based::NameBased},
@@ -56,7 +57,7 @@ mod tests {
   #[test]
   #[serial_test::serial]
   fn against_nomenklatura() {
-    pyo3::prepare_freethreaded_python();
+    Python::initialize();
 
     let query = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
 

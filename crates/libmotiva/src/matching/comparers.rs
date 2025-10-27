@@ -154,6 +154,7 @@ fn count_parts<'s, S: Borrow<str> + 's>(parts: &'s [S]) -> Vec<(&'s str, usize)>
 #[cfg(test)]
 mod tests {
   use float_cmp::assert_approx_eq;
+  use pyo3::Python;
 
   use crate::tests::python::nomenklatura_str_list;
 
@@ -166,7 +167,7 @@ mod tests {
   #[test]
   #[serial_test::serial]
   fn align_name_parts() {
-    pyo3::prepare_freethreaded_python();
+    Python::initialize();
 
     let data: &[(&[&str], &[&str])] = &[
       (&["vladimir", "putin"], &["vladimir", "vladimirovich", "putin"]),

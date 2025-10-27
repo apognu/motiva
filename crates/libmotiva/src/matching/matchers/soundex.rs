@@ -34,6 +34,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 mod tests {
   use bumpalo::Bump;
   use float_cmp::approx_eq;
+  use pyo3::Python;
 
   use crate::{
     matching::Feature,
@@ -44,7 +45,7 @@ mod tests {
   #[test]
   #[serial_test::serial]
   fn against_nomenklatura() {
-    pyo3::prepare_freethreaded_python();
+    Python::initialize();
 
     let lhs = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin", "Vladimir Putin"])]).build();
     let rhs = Entity::builder("Person").properties(&[("name", &["Vladymire Poutine"])]).build();
