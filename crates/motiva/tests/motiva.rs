@@ -17,11 +17,11 @@ async fn scoring() {
 
   assert_eq!(scores[0].1, 1.0);
   assert_eq!(scores[0].0.id, "Q7747");
-  assert_eq!(scores[0].0.property("name"), ["Vladimir Putin"]);
+  assert_eq!(scores[0].0.props(&["name"]).as_ref(), ["Vladimir Putin"]);
 
   assert_eq!(scores[1].1, 0.0);
   assert_eq!(scores[1].0.id, "A1234");
-  assert_eq!(scores[1].0.property("name"), ["Bob the Builder"]);
+  assert_eq!(scores[1].0.props(&["name"]).as_ref(), ["Bob the Builder"]);
 }
 
 #[tokio::test]

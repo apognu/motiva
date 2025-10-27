@@ -24,7 +24,8 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     return 0.0;
   }
 
-  let lhs_addresses = extractors::clean_address_parts(lhs.property("full").iter()).map(|address| {
+  let lhs_props = lhs.props(&["full"]);
+  let lhs_addresses = extractors::clean_address_parts(lhs_props.iter()).map(|address| {
     replacers::replace(&ORDINALS.0, &ORDINALS.1, &replacers::replace(&ADDRESS_FORMS.0, &ADDRESS_FORMS.1, &address))
       .split_whitespace()
       .map(str::to_string)
@@ -32,7 +33,8 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
       .collect::<HashSet<_, RandomState>>()
   });
 
-  let rhs_addresses = extractors::clean_address_parts(rhs.property("full").iter()).map(|address| {
+  let rhs_props = rhs.props(&["full"]);
+  let rhs_addresses = extractors::clean_address_parts(rhs_props.iter()).map(|address| {
     replacers::replace(&ORDINALS.0, &ORDINALS.1, &replacers::replace(&ADDRESS_FORMS.0, &ADDRESS_FORMS.1, &address))
       .split_whitespace()
       .map(str::to_string)

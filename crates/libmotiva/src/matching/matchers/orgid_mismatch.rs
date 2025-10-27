@@ -21,13 +21,13 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     return 0.0;
   }
 
-  let lhs = lhs.gather(&["registrationNumber", "taxNumber", "leiCode", "innCode", "bicCode", "ogrnCode"]);
+  let lhs = lhs.props(&["registrationNumber", "taxNumber", "leiCode", "innCode", "bicCode", "ogrnCode"]);
 
   if lhs.is_empty() {
     return 0.0;
   }
 
-  let rhs = rhs.gather(&["registrationNumber", "taxNumber", "leiCode", "innCode", "bicCode", "orgnCode"]);
+  let rhs = rhs.props(&["registrationNumber", "taxNumber", "leiCode", "innCode", "bicCode", "orgnCode"]);
 
   if rhs.is_empty() {
     return 0.0;

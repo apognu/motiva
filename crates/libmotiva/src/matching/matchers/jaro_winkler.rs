@@ -21,8 +21,13 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     return 0.0;
   }
 
+  let rhs_parts = extractors::name_parts_flat(rhs.names_and_aliases().iter()).collect_in::<Vec<_>>(bump);
+
+  if rhs_parts.is_empty() {
+    return 0.0;
+  }
+
   let mut similarities = Vec::with_capacity_in(lhs.name_parts.len(), bump);
-  let rhs_parts = extractors::name_parts_flat(rhs.names_and_aliases().iter()).collect::<std::vec::Vec<_>>();
 
   for part in &lhs.name_parts {
     let mut best = 0.0f64;
@@ -32,13 +37,17 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 
       if similarity > 0.6 {
         best = best.max(similarity);
+
+        if best >= 1.0 {
+          break;
+        }
       }
     }
 
     similarities.push(best);
   }
 
-  similarities.iter().sum::<f64>() / 1.0f64.max(similarities.len() as f64)
+  similarities.iter().sum::<f64>() / similarities.len() as f64
 }
 
 #[scoring_feature(PersonNameJaroWinkler, name = "person_name_jaro_winkler")]

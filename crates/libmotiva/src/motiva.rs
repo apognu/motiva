@@ -46,7 +46,7 @@ pub enum GetEntityBehavior {
 ///   let scores = motiva.score::<NameBased>(&search, results, 0.5).unwrap();
 ///
 ///   for (entity, score) in scores {
-///       if let Some(name) = entity.property("name").iter().next() {
+///       if let Some(name) = entity.props(&["name"]).iter().next() {
 ///           println!("Scored entity: {} with score: {}", name, score);
 ///       }
 ///   }
@@ -130,11 +130,11 @@ impl<P: IndexProvider> Motiva<P> {
               continue;
             }
 
-            for assoc in entity.property(&name) {
+            for assoc in entity.props(&[&name]).iter() {
               root_arena.insert(assoc.to_string(), name.clone());
             }
 
-            ids.extend(entity.property(&name).iter().cloned());
+            ids.extend(entity.props(&[&name]).iter().cloned());
           }
 
           while !ids.is_empty() {
