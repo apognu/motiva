@@ -67,6 +67,7 @@ impl MatchingAlgorithm for LogicV1 {
 
     let qualifiers: &[(&dyn Feature, f64)] = &[
       (&SimpleMismatch::new("country_mismatch", &|e| e.property("country"), None), -0.2),
+      (&SimpleMismatch::new("nationality_mismatch", &|e| e.property("nationality"), None), -0.2),
       (&SimpleMismatch::new("last_name_mismatch", &|e| e.property("lastName"), None), -0.2),
       (&SimpleMismatch::new("dob_year_disjoint", &|e| e.property("birthDate"), Some(dob_year_disjoint)), -0.15),
       (&SimpleMismatch::new("dob_day_disjoint", &|e| e.property("birthDate"), Some(dob_day_disjoint)), -0.2),
