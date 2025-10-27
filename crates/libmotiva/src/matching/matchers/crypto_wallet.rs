@@ -14,8 +14,10 @@ fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     return 0.0;
   }
 
-  let lhs_addresses = HashSet::<&String>::from_iter(lhs.property("publicKey"));
-  let rhs_addresses = HashSet::<&String>::from_iter(rhs.property("publicKey"));
+  let lhs_props = lhs.props(&["publicKey"]);
+  let lhs_addresses = HashSet::<&String>::from_iter(lhs_props.iter());
+  let rhs_props = rhs.props(&["publicKey"]);
+  let rhs_addresses = HashSet::<&String>::from_iter(rhs_props.iter());
 
   for address in lhs_addresses.intersection(&rhs_addresses) {
     if address.len() > 10 {

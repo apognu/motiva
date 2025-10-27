@@ -179,6 +179,6 @@ mod tests {
     let entity: Entity = build_entity().into();
 
     assert_eq!(entity.id, "id");
-    assert!(entity.property("name").contains(&"The Name".to_string()));
+    assert!(entity.props(&["name"]).contains(&"The Name".to_string()));
   }
 }

@@ -23,7 +23,7 @@ impl<'p> IdentifierMatch<'p> {
   }
 
   fn match_property(&self, bump: &Bump, schema: &Schema, lhs: &impl HasProperties, rhs: &impl HasProperties, property: &str) -> bool {
-    let lhs_values = lhs.property(property);
+    let lhs_values = lhs.props(&[property]);
 
     if lhs_values.is_empty() {
       return false;
@@ -75,12 +75,13 @@ impl<'p> IdentifierMatch<'p> {
     }
 
     let rhs_values = rhs
-      .gather(&properties)
+      .props(&properties)
+      .into_owned()
       .into_iter()
       .filter(|code| self.validator.map(|v| v(code)).unwrap_or(true))
       .collect_in::<Vec<_>>(bump);
 
-    !is_disjoint(lhs.property(property), &rhs_values)
+    !is_disjoint(&lhs_values, &rhs_values)
   }
 }
 

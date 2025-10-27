@@ -1,4 +1,5 @@
 use std::{
+  borrow::Cow,
   collections::{HashMap, HashSet},
   sync::{Arc, Mutex},
 };
@@ -19,8 +20,7 @@ const EMPTY: [String; 0] = [];
 
 pub trait HasProperties {
   fn names_and_aliases(&self) -> Vec<String>;
-  fn property(&self, key: &str) -> &[String];
-  fn gather(&self, keys: &[&str]) -> Vec<String>;
+  fn props(&self, keys: &[&str]) -> Cow<'_, [String]>;
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -86,16 +86,16 @@ pub struct SearchEntity {
 impl SearchEntity {
   pub fn precompute(&mut self) {
     let props = [
-      self.property("firstName"),
-      self.property("secondName"),
-      self.property("middleName"),
-      self.property("fatherName"),
-      self.property("lastName"),
+      self.props(&["firstName"]),
+      self.props(&["secondName"]),
+      self.props(&["middleName"]),
+      self.props(&["fatherName"]),
+      self.props(&["lastName"]),
     ];
 
     let mut combined = HashSet::with_capacity(props.iter().map(|n| if n.is_empty() { 1 } else { n.len() }).product());
 
-    for combination in props.into_iter().filter(|v| !v.is_empty()).multi_cartesian_product() {
+    for combination in props.iter().map(|v| v.as_ref()).filter(|v| !v.is_empty()).multi_cartesian_product() {
       if !combination.is_empty() {
         combined.insert(combination.iter().join(" "));
       }
@@ -105,34 +105,40 @@ impl SearchEntity {
     names.reserve(combined.len());
     names.extend(combined);
 
-    self.name_parts = extractors::name_parts_flat(self.property("name").iter()).collect();
+    self.name_parts = extractors::name_parts_flat(self.props(&["name"]).iter()).collect();
   }
 }
 
 impl HasProperties for SearchEntity {
   fn names_and_aliases(&self) -> Vec<String> {
-    let names = self.property("name");
-    let names = names.iter().chain(self.property("alias").iter());
+    let names = self.props(&["name"]);
+    let aliases = self.props(&["alias"]);
 
-    names.cloned().collect()
+    names.iter().chain(aliases.iter()).cloned().collect()
   }
 
-  fn property(&self, key: &str) -> &[String] {
-    match self.properties.get(key) {
-      Some(values) => values,
-      None => &EMPTY,
+  fn props(&self, keys: &[&str]) -> Cow<'_, [String]> {
+    match keys.len() {
+      0 => Cow::Borrowed(&EMPTY),
+
+      1 => match self.properties.get(keys[0]) {
+        Some(values) => Cow::Borrowed(values),
+        None => Cow::Borrowed(&EMPTY),
+      },
+
+      _ => {
+        let capacity: usize = keys.iter().filter_map(|key| self.properties.get(*key)).map(|v| v.len()).sum();
+        let mut values = Vec::with_capacity(capacity);
+
+        for key in keys {
+          if let Some(prop_values) = self.properties.get(*key) {
+            values.extend(prop_values.iter().cloned());
+          }
+        }
+
+        Cow::Owned(values)
+      }
     }
-  }
-
-  fn gather(&self, keys: &[&str]) -> Vec<String> {
-    let capacity: usize = keys.iter().map(|key| self.property(key).len()).sum();
-    let mut values = Vec::with_capacity(capacity);
-
-    for key in keys {
-      values.extend(self.property(key).iter().cloned());
-    }
-
-    values
   }
 }
 
@@ -206,31 +212,37 @@ fn features_to_map<S: Serializer>(input: &[(&'static str, f64)], ser: S) -> Resu
 
 impl HasProperties for Entity {
   fn names_and_aliases(&self) -> Vec<String> {
-    let names = self.property("name");
-    let aliases = self.property("alias");
+    let names = self.props(&["name"]);
+    let aliases = self.props(&["alias"]);
 
     let mut values = Vec::with_capacity(names.len() + aliases.len());
-    values.extend_from_slice(names);
-    values.extend_from_slice(aliases);
+    values.extend_from_slice(&names);
+    values.extend_from_slice(&aliases);
     values
   }
 
-  fn property(&self, key: &str) -> &[String] {
-    match self.properties.strings.get(key) {
-      Some(values) => values,
-      None => &EMPTY,
+  fn props(&self, keys: &[&str]) -> Cow<'_, [String]> {
+    match keys.len() {
+      0 => Cow::Borrowed(&EMPTY),
+
+      1 => match self.properties.strings.get(keys[0]) {
+        Some(values) => Cow::Borrowed(values),
+        None => Cow::Borrowed(&EMPTY),
+      },
+
+      _ => {
+        let capacity: usize = keys.iter().filter_map(|key| self.properties.strings.get(*key)).map(|v| v.len()).sum();
+        let mut values = Vec::with_capacity(capacity);
+
+        for key in keys {
+          if let Some(prop_values) = self.properties.strings.get(*key) {
+            values.extend(prop_values.iter().cloned());
+          }
+        }
+
+        Cow::Owned(values)
+      }
     }
-  }
-
-  fn gather(&self, keys: &[&str]) -> Vec<String> {
-    let capacity: usize = keys.iter().map(|key| self.property(key).len()).sum();
-    let mut values = Vec::with_capacity(capacity);
-
-    for key in keys {
-      values.extend(self.property(key).iter().cloned());
-    }
-
-    values
   }
 }
 
