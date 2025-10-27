@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use bumpalo::Bump;
 use tracing::instrument;
 
@@ -32,10 +34,10 @@ impl MatchingAlgorithm for NameQualified {
     let features: &[(&dyn Feature, f64)] = &[
       (&SoundexNameParts, 0.5),
       (&JaroNameParts, 0.5),
-      (&SimpleMismatch::new("country_disjoint", &|e| e.property("country"), None), -0.1),
-      (&SimpleMismatch::new("dob_year_disjoint", &|e| e.property("birthDate"), Some(dob_year_disjoint)), -0.1),
-      (&SimpleMismatch::new("dob_day_disjoint", &|e| e.property("birthDate"), Some(dob_day_disjoint)), -0.15),
-      (&SimpleMismatch::new("gender_disjoint", &|e| e.property("gender"), None), -0.1),
+      (&SimpleMismatch::new("country_disjoint", &|e| Cow::Borrowed(e.property("country")), None), -0.1),
+      (&SimpleMismatch::new("dob_year_disjoint", &|e| Cow::Borrowed(e.property("birthDate")), Some(dob_year_disjoint)), -0.1),
+      (&SimpleMismatch::new("dob_day_disjoint", &|e| Cow::Borrowed(e.property("birthDate")), Some(dob_day_disjoint)), -0.15),
+      (&SimpleMismatch::new("gender_disjoint", &|e| Cow::Borrowed(e.property("gender")), None), -0.1),
       (&OrgIdMismatch, -0.1),
     ];
 

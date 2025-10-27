@@ -13,21 +13,21 @@ use crate::{
     Feature,
     comparers::{is_disjoint, is_disjoint_chars},
     extractors::{self, extract_numbers},
+    matchers::match_::MatchExtractor,
   },
   model::{Entity, HasProperties, SearchEntity},
 };
 
-type MismatchExtractor<'e> = &'e (dyn Fn(&'_ dyn HasProperties) -> &[String] + Send + Sync);
 type MismatchMatcher = Option<fn(bump: &Bump, lhs: &[String], rhs: &[String]) -> f64>;
 
 pub(crate) struct SimpleMismatch<'e> {
   name: &'static str,
-  extractor: MismatchExtractor<'e>,
+  extractor: MatchExtractor<'e>,
   matcher: MismatchMatcher,
 }
 
 impl<'e> SimpleMismatch<'e> {
-  pub(crate) fn new(name: &'static str, extractor: MismatchExtractor<'e>, matcher: MismatchMatcher) -> Self {
+  pub(crate) fn new(name: &'static str, extractor: MatchExtractor<'e>, matcher: MismatchMatcher) -> Self {
     SimpleMismatch { name, extractor, matcher }
   }
 }
@@ -52,9 +52,9 @@ impl<'e> Feature<'e> for SimpleMismatch<'e> {
     }
 
     match self.matcher {
-      Some(func) => (func)(bump, lhs, rhs),
+      Some(func) => (func)(bump, lhs.as_ref(), rhs.as_ref()),
 
-      None => match is_disjoint(lhs, rhs) {
+      None => match is_disjoint(lhs.as_ref(), rhs.as_ref()) {
         true => 1.0,
         false => 0.0,
       },

@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{borrow::Cow, time::Instant};
 
 use bumpalo::Bump;
 use tracing::instrument;
@@ -57,21 +57,23 @@ impl MatchingAlgorithm for LogicV1 {
       (
         &SimpleMatch::new(
           "identifier_match",
-          &|e| e.gather(&["registrationNumber", "taxNumber", "leiCode", "innCode", "bicCode", "ogrnCode", "imoNumber", "mmsi"]),
+          &|e| Cow::Owned(e.gather(&["registrationNumber", "taxNumber", "leiCode", "innCode", "bicCode", "ogrnCode", "imoNumber", "mmsi"])),
           None,
         ),
         0.85,
       ), // TODO: add cleaning
-      (&SimpleMatch::new("weak_alias_match", &|e| e.gather(&["weakAlias", "name"]), None), 0.8),
+      (&SimpleMatch::new("weak_alias_match", &|e| Cow::Owned(e.gather(&["weakAlias", "name"])), None), 0.8),
     ];
 
     let qualifiers: &[(&dyn Feature, f64)] = &[
-      (&SimpleMismatch::new("country_mismatch", &|e| e.property("country"), None), -0.2),
-      (&SimpleMismatch::new("nationality_mismatch", &|e| e.property("nationality"), None), -0.2),
-      (&SimpleMismatch::new("last_name_mismatch", &|e| e.property("lastName"), None), -0.2),
-      (&SimpleMismatch::new("dob_year_disjoint", &|e| e.property("birthDate"), Some(dob_year_disjoint)), -0.15),
-      (&SimpleMismatch::new("dob_day_disjoint", &|e| e.property("birthDate"), Some(dob_day_disjoint)), -0.2),
-      (&SimpleMismatch::new("gender_mismatch", &|e| e.property("gender"), None), -0.2),
+      (
+        &SimpleMismatch::new("country_mismatch", &|e| Cow::Owned(e.gather(&["country", "nationality", "citizenship"])), None),
+        -0.2,
+      ),
+      (&SimpleMismatch::new("last_name_mismatch", &|e| Cow::Borrowed(e.property("lastName")), None), -0.2),
+      (&SimpleMismatch::new("dob_year_disjoint", &|e| Cow::Borrowed(e.property("birthDate")), Some(dob_year_disjoint)), -0.15),
+      (&SimpleMismatch::new("dob_day_disjoint", &|e| Cow::Borrowed(e.property("birthDate")), Some(dob_day_disjoint)), -0.2),
+      (&SimpleMismatch::new("gender_mismatch", &|e| Cow::Borrowed(e.property("gender")), None), -0.2),
       (&OrgIdMismatch, -0.2),
       (&NumbersMismatch, -0.1),
     ];

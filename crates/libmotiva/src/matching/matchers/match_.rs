@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use bumpalo::Bump;
 
 use crate::{
@@ -5,17 +7,17 @@ use crate::{
   model::{Entity, HasProperties, SearchEntity},
 };
 
-type MismatchExtractor<'e> = &'e (dyn Fn(&'_ dyn HasProperties) -> Vec<String> + Send + Sync);
+pub(crate) type MatchExtractor<'e> = &'e (dyn Fn(&'_ dyn HasProperties) -> Cow<[String]> + Send + Sync);
 type MismatchMatcher = Option<fn(lhs: &[String], rhs: &[String]) -> f64>;
 
 pub(crate) struct SimpleMatch<'e> {
   name: &'static str,
-  extractor: MismatchExtractor<'e>,
+  extractor: MatchExtractor<'e>,
   matcher: MismatchMatcher,
 }
 
 impl<'e> SimpleMatch<'e> {
-  pub(crate) fn new(name: &'static str, extractor: MismatchExtractor<'e>, matcher: MismatchMatcher) -> Self {
+  pub(crate) fn new(name: &'static str, extractor: MatchExtractor<'e>, matcher: MismatchMatcher) -> Self {
     SimpleMatch { name, extractor, matcher }
   }
 }
