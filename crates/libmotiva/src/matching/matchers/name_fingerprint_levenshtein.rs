@@ -91,6 +91,7 @@ pub(crate) fn name_fingerprint_levenshtein(lhs: &SearchEntity, rhs: &Entity) -> 
 #[cfg(test)]
 mod tests {
   use float_cmp::approx_eq;
+  use pyo3::Python;
 
   use crate::{
     model::{Entity, SearchEntity},
@@ -108,7 +109,7 @@ mod tests {
   #[test]
   #[serial_test::serial]
   fn name_fingerprint_levenshtein() {
-    pyo3::prepare_freethreaded_python();
+    Python::initialize();
 
     let lhs = SearchEntity::builder("Company").properties(&[("name", &["AGoogle LLC"])]).build();
     let rhs = Entity::builder("Company").properties(&[("name", &["Gooogle LIMITED LIABILITY COMPANY"])]).build();

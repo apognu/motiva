@@ -101,9 +101,9 @@ impl SearchEntity {
       }
     }
 
-    let aliases = self.properties.entry("alias".to_string()).or_default();
-    aliases.reserve(combined.len());
-    aliases.extend(combined);
+    let names = self.properties.entry("name".to_string()).or_default();
+    names.reserve(combined.len());
+    names.extend(combined);
 
     self.name_parts = extractors::name_parts_flat(self.property("name").iter()).collect();
   }

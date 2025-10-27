@@ -102,6 +102,7 @@ mod tests {
   use bumpalo::Bump;
   use float_cmp::approx_eq;
   use itertools::Itertools;
+  use pyo3::Python;
 
   use crate::{
     matching::{Algorithm, Feature, MatchingAlgorithm, logic_v1::LogicV1},
@@ -183,7 +184,7 @@ mod tests {
   #[test]
   #[serial_test::serial]
   fn against_nomenklatura() {
-    pyo3::prepare_freethreaded_python();
+    Python::initialize();
 
     let queries = vec![
       SearchEntity::builder("Person").properties(&[("name", &["Fladimir Poutine"]), ("gender", &["female"])]).build(),

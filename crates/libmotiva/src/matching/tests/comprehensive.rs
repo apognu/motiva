@@ -2,13 +2,14 @@
 mod tests {
   use bumpalo::Bump;
   use float_cmp::approx_eq;
+  use pyo3::Python;
 
   use crate::{Algorithm, Entity, LogicV1, MatchingAlgorithm, SearchEntity, tests::python::nomenklatura_score};
 
   #[test]
   #[ignore = "comprehensive, slow test"]
   fn extensive_entity_matching_test() {
-    pyo3::prepare_freethreaded_python();
+    Python::initialize();
 
     let queries = vec![
       SearchEntity::builder("Person").properties(&[("name", &["John Fitzgerald Kennedy"]), ("country", &["us"])]).build(),

@@ -50,6 +50,7 @@ impl MatchingAlgorithm for NameQualified {
 mod tests {
   use bumpalo::Bump;
   use float_cmp::approx_eq;
+  use pyo3::Python;
 
   use crate::{
     matching::{Algorithm, MatchingAlgorithm, name_qualified::NameQualified},
@@ -60,7 +61,7 @@ mod tests {
   #[test]
   #[serial_test::serial]
   fn person_against_nomenklatura() {
-    pyo3::prepare_freethreaded_python();
+    Python::initialize();
 
     let queries = vec![
       SearchEntity::builder("Person").properties(&[("name", &["Владимир Путин"])]).build(),
@@ -159,7 +160,7 @@ mod tests {
   #[test]
   #[serial_test::serial]
   fn company_against_nomenklatura() {
-    pyo3::prepare_freethreaded_python();
+    Python::initialize();
 
     let queries = vec![
       SearchEntity::builder("Company").properties(&[("name", &["Google"]), ("registrationNumber", &["FR12"])]).build(),
