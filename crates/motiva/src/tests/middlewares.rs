@@ -135,7 +135,7 @@ rusty_fork_test! {
             assert_eq!(lines.len(), 1);
             assert!(lines[0].contains("POST http://localhost/match/default"));
             assert!(lines[0].contains("request_id="));
-            assert!(lines[0].contains("trace=0af7651916cd43dd8448eb211c80319c"));
+            assert!(lines[0].contains("trace_id=0af7651916cd43dd8448eb211c80319c"));
             assert!(lines[0].contains(r#"remote="-" method=POST path="/match/default" status=415"#));
         });
     }

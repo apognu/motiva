@@ -65,6 +65,7 @@ gcp_auth = { version = "0.12.3", optional = true }
 metrics = "0.24.2"
 metrics-exporter-prometheus = { version = "0.17.2", default-features = false, features = ["http-listener"] }
 axum-macros = "0.5.0"
+json-subscriber = "0.2.6"
 
 [dev-dependencies]
 axum-test = "18.0.2"
