@@ -35,7 +35,13 @@ pub async fn init_tracing(config: &Config, writer: impl Write + Send + 'static) 
   let formatter = match config.env {
     #[cfg(not(test))]
     Env::Dev => fmt::layer().compact().with_writer(appender).with_ansi(true).boxed(),
-    Env::Production => fmt::layer().json().with_writer(appender).flatten_event(true).with_current_span(false).with_span_list(false).boxed(),
+    Env::Production => json_subscriber::layer()
+      .with_writer(appender)
+      .flatten_event(true)
+      .flatten_span_list_on_top_level(true)
+      .with_current_span(false)
+      .with_span_list(false)
+      .boxed(),
 
     #[cfg(test)]
     Env::Dev => fmt::layer().compact().with_writer(appender).with_ansi(false).boxed(),

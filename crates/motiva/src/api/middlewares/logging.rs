@@ -15,25 +15,20 @@ use tokio::time::Instant;
 use tracing::Span;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-use crate::api::{
-  AppState,
-  config::{Config, TracingExporter},
-  middlewares::RequestId,
-};
+use crate::api::{AppState, config::Config};
 
 pub async fn api_logger<P>(State(state): State<AppState<P>>, request: Request<Body>, next: Next) -> Result<Response, StatusCode>
 where
   P: IndexProvider,
 {
   let span = Span::current();
-  let trace_id = trace_id_for_logs(&state.config, span.context().span().span_context().trace_id());
+  let trace_id = span.context().span().span_context().trace_id();
 
   let time = Timestamp::now().strftime("%Y-%m-%dT%H:%M:%S%z").to_string();
   let method = request.method().clone();
   let uri = request.uri().clone();
 
   let (mut parts, body) = request.into_parts();
-  let request_id = parts.extensions.get::<RequestId>().map(|id| id.0).unwrap_or_default();
   let ip = if let Ok(ConnectInfo(addr)) = parts.extract::<ConnectInfo<SocketAddr>>().await {
     addr.ip().to_string()
   } else {
@@ -45,9 +40,10 @@ where
 
   global::meter("motiva").f64_histogram("request_latency").build().record(then.elapsed().as_secs_f64() * 1000.0, &[]);
 
+  let span = add_trace_id(&state.config, trace_id);
+  let _guard = span.enter();
+
   tracing::info!(
-    request_id = %request_id,
-    trace = %trace_id,
     time = time,
     remote = ip,
     method = %method,
@@ -63,10 +59,13 @@ where
   Ok(response)
 }
 
-fn trace_id_for_logs(config: &Config, trace_id: TraceId) -> String {
+fn add_trace_id(config: &Config, trace_id: TraceId) -> Span {
+  #[cfg(feature = "gcp")]
+  use crate::api::config::TracingExporter;
+
   match config.tracing_exporter {
-    TracingExporter::Otlp => trace_id.to_string(),
     #[cfg(feature = "gcp")]
-    TracingExporter::Gcp => format!("projects/{}/traces/{trace_id}", config.gcp_project_id),
+    TracingExporter::Gcp => tracing::info_span!("request", trace_id = ?trace_id, "logging.googleapis.com/trace" = format!("projects/{}/traces/{trace_id}", config.gcp_project_id)),
+    _ => tracing::info_span!("request", trace_id = ?trace_id),
   }
 }
