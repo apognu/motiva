@@ -28,9 +28,7 @@ pub struct AppState<P: IndexProvider> {
 }
 
 pub async fn routes(config: &Config) -> anyhow::Result<Router> {
-  let motiva = Motiva::new(ElasticsearchProvider::new(&config.index_url, config.index_auth_method.clone())?, config.yente_url.clone())
-    .await
-    .unwrap();
+  let motiva = Motiva::new(ElasticsearchProvider::new(&config.index_url, config.index_auth_method.clone())?, config.manifest_url.clone()).await?;
 
   tokio::spawn({
     let motiva = motiva.clone();
@@ -60,7 +58,7 @@ pub async fn routes(config: &Config) -> anyhow::Result<Router> {
 
 pub(crate) fn router<P: IndexProvider>(state: AppState<P>) -> Router {
   Router::new()
-    .route("/catalog", get(handlers::catalog))
+    .route("/catalog", get(handlers::get_catalog))
     .route("/match/{scope}", post(handlers::match_entities))
     .route("/entities/{id}", get(handlers::get_entity))
     .fallback(handlers::not_found)

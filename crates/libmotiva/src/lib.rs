@@ -22,6 +22,7 @@ pub(crate) fn init() {
 
 /// Module including most features needed to use the library.
 pub mod prelude {
+  pub use crate::catalog::Catalog;
   pub use crate::motiva::{GetEntityBehavior, Motiva};
 
   pub use crate::error::MotivaError;

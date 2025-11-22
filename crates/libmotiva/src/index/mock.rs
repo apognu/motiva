@@ -5,7 +5,7 @@ use bon::Builder;
 use tokio::sync::RwLock;
 
 use crate::{
-  catalog::Collections,
+  Catalog,
   error::MotivaError,
   index::{EntityHandle, IndexProvider},
   matching::MatchParams,
@@ -28,7 +28,7 @@ impl IndexProvider for MockedElasticsearch {
     }
   }
 
-  async fn search(&self, _: &Arc<RwLock<Collections>>, _: &SearchEntity, _: &MatchParams) -> Result<Vec<Entity>, MotivaError> {
+  async fn search(&self, _: &Arc<RwLock<Catalog>>, _: &SearchEntity, _: &MatchParams) -> Result<Vec<Entity>, MotivaError> {
     Ok(self.entities.clone())
   }
 
@@ -37,6 +37,10 @@ impl IndexProvider for MockedElasticsearch {
   }
 
   async fn get_related_entities(&self, _: Option<&String>, _: &[String], _: &HashSet<String, RandomState>) -> Result<Vec<Entity>, MotivaError> {
+    unimplemented!();
+  }
+
+  async fn list_indices(&self) -> Result<Vec<(String, String)>, MotivaError> {
     unimplemented!();
   }
 }
