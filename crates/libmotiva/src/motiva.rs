@@ -4,10 +4,11 @@ use std::{
 };
 
 use ahash::{HashMap, RandomState};
+use anyhow::Context;
 use tokio::sync::RwLock;
 
 use crate::{
-  catalog::{Collections, fetch_catalog},
+  catalog::{Catalog, get_local_catalog},
   error::MotivaError,
   index::{EntityHandle, IndexProvider},
   matching::MatchParams,
@@ -54,8 +55,8 @@ pub enum GetEntityBehavior {
 /// ```
 #[derive(Clone, Debug)]
 pub struct Motiva<P: IndexProvider> {
-  yente: Option<String>,
-  catalog: Arc<RwLock<Collections>>,
+  manifest_url: Option<String>,
+  catalog: Arc<RwLock<Catalog>>,
   index: P,
 }
 
@@ -75,14 +76,14 @@ impl<P: IndexProvider> Motiva<P> {
   ///    responsibility to refresh it as needed.
   ///
   /// This struct can be safely cloned and sent across thread boundaries.
-  pub async fn new(provider: P, yente: Option<String>) -> Result<Self, MotivaError> {
+  pub async fn new(provider: P, manifest_url: Option<String>) -> Result<Self, MotivaError> {
     crate::init();
 
-    let catalog = fetch_catalog(&yente.as_ref().map(|y| format!("{y}/catalog"))).await?;
+    let catalog = get_local_catalog(&provider, manifest_url.as_ref()).await.context("could not initialize manifest")?;
 
     Ok(Self {
       index: provider,
-      yente,
+      manifest_url,
       catalog: Arc::new(RwLock::new(catalog)),
     })
   }
@@ -193,19 +194,27 @@ impl<P: IndexProvider> Motiva<P> {
     }
   }
 
+  /// Perform the scoring of all candidates against the search parameters.
+  pub fn score<A: MatchingAlgorithm>(&self, entity: &SearchEntity, hits: Vec<Entity>, cutoff: f64) -> anyhow::Result<Vec<(Entity, f64)>> {
+    scoring::score::<A>(entity, hits, cutoff)
+  }
+
   /// Refresh the local catalog from upstream.
   pub async fn refresh_catalog(&self) {
-    match fetch_catalog(&self.yente.as_ref().map(|y| format!("{y}/catalog"))).await {
+    match get_local_catalog(&self.index, self.manifest_url.as_ref()).await {
       Ok(catalog) => {
         *self.catalog.write().await = catalog;
       }
 
-      Err(err) => tracing::error!(error = err.to_string(), "could not refresh catalog"),
+      Err(err) => tracing::warn!(error = err.to_string(), "could not refresh catalog"),
     }
   }
 
-  /// Perform the scoring of all candidates against the search parameters.
-  pub fn score<A: MatchingAlgorithm>(&self, entity: &SearchEntity, hits: Vec<Entity>, cutoff: f64) -> anyhow::Result<Vec<(Entity, f64)>> {
-    scoring::score::<A>(entity, hits, cutoff)
+  pub async fn get_catalog(&self, force_refresh: bool) -> anyhow::Result<Catalog> {
+    if force_refresh {
+      self.refresh_catalog().await;
+    }
+
+    Ok(self.catalog.read().await.clone())
   }
 }

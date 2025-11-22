@@ -19,7 +19,7 @@ pub struct Config {
   pub index_auth_method: EsAuthMethod,
 
   // Match settings
-  pub yente_url: Option<String>,
+  pub manifest_url: Option<String>,
   pub match_candidates: usize,
 
   // Observability
@@ -37,7 +37,7 @@ impl Config {
       listen_addr: env::var("LISTEN_ADDR").unwrap_or("0.0.0.0:8000".into()),
       api_key: env::var("API_KEY").ok(),
       match_candidates: parse_env("MATCH_CANDIDATES", 10)?,
-      yente_url: env::var("YENTE_URL").ok(),
+      manifest_url: env::var("MANIFEST_URL").ok(),
       index_url: env::var("INDEX_URL").unwrap_or("http://localhost:9200".into()),
       index_auth_method: env::var("INDEX_AUTH_METHOD").unwrap_or("none".into()).parse::<WrappedEsAuthMethod>()?.0,
       enable_prometheus: env::var("ENABLE_PROMETHEUS").unwrap_or_default() == "1",
@@ -172,7 +172,6 @@ mod tests {
     assert_eq!(config.env, Env::Production);
     assert_eq!(config.listen_addr, "0.0.0.0:8080");
     assert_eq!(config.match_candidates, 3);
-    assert_eq!(config.yente_url, Some("http://yente".to_string()));
     assert_eq!(config.index_url, "http://index");
     assert_eq!(config.index_auth_method, EsAuthMethod::EncodedApiKey("secret".to_string()));
     assert_eq!(config.enable_tracing, true);

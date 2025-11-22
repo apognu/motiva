@@ -1,8 +1,11 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+  collections::{HashMap, HashSet},
+  sync::Arc,
+};
 
 use ahash::RandomState;
 use anyhow::Context;
-use elasticsearch::{SearchParts, cluster::ClusterHealthParts, params::SearchType};
+use elasticsearch::{SearchParts, cluster::ClusterHealthParts, indices::IndicesGetAliasParts, params::SearchType};
 use itertools::Itertools;
 use metrics::{counter, histogram};
 use opentelemetry::global;
@@ -14,7 +17,7 @@ use tracing::instrument;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::{
-  catalog::Collections,
+  Catalog,
   error::MotivaError,
   index::{
     EntityHandle, IndexProvider,
@@ -55,7 +58,7 @@ impl IndexProvider for ElasticsearchProvider {
 
   /// Search for candidate entities matching input parameters.
   #[instrument(skip_all)]
-  async fn search(&self, catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, MotivaError> {
+  async fn search(&self, catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, MotivaError> {
     let query = build_query(catalog, entity, params).await?;
 
     tracing::trace!(%query, "running query");
@@ -195,9 +198,32 @@ impl IndexProvider for ElasticsearchProvider {
         .map_err(|err| anyhow::anyhow!(err))?,
     )
   }
+
+  async fn list_indices(&self) -> Result<Vec<(String, String)>, MotivaError> {
+    let indices: HashMap<String, serde_json::Value> = self.es.indices().get_alias(IndicesGetAliasParts::Name(&["yente-entities"])).send().await?.json().await?;
+
+    Ok(
+      indices
+        .keys()
+        .cloned()
+        .filter_map(|name| {
+          if let Some(stripped) = name.strip_prefix("yente-entities-") {
+            let mut stripped = stripped.split("-");
+
+            match (stripped.nth(0), stripped.skip(1).join("-")) {
+              (Some(name), version) if !version.is_empty() => Some((name.to_string(), version)),
+              _ => None,
+            }
+          } else {
+            None
+          }
+        })
+        .collect::<Vec<_>>(),
+    )
+  }
 }
 
-async fn build_query(catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity, params: &MatchParams) -> Result<serde_json::Value, MotivaError> {
+async fn build_query(catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, params: &MatchParams) -> Result<serde_json::Value, MotivaError> {
   Ok(json!({
       "query": {
           "bool": {
@@ -210,7 +236,7 @@ async fn build_query(catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity, 
   }))
 }
 
-async fn build_filters(catalog: &Arc<RwLock<Collections>>, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<serde_json::Value>, MotivaError> {
+async fn build_filters(catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<serde_json::Value>, MotivaError> {
   let mut filters = Vec::<serde_json::Value>::new();
 
   build_schemas(entity, &mut filters)?;
@@ -244,11 +270,11 @@ fn build_schemas(entity: &SearchEntity, filters: &mut Vec<serde_json::Value>) ->
   Ok(())
 }
 
-async fn build_datasets(catalog: &Arc<RwLock<Collections>>, filters: &mut Vec<serde_json::Value>, params: &MatchParams) {
+async fn build_datasets(catalog: &Arc<RwLock<Catalog>>, filters: &mut Vec<serde_json::Value>, params: &MatchParams) {
   let scope = {
     let guard = catalog.read().await;
 
-    guard.get(&params.scope).and_then(|dataset| dataset.children.clone()).unwrap_or_default()
+    guard.loaded_datasets.get(&params.scope).map(|dataset| dataset.children.clone()).unwrap_or_default()
   };
 
   if !params.include_dataset.is_empty() {
@@ -374,31 +400,28 @@ mod tests {
   use tokio::sync::RwLock;
 
   use crate::{
-    catalog::{Collections, Dataset},
+    Catalog,
+    catalog::CatalogDataset,
     index::elastic::queries::{ResolveSchemaLevel, resolve_schemas},
     model::SearchEntity,
     prelude::MatchParams,
   };
 
-  fn fake_catalog() -> Arc<RwLock<Collections>> {
+  fn fake_catalog() -> Arc<RwLock<Catalog>> {
     Arc::new(RwLock::new({
-      let mut catalog = Collections::default();
+      let mut catalog = Catalog::default();
 
-      catalog.insert(
-        "myscope".to_string(),
-        Dataset {
-          name: "Real Dataset".to_string(),
-          children: Some(vec!["realdataset".to_string()]),
-        },
-      );
+      catalog.datasets.push(CatalogDataset {
+        name: "Real Dataset".to_string(),
+        children: vec!["realdataset".to_string()],
+        ..Default::default()
+      });
 
-      catalog.insert(
-        "otherscope".to_string(),
-        Dataset {
-          name: "Other Dataset".to_string(),
-          children: Some(vec!["otherdataset".to_string()]),
-        },
-      );
+      catalog.datasets.push(CatalogDataset {
+        name: "Other Dataset".to_string(),
+        children: vec!["otherdataset".to_string()],
+        ..Default::default()
+      });
 
       catalog
     }))

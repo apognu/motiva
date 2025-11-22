@@ -1,6 +1,6 @@
+mod catalog;
 mod get_entity;
 mod match_entities;
-mod proxy;
 
 use axum::extract::State;
 use axum::response::IntoResponse;
@@ -10,9 +10,9 @@ use reqwest::StatusCode;
 use crate::api::AppState;
 use crate::api::errors::AppError;
 
+pub(super) use self::catalog::get_catalog;
 pub(super) use self::get_entity::get_entity;
 pub use self::match_entities::match_entities;
-pub(super) use self::proxy::catalog;
 
 pub async fn not_found() -> impl IntoResponse {
   AppError::ResourceNotFound
