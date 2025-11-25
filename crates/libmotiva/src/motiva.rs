@@ -7,9 +7,12 @@ use ahash::{HashMap, RandomState};
 use anyhow::Context;
 use tokio::sync::RwLock;
 
+#[cfg(test)]
+use crate::MockedElasticsearch;
 use crate::{
-  catalog::{Catalog, get_local_catalog},
+  catalog::{Catalog, get_merged_catalog},
   error::MotivaError,
+  fetcher::RealFetcher,
   index::{EntityHandle, IndexProvider},
   matching::MatchParams,
   model::{Entity, HasProperties, SearchEntity},
@@ -79,7 +82,7 @@ impl<P: IndexProvider> Motiva<P> {
   pub async fn new(provider: P, manifest_url: Option<String>) -> Result<Self, MotivaError> {
     crate::init();
 
-    let catalog = get_local_catalog(&provider, manifest_url.as_ref()).await.context("could not initialize manifest")?;
+    let catalog = get_merged_catalog(&RealFetcher, &provider, manifest_url.as_ref()).await.context("could not initialize manifest")?;
 
     Ok(Self {
       index: provider,
@@ -200,8 +203,11 @@ impl<P: IndexProvider> Motiva<P> {
   }
 
   /// Refresh the local catalog from upstream.
+  ///
+  /// This will fetch the latest catalogs and bare datasets, as configured
+  /// by the manifest, and merge it with the currently synced indices.
   pub async fn refresh_catalog(&self) {
-    match get_local_catalog(&self.index, self.manifest_url.as_ref()).await {
+    match get_merged_catalog(&RealFetcher, &self.index, self.manifest_url.as_ref()).await {
       Ok(catalog) => {
         *self.catalog.write().await = catalog;
       }
@@ -210,6 +216,11 @@ impl<P: IndexProvider> Motiva<P> {
     }
   }
 
+  /// Return the merged catalog.
+  ///
+  /// By default, returns the cached merged dataset from the latest pull.
+  /// If `force_refresh` is set to `true`, will perform a synchronous
+  /// synchronization and merge from upstream.
   pub async fn get_catalog(&self, force_refresh: bool) -> anyhow::Result<Catalog> {
     if force_refresh {
       self.refresh_catalog().await;

@@ -411,17 +411,23 @@ mod tests {
     Arc::new(RwLock::new({
       let mut catalog = Catalog::default();
 
-      catalog.datasets.push(CatalogDataset {
-        name: "Real Dataset".to_string(),
-        children: vec!["realdataset".to_string()],
-        ..Default::default()
-      });
+      catalog.loaded_datasets.insert(
+        "myscope".to_string(),
+        CatalogDataset {
+          name: "Real Dataset".to_string(),
+          children: vec!["realdataset".to_string()],
+          ..Default::default()
+        },
+      );
 
-      catalog.datasets.push(CatalogDataset {
-        name: "Other Dataset".to_string(),
-        children: vec!["otherdataset".to_string()],
-        ..Default::default()
-      });
+      catalog.loaded_datasets.insert(
+        "otherscope".to_string(),
+        CatalogDataset {
+          name: "Other Dataset".to_string(),
+          children: vec!["otherdataset".to_string()],
+          ..Default::default()
+        },
+      );
 
       catalog
     }))
@@ -527,7 +533,7 @@ mod tests {
 
     let params = MatchParams {
       scope: "myscope".to_string(),
-      include_dataset: vec!["fakedataset".to_string(), "realdataset".to_string()],
+      include_dataset: vec!["fakedataset".to_string(), "realdataset".to_string(), "otherdataset".to_string()],
       ..Default::default()
     };
 

@@ -3,6 +3,7 @@
 
 mod catalog;
 mod error;
+mod fetcher;
 mod index;
 mod matching;
 mod model;

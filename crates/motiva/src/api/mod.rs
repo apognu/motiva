@@ -27,8 +27,8 @@ pub struct AppState<P: IndexProvider> {
   pub motiva: Motiva<P>,
 }
 
-pub async fn routes(config: &Config) -> anyhow::Result<Router> {
-  let motiva = Motiva::new(ElasticsearchProvider::new(&config.index_url, config.index_auth_method.clone())?, config.manifest_url.clone()).await?;
+pub async fn routes<P: IndexProvider>(config: &Config, provider: P) -> anyhow::Result<Router> {
+  let motiva = Motiva::new(provider, config.manifest_url.clone()).await?;
 
   tokio::spawn({
     let motiva = motiva.clone();
