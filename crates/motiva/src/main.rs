@@ -4,6 +4,7 @@ mod trace;
 #[cfg(test)]
 mod tests;
 
+use libmotiva::{ElasticsearchProvider, IndexProvider};
 use tokio::signal;
 
 use crate::api::config::Config;
@@ -14,13 +15,14 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
   let config = Config::from_env().await?;
+  let provider = ElasticsearchProvider::new(&config.index_url, config.index_auth_method.clone())?;
 
-  run(config).await
+  run(config, provider).await
 }
 
-async fn run(config: Config) -> anyhow::Result<()> {
+async fn run<P: IndexProvider>(config: Config, provider: P) -> anyhow::Result<()> {
   let (_logger, tracer) = trace::init_tracing(&config, std::io::stdout()).await;
-  let app = api::routes(&config).await?;
+  let app = api::routes(&config, provider).await?;
   let listener = tokio::net::TcpListener::bind(&config.listen_addr).await.expect("could not create listener");
 
   tracing::info!("listening on {}", listener.local_addr()?.to_string());

@@ -1,16 +1,15 @@
 use std::collections::HashMap;
 
-use anyhow::Context;
 use jiff::{ToSpan, civil::DateTime};
 use serde::{Deserialize, Serialize};
 
-use crate::IndexProvider;
+use crate::{IndexProvider, fetcher::Fetcher};
 
 const OPENSANCTIONS_CATALOG_URL: &str = "https://data.opensanctions.org/datasets/latest/index.json";
 
 pub type LoadedDatasets = HashMap<String, CatalogDataset>;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Manifest {
   #[serde(default)]
   pub catalogs: Vec<ManifestCatalog>,
@@ -32,7 +31,7 @@ impl Default for Manifest {
   }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ManifestCatalog {
   pub url: String,
   pub scope: Option<String>,
@@ -41,7 +40,7 @@ pub struct ManifestCatalog {
   pub resource_name: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ManifestDataset {
   pub name: String,
   pub title: String,
@@ -83,13 +82,9 @@ pub struct CatalogDataset {
   pub updated_at: DateTime,
 }
 
-pub async fn get_manifest(url: &str) -> anyhow::Result<Manifest> {
-  reqwest::get(url).await.context("could not reach manifest location")?.json().await.context("invalid manifest file")
-}
-
-pub async fn get_local_catalog<P: IndexProvider>(index: &P, manifest_url: Option<&String>) -> anyhow::Result<Catalog> {
+pub async fn get_merged_catalog<P: IndexProvider, F: Fetcher>(fetcher: &F, index: &P, manifest_url: Option<&String>) -> anyhow::Result<Catalog> {
   let manifest = match manifest_url {
-    Some(url) => get_manifest(url).await?,
+    Some(url) => fetcher.fetch_manifest(url).await?,
     None => Manifest::default(),
   };
 
@@ -97,7 +92,7 @@ pub async fn get_local_catalog<P: IndexProvider>(index: &P, manifest_url: Option
   let mut catalog = Catalog::default();
 
   for mut spec in manifest.catalogs {
-    let mut upstream: Catalog = reqwest::get(&spec.url).await?.json().await?;
+    let mut upstream: Catalog = fetcher.fetch_catalog(&spec.url).await?;
 
     if let Some(scope) = spec.scope {
       spec.scopes.push(scope);
@@ -156,4 +151,79 @@ pub async fn get_local_catalog<P: IndexProvider>(index: &P, manifest_url: Option
   tracing::info!(datasets = catalog.datasets.len(), "fetched catalog");
 
   Ok(catalog)
+}
+
+#[cfg(test)]
+mod tests {
+  use std::collections::HashMap;
+
+  use jiff::civil::DateTime;
+
+  use crate::{
+    Catalog, MockedElasticsearch,
+    catalog::{CatalogDataset, Manifest, OPENSANCTIONS_CATALOG_URL},
+    fetcher::TestFetcher,
+  };
+
+  #[tokio::test]
+  async fn merge_catalog() {
+    let catalog = Catalog {
+      datasets: vec![
+        CatalogDataset {
+          name: "default".to_string(),
+          children: vec!["dataset1".to_string(), "dataset2".to_string(), "dataset3".to_string()],
+          ..Default::default()
+        },
+        CatalogDataset {
+          name: "dataset1".to_string(),
+          version: "20251125100000-pop".to_string(),
+          last_export: DateTime::constant(2025, 11, 25, 10, 0, 0, 0),
+          ..Default::default()
+        },
+        CatalogDataset {
+          name: "dataset2".to_string(),
+          version: "20251125100000-pop".to_string(),
+          last_export: DateTime::constant(2025, 11, 25, 10, 0, 0, 0),
+          ..Default::default()
+        },
+        CatalogDataset {
+          name: "dataset3".to_string(),
+          version: "3".to_string(),
+          last_export: DateTime::constant(2025, 11, 25, 10, 0, 0, 0),
+          ..Default::default()
+        },
+      ],
+      ..Default::default()
+    };
+
+    let mut catalogs = HashMap::default();
+    catalogs.insert(OPENSANCTIONS_CATALOG_URL.to_string(), catalog);
+
+    let fetcher = TestFetcher {
+      manifest: Manifest::default(),
+      catalogs,
+    };
+
+    let indices = vec![("dataset1".to_string(), "20251125100000-pop".to_string()), ("dataset2".to_string(), "2025110100000-pop".to_string())];
+    let catalog = super::get_merged_catalog(&fetcher, &MockedElasticsearch::builder().indices(indices).build(), None).await.unwrap();
+
+    assert_eq!(catalog.datasets.len(), 4);
+    assert_eq!(catalog.outdated.len(), 1);
+
+    let datasets_by_name = catalog.datasets.into_iter().map(|ds| (ds.name.clone(), ds)).collect::<HashMap<_, _>>();
+
+    assert!(datasets_by_name["default"].load);
+
+    assert!(!datasets_by_name["dataset1"].load);
+    assert_eq!(Some(&datasets_by_name["dataset1"].version), datasets_by_name["dataset1"].index_version.as_ref());
+    assert!(datasets_by_name["dataset1"].index_current);
+
+    assert!(!datasets_by_name["dataset2"].load);
+    assert_ne!(Some(&datasets_by_name["dataset2"].version), datasets_by_name["dataset2"].index_version.as_ref());
+    assert!(!datasets_by_name["dataset2"].index_current);
+
+    assert!(!datasets_by_name["dataset3"].load);
+    assert!(datasets_by_name["dataset3"].index_version.is_none());
+    assert!(!datasets_by_name["dataset3"].index_current);
+  }
 }

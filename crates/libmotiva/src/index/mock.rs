@@ -18,6 +18,8 @@ pub struct MockedElasticsearch {
   healthy: Option<bool>,
   #[builder(default)]
   entities: Vec<Entity>,
+  #[builder(default)]
+  indices: Vec<(String, String)>,
 }
 
 impl IndexProvider for MockedElasticsearch {
@@ -41,6 +43,6 @@ impl IndexProvider for MockedElasticsearch {
   }
 
   async fn list_indices(&self) -> Result<Vec<(String, String)>, MotivaError> {
-    unimplemented!();
+    Ok(self.indices.clone())
   }
 }
