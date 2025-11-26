@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use jiff::{ToSpan, civil::DateTime};
 use serde::{Deserialize, Serialize};
 
-use crate::{IndexProvider, fetcher::Fetcher};
+use crate::{IndexProvider, fetcher::CatalogFetcher};
 
-const OPENSANCTIONS_CATALOG_URL: &str = "https://data.opensanctions.org/datasets/latest/index.json";
+pub(crate) const OPENSANCTIONS_CATALOG_URL: &str = "https://data.opensanctions.org/datasets/latest/index.json";
 
 pub type LoadedDatasets = HashMap<String, CatalogDataset>;
 
@@ -31,6 +31,25 @@ impl Default for Manifest {
   }
 }
 
+#[cfg(test)]
+impl Manifest {
+  fn test() -> Self {
+    Self {
+      catalogs: vec![ManifestCatalog {
+        url: OPENSANCTIONS_CATALOG_URL.to_string(),
+        resource_name: "entities.ftm.json".to_string(),
+        scope: Some("default".to_string()),
+        ..Default::default()
+      }],
+      datasets: vec![ManifestDataset {
+        name: "bare_dataset_1".into(),
+        title: "Bare dataset #1".into(),
+        ..Default::default()
+      }],
+    }
+  }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ManifestCatalog {
   pub url: String,
@@ -40,7 +59,7 @@ pub struct ManifestCatalog {
   pub resource_name: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ManifestDataset {
   pub name: String,
   pub title: String,
@@ -58,7 +77,7 @@ pub struct Catalog {
   pub outdated: Vec<String>,
 
   #[serde(skip)]
-  pub(crate) loaded_datasets: LoadedDatasets,
+  pub loaded_datasets: LoadedDatasets,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -82,11 +101,8 @@ pub struct CatalogDataset {
   pub updated_at: DateTime,
 }
 
-pub async fn get_merged_catalog<P: IndexProvider, F: Fetcher>(fetcher: &F, index: &P, manifest_url: Option<&String>) -> anyhow::Result<Catalog> {
-  let manifest = match manifest_url {
-    Some(url) => fetcher.fetch_manifest(url).await?,
-    None => Manifest::default(),
-  };
+pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F, index: &P) -> anyhow::Result<Catalog> {
+  let manifest = fetcher.fetch_manifest().await?;
 
   let indices = index.list_indices().await?;
   let mut catalog = Catalog::default();
@@ -199,15 +215,12 @@ mod tests {
     let mut catalogs = HashMap::default();
     catalogs.insert(OPENSANCTIONS_CATALOG_URL.to_string(), catalog);
 
-    let fetcher = TestFetcher {
-      manifest: Manifest::default(),
-      catalogs,
-    };
+    let fetcher = TestFetcher { manifest: Manifest::test(), catalogs };
 
     let indices = vec![("dataset1".to_string(), "20251125100000-pop".to_string()), ("dataset2".to_string(), "2025110100000-pop".to_string())];
-    let catalog = super::get_merged_catalog(&fetcher, &MockedElasticsearch::builder().indices(indices).build(), None).await.unwrap();
+    let catalog = super::get_merged_catalog(&fetcher, &MockedElasticsearch::builder().indices(indices).build()).await.unwrap();
 
-    assert_eq!(catalog.datasets.len(), 4);
+    assert_eq!(catalog.datasets.len(), 5);
     assert_eq!(catalog.outdated.len(), 1);
 
     let datasets_by_name = catalog.datasets.into_iter().map(|ds| (ds.name.clone(), ds)).collect::<HashMap<_, _>>();

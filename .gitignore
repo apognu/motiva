@@ -1,4 +1,5 @@
 /target
 /poetry.lock
 
+.env
 .DS_Store

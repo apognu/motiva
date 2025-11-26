@@ -14,6 +14,6 @@ pub struct GetCatalogParams {
 }
 
 #[instrument(skip_all)]
-pub async fn get_catalog<P: IndexProvider>(State(state): State<AppState<P>>, Query(query): Query<GetCatalogParams>) -> Result<Json<Catalog>, AppError> {
+pub async fn get_catalog<F: CatalogFetcher, P: IndexProvider>(State(state): State<AppState<F, P>>, Query(query): Query<GetCatalogParams>) -> Result<Json<Catalog>, AppError> {
   Ok(Json(state.motiva.get_catalog(query.force_refresh).await?))
 }

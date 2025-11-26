@@ -18,9 +18,9 @@ use crate::api::{
 };
 
 #[instrument(skip_all)]
-pub async fn match_entities<P: IndexProvider + 'static>(
-  State(state): State<AppState<P>>,
-  _: Auth<P>,
+pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
+  State(state): State<AppState<F, P>>,
+  _: Auth<F, P>,
   Path((scope,)): Path<(String,)>,
   Query(mut query): Query<MatchParams>,
   TypedJson(mut body): TypedJson<Payload>,

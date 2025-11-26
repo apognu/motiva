@@ -4,7 +4,7 @@ use std::{
 };
 
 use axum_test::TestServer;
-use libmotiva::{MockedElasticsearch, prelude::*};
+use libmotiva::{MockedElasticsearch, TestFetcher, prelude::*};
 use nix::{sys::signal, unistd::Pid};
 use reqwest::{StatusCode, header::AUTHORIZATION};
 use rusty_fork::rusty_fork_test;
@@ -25,7 +25,7 @@ async fn api_invalid_credentials() {
       ..Default::default()
     },
     prometheus: None,
-    motiva: Motiva::new(index, None).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
   };
 
   let app = api::router(state);
@@ -53,7 +53,7 @@ async fn api_valid_credentials() {
       ..Default::default()
     },
     prometheus: None,
-    motiva: Motiva::new(index, None).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
   };
 
   let app = api::router(state);
@@ -119,7 +119,7 @@ rusty_fork_test! {
                     ..Default::default()
                 },
                 prometheus: None,
-                motiva: Motiva::new(index, None).await.unwrap(),
+                motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
             };
 
             let buf = Arc::new(Mutex::new(Vec::default()));
@@ -155,7 +155,7 @@ rusty_fork_test! {
                     ..Default::default()
                 },
                 prometheus: Some(build_prometheus().unwrap()),
-                motiva: Motiva::new(index, None).await.unwrap(),
+                motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
             };
 
             let app = api::router(state);

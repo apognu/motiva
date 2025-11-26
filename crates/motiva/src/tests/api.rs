@@ -5,6 +5,8 @@ use serde_json::json;
 
 use crate::api::{AppState, config::Config, handlers};
 
+use libmotiva::TestFetcher;
+
 #[tokio::test]
 async fn api_health_unhealthy() {
   let index = MockedElasticsearch::builder().healthy(false).build();
@@ -12,7 +14,7 @@ async fn api_health_unhealthy() {
   let state = AppState {
     config: Config::default(),
     prometheus: None,
-    motiva: Motiva::new(index, None).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
   };
 
   let app = Router::new().route("/readyz", post(handlers::readyz)).with_state(state);
@@ -29,7 +31,7 @@ async fn api_health_healthy() {
   let state = AppState {
     config: Config::default(),
     prometheus: None,
-    motiva: Motiva::new(index, None).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
   };
 
   let app = Router::new().route("/readyz", post(handlers::readyz)).with_state(state);
@@ -51,14 +53,14 @@ async fn api_match() {
   let state = AppState {
     config: Config::default(),
     prometheus: None,
-    motiva: Motiva::new(index, None).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
   };
 
   let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
   let server = TestServer::new(app).unwrap();
 
   let response = server
-    .post("/match/default")
+    .post("/match/default?cutoff=0.0")
     .json(&json!({
         "queries": {
             "test": {
@@ -104,7 +106,7 @@ async fn api_invalid_query() {
   let state = AppState {
     config: Config::default(),
     prometheus: None,
-    motiva: Motiva::new(index, None).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
   };
 
   let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
@@ -123,7 +125,7 @@ async fn api_unparsable_payload() {
   let state = AppState {
     config: Config::default(),
     prometheus: None,
-    motiva: Motiva::new(index, None).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
   };
 
   let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
@@ -149,7 +151,7 @@ async fn api_invalid_payload() {
   let state = AppState {
     config: Config::default(),
     prometheus: None,
-    motiva: Motiva::new(index, None).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
   };
 
   let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
