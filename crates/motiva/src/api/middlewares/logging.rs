@@ -17,8 +17,9 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::api::{AppState, config::Config};
 
-pub async fn api_logger<P>(State(state): State<AppState<P>>, request: Request<Body>, next: Next) -> Result<Response, StatusCode>
+pub async fn api_logger<F, P>(State(state): State<AppState<F, P>>, request: Request<Body>, next: Next) -> Result<Response, StatusCode>
 where
+  F: CatalogFetcher,
   P: IndexProvider,
 {
   let span = Span::current();

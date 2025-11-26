@@ -202,25 +202,27 @@ impl IndexProvider for ElasticsearchProvider {
   async fn list_indices(&self) -> Result<Vec<(String, String)>, MotivaError> {
     let indices: HashMap<String, serde_json::Value> = self.es.indices().get_alias(IndicesGetAliasParts::Name(&["yente-entities"])).send().await?.json().await?;
 
-    Ok(
-      indices
-        .keys()
-        .cloned()
-        .filter_map(|name| {
-          if let Some(stripped) = name.strip_prefix("yente-entities-") {
-            let mut stripped = stripped.split("-");
-
-            match (stripped.nth(0), stripped.skip(1).join("-")) {
-              (Some(name), version) if !version.is_empty() => Some((name.to_string(), version)),
-              _ => None,
-            }
-          } else {
-            None
-          }
-        })
-        .collect::<Vec<_>>(),
-    )
+    Ok(parse_index_dataset_versions(indices))
   }
+}
+
+fn parse_index_dataset_versions(indices: HashMap<String, serde_json::Value>) -> Vec<(String, String)> {
+  indices
+    .keys()
+    .cloned()
+    .filter_map(|name| {
+      if let Some(stripped) = name.strip_prefix("yente-entities-") {
+        let mut stripped = stripped.split("-");
+
+        match (stripped.next(), stripped.skip(1).join("-")) {
+          (Some(name), version) if !version.is_empty() => Some((name.to_string(), version)),
+          _ => None,
+        }
+      } else {
+        None
+      }
+    })
+    .collect::<Vec<_>>()
 }
 
 async fn build_query(catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, params: &MatchParams) -> Result<serde_json::Value, MotivaError> {
@@ -393,7 +395,10 @@ fn resolve_schemas(schema: &str, level: ResolveSchemaLevel) -> Result<Vec<String
 
 #[cfg(test)]
 mod tests {
-  use std::sync::Arc;
+  use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+  };
 
   use serde_json::json;
   use serde_json_assert::{assert_json_eq, assert_json_include};
@@ -593,5 +598,21 @@ mod tests {
     assert_eq!(resolve_schemas("Airplane", ResolveSchemaLevel::Root).unwrap(), &["Airplane"]);
     assert!(resolve_schemas("Vehicle", ResolveSchemaLevel::Root).is_err());
     assert_eq!(resolve_schemas("Thing", ResolveSchemaLevel::Root).unwrap(), &["Thing"]);
+  }
+
+  #[test]
+  fn test_parse_versions() {
+    let input = [("dataset1", "20250901000000-abc"), ("dataset2", "20251127104000-xyz")]
+      .into_iter()
+      .map(|(n, v)| (format!("yente-entities-{n}-any-{v}"), json!({})))
+      .collect::<HashMap<String, _>>();
+
+    let versions = super::parse_index_dataset_versions(input);
+
+    assert_eq!(versions.len(), 2);
+    assert_eq!(
+      HashSet::<(String, String)>::from_iter(versions.into_iter()),
+      HashSet::from_iter(vec![("dataset1".to_string(), "20250901000000-abc".to_string()), ("dataset2".to_string(), "20251127104000-xyz".to_string())].into_iter())
+    );
   }
 }

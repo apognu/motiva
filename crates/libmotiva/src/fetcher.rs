@@ -1,26 +1,34 @@
-#[cfg(test)]
 use std::collections::HashMap;
 
 use anyhow::Context;
 
-use crate::{Catalog, catalog::Manifest};
+use crate::{
+  Catalog,
+  catalog::{Manifest, OPENSANCTIONS_CATALOG_URL},
+};
 
-pub trait Fetcher: Default {
-  async fn fetch_manifest(&self, url: &str) -> anyhow::Result<Manifest>;
-  async fn fetch_catalog(&self, url: &str) -> anyhow::Result<Catalog>;
+pub trait CatalogFetcher: Clone + Default + Send + Sync + 'static {
+  fn fetch_manifest(&self) -> impl Future<Output = anyhow::Result<Manifest>> + Send;
+  fn fetch_catalog(&self, url: &str) -> impl Future<Output = anyhow::Result<Catalog>> + Send;
 }
 
-pub(crate) struct RealFetcher;
+#[derive(Clone, Default)]
+pub struct HttpCatalogFetcher {
+  pub manifest_url: Option<String>,
+}
 
-impl Default for RealFetcher {
-  fn default() -> Self {
-    RealFetcher
+impl HttpCatalogFetcher {
+  pub fn from_manifest_url(url: Option<String>) -> Self {
+    Self { manifest_url: url }
   }
 }
 
-impl Fetcher for RealFetcher {
-  async fn fetch_manifest(&self, url: &str) -> anyhow::Result<Manifest> {
-    reqwest::get(url).await.context("could not reach manifest location")?.json().await.context("invalid manifest file")
+impl CatalogFetcher for HttpCatalogFetcher {
+  async fn fetch_manifest(&self) -> anyhow::Result<Manifest> {
+    match &self.manifest_url {
+      Some(url) => reqwest::get(url).await.context("could not reach manifest location")?.json().await.context("invalid manifest file"),
+      None => Ok(Manifest::default()),
+    }
   }
 
   async fn fetch_catalog(&self, url: &str) -> anyhow::Result<Catalog> {
@@ -28,22 +36,30 @@ impl Fetcher for RealFetcher {
   }
 }
 
-#[cfg(test)]
-pub(crate) struct TestFetcher {
-  pub(crate) manifest: Manifest,
-  pub(crate) catalogs: HashMap<String, Catalog>,
+#[derive(Clone)]
+pub struct TestFetcher {
+  pub manifest: Manifest,
+  pub catalogs: HashMap<String, Catalog>,
 }
 
-#[cfg(test)]
 impl Default for TestFetcher {
   fn default() -> Self {
-    unimplemented!("TestFetcher does not have a default implementation, it needs to be mocked");
+    let catalogs = {
+      let mut m = HashMap::default();
+
+      m.insert(OPENSANCTIONS_CATALOG_URL.to_string(), Catalog::default());
+      m
+    };
+
+    Self {
+      manifest: Manifest::default(),
+      catalogs,
+    }
   }
 }
 
-#[cfg(test)]
-impl Fetcher for TestFetcher {
-  async fn fetch_manifest(&self, _url: &str) -> anyhow::Result<Manifest> {
+impl CatalogFetcher for TestFetcher {
+  async fn fetch_manifest(&self) -> anyhow::Result<Manifest> {
     Ok(self.manifest.clone())
   }
 
