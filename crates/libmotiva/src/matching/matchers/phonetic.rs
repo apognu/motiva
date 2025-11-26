@@ -35,7 +35,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
         if compare_name_phonetic_tuples((l_name, l_phone.as_deref()), (r_name, r_phone.as_deref())) {
           matched += 1;
 
-          if let Some(index) = comp.iter().position(|x| *x == (r_name, r_phone.clone())) {
+          if let Some(index) = comp.iter().position(|x| *x == (r_name.clone(), r_phone.clone())) {
             comp.remove(index);
           }
 

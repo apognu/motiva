@@ -4,15 +4,36 @@ use any_ascii::any_ascii;
 use itertools::Itertools;
 use regex::Regex;
 use rphonetic::{Encoder, Metaphone};
+use unicode_general_category::{GeneralCategory, get_general_category};
 use whatlang::Script;
 
 use crate::matching::latinize::latinize;
 
-const NAME_SEPARATORS: &[char] = &['-'];
+const IGNORED_SEPARATORS: &[char] = &['.', '\'', '’', '"'];
 
-// TODO: better support for separators
+const SEPARATOR_CATEGORIES: &[GeneralCategory] = {
+  use GeneralCategory::*;
+
+  &[
+    Control,
+    SpacingMark,
+    SpaceSeparator,
+    LineSeparator,
+    ParagraphSeparator,
+    ConnectorPunctuation,
+    DashPunctuation,
+    OpenPunctuation,
+    ClosePunctuation,
+    InitialPunctuation,
+    FinalPunctuation,
+    OtherPunctuation,
+    MathSymbol,
+    OtherSymbol,
+  ]
+};
+
 fn is_name_separator(c: char) -> bool {
-  NAME_SEPARATORS.contains(&c) || c.is_whitespace()
+  SEPARATOR_CATEGORIES.iter().contains(&get_general_category(c))
 }
 
 fn is_modern_alphabet(input: &str) -> bool {
@@ -23,12 +44,20 @@ fn is_modern_alphabet(input: &str) -> bool {
   matches!(info.script(), Script::Latin | Script::Greek | Script::Armenian | Script::Cyrillic)
 }
 
-pub(crate) fn tokenize_names<'s, I, S>(names: I) -> impl Iterator<Item = impl Iterator<Item = &'s str>>
+pub(crate) fn tokenize_names<'s, I, S>(names: I) -> impl Iterator<Item = Vec<String>>
 where
   S: Borrow<str> + 's,
   I: Iterator<Item = &'s S> + 's,
 {
-  names.map(|s| s.borrow().split(is_name_separator))
+  names.map(|s| {
+    s.borrow()
+      .chars()
+      .filter(|c| !IGNORED_SEPARATORS.iter().contains(c))
+      .join("")
+      .split(is_name_separator)
+      .map(|token| token.to_string())
+      .collect::<Vec<_>>()
+  })
 }
 
 #[inline(always)]
@@ -41,6 +70,9 @@ where
     .map(|s| {
       latinize(s.borrow())
         .to_lowercase()
+        .chars()
+        .filter(|c| !IGNORED_SEPARATORS.iter().contains(c))
+        .join("")
         .split(is_name_separator)
         .map(|s| s.chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
         .join(" ")
@@ -110,24 +142,23 @@ where
   I: Iterator<Item = &'s S> + 's,
 {
   tokenize_names(names)
-    .flat_map(|s| s.filter(|s| is_modern_alphabet(s) && s.chars().count() >= 3).map(|s| metaphone.encode(&any_ascii(s))))
+    .flat_map(|s| s.into_iter().filter(|s| is_modern_alphabet(s) && s.chars().count() >= 3).map(|s| metaphone.encode(&any_ascii(&s))))
     .filter(|phoneme| phoneme.len() > 2)
 }
 
-pub(crate) fn phonetic_names_tuples<'s, I, S>(metaphone: &Metaphone, names: I) -> Vec<Vec<(&'s str, Option<String>)>>
+pub(crate) fn phonetic_names_tuples<'s, I, S>(metaphone: &Metaphone, names: I) -> Vec<Vec<(String, Option<String>)>>
 where
   S: Borrow<str> + 's,
   I: Iterator<Item = &'s S> + 's,
 {
   tokenize_names(names)
     .map(|s| {
-      s.filter(|name| name.len() >= 2)
+      s.into_iter()
+        .filter(|name| name.len() >= 2)
         .map(|s| {
-          (s, {
-            let phoneme = metaphone.encode(s);
+          let phoneme = metaphone.encode(&s);
 
-            if phoneme.len() < 3 { None } else { Some(phoneme) }
-          })
+          (s, { if phoneme.len() < 3 { None } else { Some(phoneme) } })
         })
         .collect()
     })
@@ -142,6 +173,7 @@ where
   tokenize_names(names)
     .map(|tokens| {
       let mut tokens = tokens
+        .iter()
         .map(|token| if is_modern_alphabet(token) { latinize(token).to_lowercase() } else { token.to_lowercase() })
         .collect::<Vec<_>>();
 
@@ -159,8 +191,8 @@ where
   tokenize_names(names)
     .flatten()
     .filter(|s| s.chars().count() > 1)
-    .map(|s| match is_modern_alphabet(s) {
-      true => latinize(s).to_lowercase(),
+    .map(|s| match is_modern_alphabet(&s) {
+      true => latinize(&s).to_lowercase(),
       false => s.to_lowercase(),
     })
     .unique()
@@ -174,7 +206,7 @@ where
   tokenize_names(names)
     .flatten()
     .filter(|s| s.chars().count() > 1)
-    .map(|s| latinize(s).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
+    .map(|s| latinize(&s).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
     .unique()
 }
 
@@ -185,7 +217,8 @@ where
 {
   tokenize_names(names)
     .map(|s| {
-      s.map(|s| latinize(s).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
+      s.iter()
+        .map(|s| latinize(s).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
         .collect::<Vec<_>>()
     })
     .unique()
@@ -218,6 +251,17 @@ mod tests {
   use rphonetic::Metaphone;
 
   #[test]
+  fn name_tokenization() {
+    let inputs: Vec<(&str, Vec<&str>)> = vec![("ben'laden,ossama", vec!["benladen", "ossama"]), ("Ser. Bobby O'Brian", vec!["Ser", "Bobby", "OBrian"])];
+
+    for (input, expected) in inputs {
+      let names = super::tokenize_names(vec![input].iter()).flatten().collect::<Vec<_>>();
+
+      assert_eq!(&names, &expected);
+    }
+  }
+
+  #[test]
   fn is_modern_alphabet() {
     let input = &[
       ("Nicolas Sarkozy", true),
@@ -235,7 +279,7 @@ mod tests {
 
   #[test]
   fn clean_names() {
-    assert_eq!(super::clean_names(vec!["Bob-a O'Brien#"].iter()).collect::<Vec<_>>(), vec!["bob a obrien"]);
+    assert_eq!(super::clean_names(vec!["Bob-a O'Brien#2nd"].iter()).collect::<Vec<_>>(), vec!["bob a obrien 2nd"]);
   }
 
   #[test]
@@ -245,7 +289,7 @@ mod tests {
 
   #[test]
   fn tokenize_names() {
-    let names = super::tokenize_names(["Barack Hussein Obama"].iter()).map(|n| n.collect::<Vec<_>>()).collect::<Vec<_>>();
+    let names = super::tokenize_names(["Barack Hussein Obama"].iter()).collect::<Vec<_>>();
 
     assert_eq!(names, vec![vec!["Barack", "Hussein", "Obama"]]);
 
