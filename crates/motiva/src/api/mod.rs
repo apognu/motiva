@@ -33,7 +33,7 @@ pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: &Config, fetche
       outdated_grace: config.outdated_grace,
     };
 
-    Motiva::with_fetcher(provider, fetcher, config).await?
+    Motiva::custom(provider.clone()).fetcher(fetcher).config(config).build().await?
   };
 
   tokio::spawn({
