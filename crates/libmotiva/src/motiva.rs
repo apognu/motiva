@@ -4,11 +4,16 @@ use std::{
 };
 
 use ahash::{HashMap, RandomState};
+use anyhow::Context;
+use bon::bon;
+use jiff::Span;
 use tokio::sync::RwLock;
 
 use crate::{
-  catalog::{Collections, fetch_catalog},
+  HttpCatalogFetcher, TestFetcher,
+  catalog::{Catalog, get_merged_catalog},
   error::MotivaError,
+  fetcher::CatalogFetcher,
   index::{EntityHandle, IndexProvider},
   matching::MatchParams,
   model::{Entity, HasProperties, SearchEntity},
@@ -25,6 +30,11 @@ pub enum GetEntityBehavior {
   FetchNestedEntity,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct MotivaConfig {
+  pub outdated_grace: Span,
+}
+
 /// The main entrypoint for using the Motiva library.
 ///
 /// `motiva` provides functionality to search for entities within sanctioned lists
@@ -39,7 +49,7 @@ pub enum GetEntityBehavior {
 ///
 /// # tokio_test::block_on(async {
 ///   # let es = MockedElasticsearch::default();
-///   let motiva = Motiva::new(es, None).await.unwrap();
+///   let motiva = Motiva::new(es).build().await.unwrap();
 ///
 ///   let search = SearchEntity::builder("Person").properties(&[("name", &["John Doe"])]).build();
 ///   let results = motiva.search(&search, &MatchParams::default()).await.unwrap();
@@ -53,12 +63,14 @@ pub enum GetEntityBehavior {
 /// # });
 /// ```
 #[derive(Clone, Debug)]
-pub struct Motiva<P: IndexProvider> {
-  yente: Option<String>,
-  catalog: Arc<RwLock<Collections>>,
+pub struct Motiva<P: IndexProvider, F: CatalogFetcher = HttpCatalogFetcher> {
   index: P,
+  fetcher: F,
+  config: MotivaConfig,
+  catalog: Arc<RwLock<Catalog>>,
 }
 
+#[bon]
 impl<P: IndexProvider> Motiva<P> {
   /// Create a new Motiva instance.
   ///
@@ -75,18 +87,59 @@ impl<P: IndexProvider> Motiva<P> {
   ///    responsibility to refresh it as needed.
   ///
   /// This struct can be safely cloned and sent across thread boundaries.
-  pub async fn new(provider: P, yente: Option<String>) -> Result<Self, MotivaError> {
+  #[allow(clippy::new_ret_no_self)]
+  #[builder(start_fn = new, finish_fn = build)]
+  pub async fn _new(#[builder(start_fn)] provider: P, #[builder(default)] config: MotivaConfig) -> Result<Motiva<P, HttpCatalogFetcher>, MotivaError> {
     crate::init();
 
-    let catalog = fetch_catalog(&yente.as_ref().map(|y| format!("{y}/catalog"))).await?;
+    let fetcher = HttpCatalogFetcher::default();
+    let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
 
-    Ok(Self {
+    Ok(Motiva {
+      config,
       index: provider,
-      yente,
+      fetcher,
       catalog: Arc::new(RwLock::new(catalog)),
     })
   }
 
+  #[builder(finish_fn = build)]
+  pub async fn custom<F: CatalogFetcher>(#[builder(start_fn)] provider: P, fetcher: F, #[builder(default)] config: MotivaConfig) -> Result<Motiva<P, F>, MotivaError> {
+    crate::init();
+
+    let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
+
+    Ok(Motiva {
+      config,
+      index: provider,
+      fetcher,
+      catalog: Arc::new(RwLock::new(catalog)),
+    })
+  }
+}
+
+#[bon]
+impl<P: IndexProvider> Motiva<P, TestFetcher> {
+  #[builder(finish_fn = build)]
+  pub async fn test(
+    #[builder(start_fn)] provider: P,
+    #[builder(default = TestFetcher::default())] fetcher: TestFetcher,
+    #[builder(default)] config: MotivaConfig,
+  ) -> Result<Motiva<P, TestFetcher>, MotivaError> {
+    crate::init();
+
+    let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
+
+    Ok(Motiva::<P, _> {
+      config,
+      index: provider,
+      fetcher,
+      catalog: Arc::new(RwLock::new(catalog)),
+    })
+  }
+}
+
+impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
   /// Retrieve the backing store availability.
   ///
   /// The actual implementation is dependent on the concrete type of
@@ -193,19 +246,79 @@ impl<P: IndexProvider> Motiva<P> {
     }
   }
 
+  /// Perform the scoring of all candidates against the search parameters.
+  pub fn score<A: MatchingAlgorithm>(&self, entity: &SearchEntity, hits: Vec<Entity>, cutoff: f64) -> anyhow::Result<Vec<(Entity, f64)>> {
+    scoring::score::<A>(entity, hits, cutoff)
+  }
+
   /// Refresh the local catalog from upstream.
+  ///
+  /// This will fetch the latest catalogs and bare datasets, as configured
+  /// by the manifest, and merge it with the currently synced indices.
   pub async fn refresh_catalog(&self) {
-    match fetch_catalog(&self.yente.as_ref().map(|y| format!("{y}/catalog"))).await {
+    match get_merged_catalog(&self.fetcher, &self.index, self.config.outdated_grace).await {
       Ok(catalog) => {
         *self.catalog.write().await = catalog;
       }
 
-      Err(err) => tracing::error!(error = err.to_string(), "could not refresh catalog"),
+      Err(err) => tracing::warn!(error = err.to_string(), "could not refresh catalog"),
     }
   }
 
-  /// Perform the scoring of all candidates against the search parameters.
-  pub fn score<A: MatchingAlgorithm>(&self, entity: &SearchEntity, hits: Vec<Entity>, cutoff: f64) -> anyhow::Result<Vec<(Entity, f64)>> {
-    scoring::score::<A>(entity, hits, cutoff)
+  /// Return the merged catalog.
+  ///
+  /// By default, returns the cached merged dataset from the latest pull.
+  /// If `force_refresh` is set to `true`, will perform a synchronous
+  /// synchronization and merge from upstream.
+  pub async fn get_catalog(&self, force_refresh: bool) -> anyhow::Result<Catalog> {
+    if force_refresh {
+      self.refresh_catalog().await;
+    }
+
+    Ok(self.catalog.read().await.clone())
+  }
+}
+#[cfg(test)]
+mod tests {
+  use std::collections::HashMap;
+
+  use crate::{
+    Catalog, CatalogDataset, MockedElasticsearch, Motiva, TestFetcher,
+    catalog::{Manifest, ManifestCatalog},
+  };
+
+  #[tokio::test]
+  async fn catalog_refresh() {
+    let mut catalogs = HashMap::default();
+    catalogs.insert(
+      "dummyurl".to_string(),
+      Catalog {
+        datasets: vec![CatalogDataset {
+          name: "dataset1".to_string(),
+          ..Default::default()
+        }],
+        ..Default::default()
+      },
+    );
+
+    let fetcher = TestFetcher {
+      manifest: Manifest {
+        catalogs: vec![ManifestCatalog {
+          url: "dummyurl".to_string(),
+          ..Default::default()
+        }],
+        ..Default::default()
+      },
+      catalogs,
+    };
+
+    let index = MockedElasticsearch::builder().healthy(true).build();
+    let motiva = Motiva::custom(index).fetcher(fetcher).build().await.unwrap();
+    let initial_catalog = { motiva.catalog.read().await.clone() };
+
+    assert_eq!(initial_catalog.datasets.len(), 1);
+    assert!(initial_catalog.datasets.iter().find(|ds| ds.name == "dataset1").is_some());
+
+    motiva.refresh_catalog().await;
   }
 }

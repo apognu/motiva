@@ -10,25 +10,26 @@ use axum_extra::{
   TypedHeader,
   headers::{Authorization, authorization::Bearer},
 };
-use libmotiva::prelude::IndexProvider;
+use libmotiva::{CatalogFetcher, prelude::IndexProvider};
 
 use crate::api::{AppState, errors::AppError};
 
 #[non_exhaustive]
-pub(crate) struct Auth<P> {
-  _marker: PhantomData<P>,
+pub(crate) struct Auth<F, P> {
+  _marker: PhantomData<(F, P)>,
 }
 
-impl<S, P> FromRequestParts<S> for Auth<P>
+impl<S, F, P> FromRequestParts<S> for Auth<F, P>
 where
   for<'s> P: IndexProvider + 's,
+  F: CatalogFetcher,
   S: Send + Sync,
-  AppState<P>: FromRef<S>,
+  AppState<F, P>: FromRef<S>,
 {
   type Rejection = AppError;
 
   async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-    let State(app_state) = parts.extract_with_state::<State<AppState<P>>, S>(state).await.unwrap();
+    let State(app_state) = parts.extract_with_state::<State<AppState<_, P>>, S>(state).await.unwrap();
 
     let Some(api_key) = app_state.config.api_key else {
       return Ok(Auth { _marker: PhantomData });
@@ -44,6 +45,6 @@ where
       return Err(AppError::InvalidCredentials);
     }
 
-    Ok(Auth::<P> { _marker: PhantomData })
+    Ok(Auth::<F, P> { _marker: PhantomData })
   }
 }

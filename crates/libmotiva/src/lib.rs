@@ -3,6 +3,7 @@
 
 mod catalog;
 mod error;
+mod fetcher;
 mod index;
 mod matching;
 mod model;
@@ -22,7 +23,9 @@ pub(crate) fn init() {
 
 /// Module including most features needed to use the library.
 pub mod prelude {
-  pub use crate::motiva::{GetEntityBehavior, Motiva};
+  pub use crate::catalog::{Catalog, CatalogDataset};
+  pub use crate::fetcher::{CatalogFetcher, HttpCatalogFetcher};
+  pub use crate::motiva::{GetEntityBehavior, Motiva, MotivaConfig};
 
   pub use crate::error::MotivaError;
   pub use crate::index::{
@@ -36,6 +39,8 @@ pub mod prelude {
 #[doc(inline)]
 pub use self::prelude::*;
 
+#[doc(hidden)]
+pub use crate::fetcher::TestFetcher;
 #[doc(hidden)]
 pub use crate::index::mock::MockedElasticsearch;
 

@@ -21,16 +21,20 @@ pub mod handlers;
 pub mod middlewares;
 
 #[derive(Clone)]
-pub struct AppState<P: IndexProvider> {
+pub struct AppState<F: CatalogFetcher, P: IndexProvider> {
   pub config: Config,
   pub prometheus: Option<PrometheusHandle>,
-  pub motiva: Motiva<P>,
+  pub motiva: Motiva<P, F>,
 }
 
-pub async fn routes(config: &Config) -> anyhow::Result<Router> {
-  let motiva = Motiva::new(ElasticsearchProvider::new(&config.index_url, config.index_auth_method.clone())?, config.yente_url.clone())
-    .await
-    .unwrap();
+pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: &Config, fetcher: F, provider: P) -> anyhow::Result<Router> {
+  let motiva = {
+    let config = MotivaConfig {
+      outdated_grace: config.outdated_grace,
+    };
+
+    Motiva::custom(provider.clone()).fetcher(fetcher).config(config).build().await?
+  };
 
   tokio::spawn({
     let motiva = motiva.clone();
@@ -58,9 +62,9 @@ pub async fn routes(config: &Config) -> anyhow::Result<Router> {
   Ok(router(state))
 }
 
-pub(crate) fn router<P: IndexProvider>(state: AppState<P>) -> Router {
+pub(crate) fn router<F: CatalogFetcher, P: IndexProvider>(state: AppState<F, P>) -> Router {
   Router::new()
-    .route("/catalog", get(handlers::catalog))
+    .route("/catalog", get(handlers::get_catalog))
     .route("/match/{scope}", post(handlers::match_entities))
     .route("/entities/{id}", get(handlers::get_entity))
     .fallback(handlers::not_found)

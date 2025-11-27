@@ -25,7 +25,7 @@ async fn api_invalid_credentials() {
       ..Default::default()
     },
     prometheus: None,
-    motiva: Motiva::new(index, None).await.unwrap(),
+    motiva: Motiva::test(index).build().await.unwrap(),
   };
 
   let app = api::router(state);
@@ -53,7 +53,7 @@ async fn api_valid_credentials() {
       ..Default::default()
     },
     prometheus: None,
-    motiva: Motiva::new(index, None).await.unwrap(),
+    motiva: Motiva::test(index).build().await.unwrap(),
   };
 
   let app = api::router(state);
@@ -71,6 +71,8 @@ rusty_fork_test! {
         let rt  = tokio::runtime::Runtime::new().unwrap();
 
         rt.block_on(async {
+            let index = MockedElasticsearch::builder().healthy(true).build();
+
             let config = Config {
                 index_url: "http://localhost:9200".into(),
                 listen_addr: "0.0.0.0:8080".into(),
@@ -78,7 +80,7 @@ rusty_fork_test! {
             };
 
             tokio::task::spawn(async {
-                crate::run(config).await.unwrap();
+                crate::run(config, index).await.unwrap();
             });
 
             tokio::select! {
@@ -117,7 +119,7 @@ rusty_fork_test! {
                     ..Default::default()
                 },
                 prometheus: None,
-                motiva: Motiva::new(index, None).await.unwrap(),
+                motiva: Motiva::test(index).build().await.unwrap(),
             };
 
             let buf = Arc::new(Mutex::new(Vec::default()));
@@ -149,11 +151,11 @@ rusty_fork_test! {
 
             let state = AppState {
                 config: Config {
-                enable_prometheus: true,
-                ..Default::default()
+                    enable_prometheus: true,
+                    ..Default::default()
                 },
                 prometheus: Some(build_prometheus().unwrap()),
-                motiva: Motiva::new(index, None).await.unwrap(),
+                motiva: Motiva::test(index).build().await.unwrap(),
             };
 
             let app = api::router(state);
