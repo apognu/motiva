@@ -5,6 +5,7 @@ use std::{
 
 use ahash::{HashMap, RandomState};
 use anyhow::Context;
+use jiff::Span;
 use tokio::sync::RwLock;
 
 use crate::{
@@ -28,6 +29,11 @@ pub enum GetEntityBehavior {
   FetchNestedEntity,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct MotivaConfig {
+  pub outdated_grace: Span,
+}
+
 /// The main entrypoint for using the Motiva library.
 ///
 /// `motiva` provides functionality to search for entities within sanctioned lists
@@ -42,7 +48,7 @@ pub enum GetEntityBehavior {
 ///
 /// # tokio_test::block_on(async {
 ///   # let es = MockedElasticsearch::default();
-///   let motiva = Motiva::new(es).await.unwrap();
+///   let motiva = Motiva::new(es, MotivaConfig::default()).await.unwrap();
 ///
 ///   let search = SearchEntity::builder("Person").properties(&[("name", &["John Doe"])]).build();
 ///   let results = motiva.search(&search, &MatchParams::default()).await.unwrap();
@@ -57,6 +63,7 @@ pub enum GetEntityBehavior {
 /// ```
 #[derive(Clone, Debug)]
 pub struct Motiva<P: IndexProvider, F: CatalogFetcher = HttpCatalogFetcher> {
+  config: MotivaConfig,
   fetcher: F,
   catalog: Arc<RwLock<Catalog>>,
   index: P,
@@ -78,13 +85,14 @@ impl<P: IndexProvider> Motiva<P> {
   ///    responsibility to refresh it as needed.
   ///
   /// This struct can be safely cloned and sent across thread boundaries.
-  pub async fn new(provider: P) -> Result<Motiva<P, HttpCatalogFetcher>, MotivaError> {
+  pub async fn new(provider: P, config: MotivaConfig) -> Result<Motiva<P, HttpCatalogFetcher>, MotivaError> {
     crate::init();
 
     let fetcher = HttpCatalogFetcher::default();
-    let catalog = get_merged_catalog(&fetcher, &provider).await.context("could not initialize manifest")?;
+    let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
 
     Ok(Motiva::<P, HttpCatalogFetcher> {
+      config,
       index: provider,
       fetcher,
       catalog: Arc::new(RwLock::new(catalog)),
@@ -96,12 +104,13 @@ impl<P: IndexProvider> Motiva<P> {
   ///
   /// This allows to customize how the manifest and catalogs are fetched
   /// throughout the application, for tests or to implement custom logic.
-  pub async fn with_fetcher<F: CatalogFetcher>(provider: P, fetcher: F) -> Result<Motiva<P, F>, MotivaError> {
+  pub async fn with_fetcher<F: CatalogFetcher>(provider: P, fetcher: F, config: MotivaConfig) -> Result<Motiva<P, F>, MotivaError> {
     crate::init();
 
-    let catalog = get_merged_catalog(&fetcher, &provider).await.context("could not initialize manifest")?;
+    let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
 
     Ok(Motiva {
+      config,
       index: provider,
       fetcher,
       catalog: Arc::new(RwLock::new(catalog)),
@@ -226,7 +235,7 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
   /// This will fetch the latest catalogs and bare datasets, as configured
   /// by the manifest, and merge it with the currently synced indices.
   pub async fn refresh_catalog(&self) {
-    match get_merged_catalog(&self.fetcher, &self.index).await {
+    match get_merged_catalog(&self.fetcher, &self.index, self.config.outdated_grace).await {
       Ok(catalog) => {
         *self.catalog.write().await = catalog;
       }
@@ -253,7 +262,7 @@ mod tests {
   use std::collections::HashMap;
 
   use crate::{
-    Catalog, CatalogDataset, MockedElasticsearch, Motiva, TestFetcher,
+    Catalog, CatalogDataset, MockedElasticsearch, Motiva, MotivaConfig, TestFetcher,
     catalog::{Manifest, ManifestCatalog},
   };
 
@@ -283,7 +292,7 @@ mod tests {
     };
 
     let index = MockedElasticsearch::builder().healthy(true).build();
-    let motiva = Motiva::with_fetcher(index, fetcher).await.unwrap();
+    let motiva = Motiva::with_fetcher(index, fetcher, MotivaConfig::default()).await.unwrap();
     let initial_catalog = { motiva.catalog.read().await.clone() };
 
     assert_eq!(initial_catalog.datasets.len(), 1);

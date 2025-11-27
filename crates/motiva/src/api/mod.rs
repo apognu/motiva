@@ -28,7 +28,13 @@ pub struct AppState<F: CatalogFetcher, P: IndexProvider> {
 }
 
 pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: &Config, fetcher: F, provider: P) -> anyhow::Result<Router> {
-  let motiva = Motiva::with_fetcher(provider, fetcher).await?;
+  let motiva = {
+    let config = MotivaConfig {
+      outdated_grace: config.outdated_grace,
+    };
+
+    Motiva::with_fetcher(provider, fetcher, config).await?
+  };
 
   tokio::spawn({
     let motiva = motiva.clone();

@@ -14,7 +14,7 @@ async fn api_health_unhealthy() {
   let state = AppState {
     config: Config::default(),
     prometheus: None,
-    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default(), MotivaConfig::default()).await.unwrap(),
   };
 
   let app = Router::new().route("/readyz", post(handlers::readyz)).with_state(state);
@@ -31,7 +31,7 @@ async fn api_health_healthy() {
   let state = AppState {
     config: Config::default(),
     prometheus: None,
-    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default(), MotivaConfig::default()).await.unwrap(),
   };
 
   let app = Router::new().route("/readyz", post(handlers::readyz)).with_state(state);
@@ -53,7 +53,7 @@ async fn api_match() {
   let state = AppState {
     config: Config::default(),
     prometheus: None,
-    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default(), MotivaConfig::default()).await.unwrap(),
   };
 
   let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
@@ -106,7 +106,7 @@ async fn api_invalid_query() {
   let state = AppState {
     config: Config::default(),
     prometheus: None,
-    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default(), MotivaConfig::default()).await.unwrap(),
   };
 
   let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
@@ -125,7 +125,7 @@ async fn api_unparsable_payload() {
   let state = AppState {
     config: Config::default(),
     prometheus: None,
-    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default(), MotivaConfig::default()).await.unwrap(),
   };
 
   let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
@@ -151,7 +151,7 @@ async fn api_invalid_payload() {
   let state = AppState {
     config: Config::default(),
     prometheus: None,
-    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default(), MotivaConfig::default()).await.unwrap(),
   };
 
   let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
