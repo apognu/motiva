@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use jiff::{ToSpan, civil::DateTime};
+use jiff::{Span, civil::DateTime};
 use serde::{Deserialize, Serialize};
 
 use crate::{IndexProvider, fetcher::CatalogFetcher};
@@ -101,7 +101,7 @@ pub struct CatalogDataset {
   pub updated_at: DateTime,
 }
 
-pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F, index: &P) -> anyhow::Result<Catalog> {
+pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F, index: &P, outdated_grace: Span) -> anyhow::Result<Catalog> {
   let manifest = fetcher.fetch_manifest().await?;
 
   let indices = index.list_indices().await?;
@@ -130,8 +130,7 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
 
             let Ok(indexed_timestamp) = DateTime::strptime("%Y%m%d%H%M%S", indexed_ts_str) else { continue };
 
-            // TODO: parameterize this offset
-            if ds.last_export > indexed_timestamp + 7.days() {
+            if ds.last_export > indexed_timestamp + outdated_grace {
               catalog.outdated.push(ds.name.clone());
             }
           }
@@ -173,7 +172,7 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
 mod tests {
   use std::collections::HashMap;
 
-  use jiff::civil::DateTime;
+  use jiff::{Span, civil::DateTime};
 
   use crate::{
     Catalog, MockedElasticsearch,
@@ -218,7 +217,9 @@ mod tests {
     let fetcher = TestFetcher { manifest: Manifest::test(), catalogs };
 
     let indices = vec![("dataset1".to_string(), "20251125100000-pop".to_string()), ("dataset2".to_string(), "2025110100000-pop".to_string())];
-    let catalog = super::get_merged_catalog(&fetcher, &MockedElasticsearch::builder().indices(indices).build()).await.unwrap();
+    let catalog = super::get_merged_catalog(&fetcher, &MockedElasticsearch::builder().indices(indices).build(), Span::default())
+      .await
+      .unwrap();
 
     assert_eq!(catalog.datasets.len(), 5);
     assert_eq!(catalog.outdated.len(), 1);

@@ -4,6 +4,7 @@ use std::{
   str::FromStr,
 };
 
+use jiff::Span;
 use libmotiva::prelude::EsAuthMethod;
 
 use crate::api::errors::AppError;
@@ -20,6 +21,7 @@ pub struct Config {
 
   // Match settings
   pub manifest_url: Option<String>,
+  pub outdated_grace: Span,
   pub match_candidates: usize,
 
   // Observability
@@ -38,6 +40,7 @@ impl Config {
       api_key: env::var("API_KEY").ok(),
       match_candidates: parse_env("MATCH_CANDIDATES", 10)?,
       manifest_url: env::var("MANIFEST_URL").ok(),
+      outdated_grace: parse_env("OUTDATED_GRACE", Span::default())?,
       index_url: env::var("INDEX_URL").unwrap_or("http://localhost:9200".into()),
       index_auth_method: env::var("INDEX_AUTH_METHOD").unwrap_or("none".into()).parse::<WrappedEsAuthMethod>()?.0,
       enable_prometheus: env::var("ENABLE_PROMETHEUS").unwrap_or_default() == "1",

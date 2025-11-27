@@ -25,7 +25,7 @@ async fn api_invalid_credentials() {
       ..Default::default()
     },
     prometheus: None,
-    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default(), MotivaConfig::default()).await.unwrap(),
   };
 
   let app = api::router(state);
@@ -53,7 +53,7 @@ async fn api_valid_credentials() {
       ..Default::default()
     },
     prometheus: None,
-    motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
+    motiva: Motiva::with_fetcher(index, TestFetcher::default(), MotivaConfig::default()).await.unwrap(),
   };
 
   let app = api::router(state);
@@ -119,7 +119,7 @@ rusty_fork_test! {
                     ..Default::default()
                 },
                 prometheus: None,
-                motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
+                motiva: Motiva::with_fetcher(index, TestFetcher::default(), MotivaConfig::default()).await.unwrap(),
             };
 
             let buf = Arc::new(Mutex::new(Vec::default()));
@@ -155,7 +155,7 @@ rusty_fork_test! {
                     ..Default::default()
                 },
                 prometheus: Some(build_prometheus().unwrap()),
-                motiva: Motiva::with_fetcher(index, TestFetcher::default()).await.unwrap(),
+                motiva: Motiva::with_fetcher(index, TestFetcher::default(), MotivaConfig::default()).await.unwrap(),
             };
 
             let app = api::router(state);
