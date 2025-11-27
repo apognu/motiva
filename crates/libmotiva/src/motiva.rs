@@ -5,11 +5,12 @@ use std::{
 
 use ahash::{HashMap, RandomState};
 use anyhow::Context;
+use bon::bon;
 use jiff::Span;
 use tokio::sync::RwLock;
 
 use crate::{
-  HttpCatalogFetcher,
+  HttpCatalogFetcher, TestFetcher,
   catalog::{Catalog, get_merged_catalog},
   error::MotivaError,
   fetcher::CatalogFetcher,
@@ -48,7 +49,7 @@ pub struct MotivaConfig {
 ///
 /// # tokio_test::block_on(async {
 ///   # let es = MockedElasticsearch::default();
-///   let motiva = Motiva::new(es, MotivaConfig::default()).await.unwrap();
+///   let motiva = Motiva::new(es).build().await.unwrap();
 ///
 ///   let search = SearchEntity::builder("Person").properties(&[("name", &["John Doe"])]).build();
 ///   let results = motiva.search(&search, &MatchParams::default()).await.unwrap();
@@ -63,12 +64,13 @@ pub struct MotivaConfig {
 /// ```
 #[derive(Clone, Debug)]
 pub struct Motiva<P: IndexProvider, F: CatalogFetcher = HttpCatalogFetcher> {
-  config: MotivaConfig,
-  fetcher: F,
-  catalog: Arc<RwLock<Catalog>>,
   index: P,
+  fetcher: F,
+  config: MotivaConfig,
+  catalog: Arc<RwLock<Catalog>>,
 }
 
+#[bon]
 impl<P: IndexProvider> Motiva<P> {
   /// Create a new Motiva instance.
   ///
@@ -85,13 +87,15 @@ impl<P: IndexProvider> Motiva<P> {
   ///    responsibility to refresh it as needed.
   ///
   /// This struct can be safely cloned and sent across thread boundaries.
-  pub async fn new(provider: P, config: MotivaConfig) -> Result<Motiva<P, HttpCatalogFetcher>, MotivaError> {
+  #[allow(clippy::new_ret_no_self)]
+  #[builder(start_fn = new, finish_fn = build)]
+  pub async fn _new(#[builder(start_fn)] provider: P, #[builder(default)] config: MotivaConfig) -> Result<Motiva<P, HttpCatalogFetcher>, MotivaError> {
     crate::init();
 
     let fetcher = HttpCatalogFetcher::default();
     let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
 
-    Ok(Motiva::<P, HttpCatalogFetcher> {
+    Ok(Motiva {
       config,
       index: provider,
       fetcher,
@@ -99,17 +103,34 @@ impl<P: IndexProvider> Motiva<P> {
     })
   }
 
-  /// Create a new Motiva instance with custom implementation for the
-  /// metadata fetcher.
-  ///
-  /// This allows to customize how the manifest and catalogs are fetched
-  /// throughout the application, for tests or to implement custom logic.
-  pub async fn with_fetcher<F: CatalogFetcher>(provider: P, fetcher: F, config: MotivaConfig) -> Result<Motiva<P, F>, MotivaError> {
+  #[builder(finish_fn = build)]
+  pub async fn custom<F: CatalogFetcher>(#[builder(start_fn)] provider: P, fetcher: F, #[builder(default)] config: MotivaConfig) -> Result<Motiva<P, F>, MotivaError> {
     crate::init();
 
     let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
 
     Ok(Motiva {
+      config,
+      index: provider,
+      fetcher,
+      catalog: Arc::new(RwLock::new(catalog)),
+    })
+  }
+}
+
+#[bon]
+impl<P: IndexProvider> Motiva<P, TestFetcher> {
+  #[builder(finish_fn = build)]
+  pub async fn test(
+    #[builder(start_fn)] provider: P,
+    #[builder(default = TestFetcher::default())] fetcher: TestFetcher,
+    #[builder(default)] config: MotivaConfig,
+  ) -> Result<Motiva<P, TestFetcher>, MotivaError> {
+    crate::init();
+
+    let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
+
+    Ok(Motiva::<P, _> {
       config,
       index: provider,
       fetcher,
@@ -262,7 +283,7 @@ mod tests {
   use std::collections::HashMap;
 
   use crate::{
-    Catalog, CatalogDataset, MockedElasticsearch, Motiva, MotivaConfig, TestFetcher,
+    Catalog, CatalogDataset, MockedElasticsearch, Motiva, TestFetcher,
     catalog::{Manifest, ManifestCatalog},
   };
 
@@ -292,7 +313,7 @@ mod tests {
     };
 
     let index = MockedElasticsearch::builder().healthy(true).build();
-    let motiva = Motiva::with_fetcher(index, fetcher, MotivaConfig::default()).await.unwrap();
+    let motiva = Motiva::custom(index).fetcher(fetcher).build().await.unwrap();
     let initial_catalog = { motiva.catalog.read().await.clone() };
 
     assert_eq!(initial_catalog.datasets.len(), 1);
