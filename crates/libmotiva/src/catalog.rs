@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use jiff::{Span, civil::DateTime};
+use jiff::{
+  Span,
+  civil::{Date, DateTime},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{IndexProvider, fetcher::CatalogFetcher};
@@ -74,6 +77,8 @@ pub struct Catalog {
   #[serde(default)]
   pub index_stale: bool,
   #[serde(default)]
+  pub current: Vec<String>,
+  #[serde(default)]
   pub outdated: Vec<String>,
 
   #[serde(skip)]
@@ -89,6 +94,12 @@ pub struct CatalogDataset {
   pub tags: Vec<String>,
   #[serde(default)]
   pub description: String,
+  pub category: Option<String>,
+  #[serde(default)]
+  pub url: String,
+  pub entity_count: u64,
+  #[serde(default)]
+  pub thing_count: u64,
   #[serde(default)]
   pub children: Vec<String>,
   #[serde(default)]
@@ -97,8 +108,30 @@ pub struct CatalogDataset {
   pub index_version: Option<String>,
   #[serde(default)]
   pub index_current: bool,
+  pub publisher: Option<CatalogDatasetPublisher>,
+  pub coverage: Option<CatalogDatasetCoverage>,
+  pub last_change: DateTime,
   pub last_export: DateTime,
   pub updated_at: DateTime,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct CatalogDatasetPublisher {
+  pub name: String,
+  pub acronym: Option<String>,
+  pub url: String,
+  pub country: Option<String>,
+  pub description: Option<String>,
+  pub official: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct CatalogDatasetCoverage {
+  pub start: Date,
+  pub end: Option<Date>,
+  pub countries: Vec<String>,
+  pub schedule: Option<String>,
+  pub frequency: String,
 }
 
 pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F, index: &P, outdated_grace: Span) -> anyhow::Result<Catalog> {
@@ -132,6 +165,8 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
 
             if ds.last_export > indexed_timestamp + outdated_grace {
               catalog.outdated.push(ds.name.clone());
+            } else {
+              catalog.current.push(ds.name.clone());
             }
           }
         }
