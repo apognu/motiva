@@ -55,16 +55,13 @@ Motiva is configured via environment variables. The following variables are supp
 | `INDEX_AUTH_METHOD`   | Elasticsearch authentication (`none`, `basic`, `bearer`, `api_key`, `encoded_api_key`) | `none`                  |
 | `INDEX_CLIENT_ID`     | Elasticsearch client ID (required for `basic` or `api_key`)                            | _(none)_                |
 | `INDEX_CLIENT_SECRET` | Elasticsearch client secret (required for `basic`, `api_key` or `encoded_api_key`)     | _(none)_                |
-| `YENTE_URL`           | Optional URL to a Yente instance for score comparison                                  | _(none)_                |
-| `CATALOG_URL`         | Optional URL to a catalog service                                                      | _(none)_                |
+| `MANIFEST_URL`        | Optional URL to a custom manifest JSON file                                            | _(none)_                |
 | `MATCH_CANDIDATES`    | Number of candidates to consider for matching                                          | `10`                    |
 | `ENABLE_PROMETHEUS`   | Enable Prometheus metrics collection and /metrics endpoint                             | `0`                     |
 | `ENABLE_TRACING`      | Set to `1` to enable tracing                                                           | _(none)_                |
 | `TRACING_EXPORTER`    | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)            | `otlp`                  |
 
-`YENTE_URL` is required if your client needs to retrieve the actual catalog _through_ motiva. The `/catalog` request will be proxied to Yente.
-
-You might want to use `CATALOG_URL` if you customized Yente's catalog in any way, so motiva can pull it regularly instead of Open Sanctions's default catalog.
+Setting `MANIFEST_FILE` is required if you use a customized dataset list and would like your own manifest to be used for catalog generation. If omitted, the default manifest provided by Yente will be used. It requires either an HTTP URL or a local file path ending in `.json`, `.yml` or `.yaml`.
 
 ## Run
 
