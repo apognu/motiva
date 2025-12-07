@@ -163,7 +163,6 @@ mod tests {
       env::set_var("LISTEN_ADDR", "0.0.0.0:8080");
       env::set_var("MATCH_CANDIDATES", "3");
       env::set_var("YENTE_URL", "http://yente");
-      env::set_var("CATALOG_URL", "http://catalog");
       env::set_var("INDEX_URL", "http://index");
       env::set_var("INDEX_AUTH_METHOD", "encoded_api_key");
       env::set_var("INDEX_CLIENT_SECRET", "secret");
@@ -184,7 +183,6 @@ mod tests {
       env::remove_var("LISTEN_ADDR");
       env::remove_var("MATCH_CANDIDATES");
       env::remove_var("YENTE_URL");
-      env::remove_var("CATALOG_URL");
       env::remove_var("INDEX_URL");
       env::remove_var("INDEX_AUTH_METHOD");
       env::remove_var("INDEX_CLIENT_SECRET");
