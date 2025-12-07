@@ -401,7 +401,7 @@ mod tests {
   };
 
   use serde_json::json;
-  use serde_json_assert::{assert_json_eq, assert_json_include};
+  use serde_json_assert::{assert_json_contains, assert_json_eq, assert_json_include};
   use tokio::sync::RwLock;
 
   use crate::{
@@ -470,66 +470,65 @@ mod tests {
     assert_json_eq!(must_nots, json!([]));
   }
 
+  #[tokio::test]
+  async fn build_query() {
+    let entity = SearchEntity::builder("Person")
+      .properties(&[
+        ("name", &["Vladimir Putin"]),
+        ("birthDate", &["01-01-1010"]),
+        ("nationality", &["ru"]),
+        ("registrationNumber", &["1234"]),
+      ])
+      .build();
+
+    super::build_query(&fake_catalog(), &entity, &MatchParams::default()).await.unwrap();
+  }
+
   #[test]
   fn build_should() {
-    let entity = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
+    let entity = SearchEntity::builder("Person")
+      .properties(&[
+        ("name", &["Vladimir Putin"]),
+        ("birthDate", &["01-01-1010"]),
+        ("nationality", &["ru"]),
+        ("registrationNumber", &["1234"]),
+      ])
+      .build();
+
     let shoulds = super::build_shoulds(&entity).unwrap();
 
-    assert_json_eq!(
-      shoulds,
-      json!([
-          {
-              "match":  {
-                  "names":  {
-                      "boost": 3.0,
-                      "fuzziness": "AUTO",
-                      "operator": "AND",
-                      "query": "Vladimir Putin",
-                  },
-              },
-          },
-          {
-              "term":  {
-                  "name_keys":  {
-                      "boost": 4.0,
-                      "value": "putinvladimir",
-                  },
-              },
-          },
-          {
-              "term":  {
-                  "name_parts":  {
-                      "boost": 1.0,
-                      "value": "vladimir",
-                  },
-              },
-          },
-          {
-              "term": {
-                  "name_parts":  {
-                      "boost": 1.0,
-                      "value": "putin",
-                  },
-              },
-          },
-          {
-              "term": {
-                  "name_phonetic":  {
-                      "boost": 0.8,
-                      "value": "FLTMR",
-                  },
-              },
-          },
-          {
-              "term": {
-                  "name_phonetic":  {
-                      "boost": 0.8,
-                      "value": "PTN",
-                  },
-              },
-          },
-      ])
+    assert_json_contains!(
+        container: shoulds,
+        contained: json!([{ "match": { "names": { "boost": 3.0, "fuzziness": "AUTO", "operator": "AND", "query": "Vladimir Putin" } } }]),
     );
+
+    assert_json_contains!(
+        container: shoulds,
+        contained: json!([{ "term": { "name_keys": { "boost": 4.0, "value": "putinvladimir", } } }]),
+    );
+
+    assert_json_contains!(
+        container: shoulds,
+        contained: json!([ { "term": { "name_parts": { "boost": 1.0, "value": "vladimir" } } }])
+    );
+
+    assert_json_contains!(
+      container: shoulds,
+      contained: json!([{ "term": { "name_parts": { "boost": 1.0, "value": "putin" } } }]),
+    );
+
+    assert_json_contains!(
+      container: shoulds,
+      contained: json!([{ "term": { "name_phonetic": { "boost": 0.8, "value": "FLTMR" } } }]),
+    );
+
+    assert_json_contains!(
+        container: shoulds,
+        contained: json!([{ "term": { "name_phonetic": { "boost": 0.8, "value": "PTN" } } }]),
+    );
+
+    assert_json_contains!(container: shoulds, contained: json!([{ "match": { "dates": "01-01-1010" } }]));
+    assert_json_contains!(container: shoulds, contained: json!([{ "match": { "countries": "ru" } }]));
   }
 
   #[tokio::test]
