@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use jiff::{
-  Span,
+  Span, Timestamp,
   civil::{Date, DateTime},
 };
 use serde::{Deserialize, Serialize};
@@ -60,13 +60,15 @@ pub struct ManifestCatalog {
   #[serde(default)]
   pub scopes: Vec<String>,
   pub resource_name: String,
+  #[serde(default)]
+  pub datasets: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ManifestDataset {
   pub name: String,
   pub title: String,
-  pub version: String,
+  pub version: Option<String>,
   pub entities_url: Option<String>,
   pub datasets: Option<Vec<String>>,
 }
@@ -97,6 +99,7 @@ pub struct CatalogDataset {
   pub category: Option<String>,
   #[serde(default)]
   pub url: String,
+  pub delta_url: Option<String>,
   pub entity_count: u64,
   #[serde(default)]
   pub thing_count: u64,
@@ -146,6 +149,7 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
     if let Some(scope) = spec.scope {
       spec.scopes.push(scope);
     }
+
     for ds in &mut upstream.datasets {
       if spec.scopes.contains(&ds.name) {
         ds.load = true;
@@ -181,9 +185,10 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
       name: ds.name.clone(),
       title: ds.title,
       load: true,
-      version: ds.version.clone(),
+      version: ds.version.unwrap_or_else(|| format!("{}-mot", Timestamp::now().strftime("%Y%m%d%H%M%S"))),
       index_version: None,
       index_current: false,
+      children: ds.datasets.unwrap_or_default(),
       ..Default::default()
     };
 

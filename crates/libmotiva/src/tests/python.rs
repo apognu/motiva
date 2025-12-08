@@ -27,7 +27,7 @@ impl Algorithm {
     match self {
       Algorithm::NameBased => "NameMatcher",
       Algorithm::NameQualified => "NameQualifiedMatcher",
-      Algorithm::LogicV1 => "LogicV1",
+      Algorithm::LogicV1 | Algorithm::Best => "LogicV1",
     }
   }
 }
