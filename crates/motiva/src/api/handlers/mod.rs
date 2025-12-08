@@ -2,12 +2,14 @@ mod catalog;
 mod get_entity;
 mod match_entities;
 
+use axum::Json;
 use axum::extract::State;
 use axum::response::IntoResponse;
 use libmotiva::prelude::*;
 use reqwest::StatusCode;
 
 use crate::api::AppState;
+use crate::api::dto::{AlgorithmDescription, Algorithms};
 use crate::api::errors::AppError;
 
 pub use self::catalog::get_catalog;
@@ -35,4 +37,14 @@ pub async fn prometheus<F: CatalogFetcher, P: IndexProvider>(State(state): State
   };
 
   (StatusCode::OK, prometheus.render())
+}
+
+pub async fn algorithms() -> Json<Algorithms> {
+  const ALGORITHMS: [Algorithm; 3] = [Algorithm::NameBased, Algorithm::NameQualified, Algorithm::LogicV1];
+
+  Json(Algorithms {
+    algorithms: ALGORITHMS.into_iter().map(|alg| AlgorithmDescription { name: alg.name() }).collect(),
+    best: Algorithm::best().name(),
+    default: Algorithm::default().name(),
+  })
 }

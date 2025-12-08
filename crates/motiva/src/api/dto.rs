@@ -48,3 +48,15 @@ pub(super) struct MatchHit {
   pub match_: bool,
   pub score: f64,
 }
+
+#[derive(Serialize)]
+pub struct Algorithms {
+  pub algorithms: Vec<AlgorithmDescription>,
+  pub best: &'static str,
+  pub default: &'static str,
+}
+
+#[derive(Serialize)]
+pub struct AlgorithmDescription {
+  pub name: &'static str,
+}

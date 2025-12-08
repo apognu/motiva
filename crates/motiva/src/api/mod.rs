@@ -72,6 +72,7 @@ pub(crate) fn router<F: CatalogFetcher, P: IndexProvider>(state: AppState<F, P>)
     .layer(TraceLayer::new_for_http().make_span_with(create_request_span))
     .layer(middleware::from_fn(middlewares::metrics))
     // The routes below will not go through the observability middlewares above
+    .route("/algorithms", get(handlers::algorithms))
     .route("/healthz", get(handlers::healthz))
     .route("/readyz", get(handlers::readyz))
     .route("/metrics", get(handlers::prometheus))
