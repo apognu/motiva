@@ -31,6 +31,23 @@ pub enum Algorithm {
   #[default]
   #[serde(rename = "logic-v1")]
   LogicV1,
+  #[serde(rename = "best")]
+  Best,
+}
+
+impl Algorithm {
+  pub const fn best() -> Algorithm {
+    Algorithm::LogicV1
+  }
+
+  pub const fn name(&self) -> &'static str {
+    match self {
+      Algorithm::NameBased => "name-based",
+      Algorithm::NameQualified => "name-qualified",
+      Algorithm::LogicV1 => "logic-v1",
+      Algorithm::Best => "best",
+    }
+  }
 }
 
 /// Algorithm used to score a SearchEntity against an Entity
