@@ -13,6 +13,7 @@ use crate::{
 };
 
 #[doc(hidden)]
+#[allow(clippy::type_complexity)]
 #[derive(Clone, Builder, Default)]
 pub struct MockedElasticsearch {
   healthy: Option<bool>,
@@ -20,6 +21,8 @@ pub struct MockedElasticsearch {
   entities: Vec<Entity>,
   #[builder(default)]
   indices: Vec<(String, String)>,
+  #[builder(default)]
+  related_entitites: Vec<((Option<String>, Vec<String>, HashSet<String>), Vec<Entity>)>,
 }
 
 impl IndexProvider for MockedElasticsearch {
@@ -38,8 +41,18 @@ impl IndexProvider for MockedElasticsearch {
     unimplemented!();
   }
 
-  async fn get_related_entities(&self, _: Option<&String>, _: &[String], _: &HashSet<String, RandomState>) -> Result<Vec<Entity>, MotivaError> {
-    unimplemented!();
+  async fn get_related_entities(&self, root: Option<&String>, ids: &[String], negatives: &HashSet<String, RandomState>) -> Result<Vec<Entity>, MotivaError> {
+    eprintln!("{root:?} - {ids:?} - {negatives:?}");
+
+    let negatives = HashSet::from_iter(negatives.iter().map(|id| id.to_owned()));
+
+    for (args, entities) in &self.related_entitites {
+      if args == &(root.map(|id| id.to_owned()), ids.to_vec(), negatives.to_owned()) {
+        return Ok(entities.clone());
+      }
+    }
+
+    Ok(vec![])
   }
 
   async fn list_indices(&self) -> Result<Vec<(String, String)>, MotivaError> {

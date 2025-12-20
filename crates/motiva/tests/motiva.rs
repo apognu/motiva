@@ -44,13 +44,5 @@ async fn health() {
 // Should panic because mock function is not implemented.
 async fn get_entity() {
   let motiva = Motiva::test(MockedElasticsearch::default()).build().await.unwrap();
-  let _ = motiva.get_entity("", GetEntityBehavior::FetchNestedEntity).await;
-}
-
-#[tokio::test]
-#[should_panic]
-// Should panic because mock function is not implemented.
-async fn get_related_entities() {
-  let motiva = Motiva::test(MockedElasticsearch::default()).build().await.unwrap();
   let _ = motiva.get_entity("", GetEntityBehavior::RootOnly).await;
 }

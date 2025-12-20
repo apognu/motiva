@@ -79,6 +79,17 @@ fn resolve_schemas(schemas: &HashMap<String, FtmSchema, RandomState>, schema: &s
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct FtmEdge {
+  pub source: String,
+  pub label: String,
+  pub target: String,
+  pub directed: bool,
+  #[serde(default)]
+  pub caption: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct FtmSchema {
   #[serde(default)]
   pub extends: Vec<String>,
@@ -87,6 +98,8 @@ pub struct FtmSchema {
   pub caption: Vec<String>,
   #[serde(default)]
   pub properties: HashMap<String, FtmProperty, RandomState>,
+  #[serde(default)]
+  pub edge: Option<FtmEdge>,
 
   #[serde(skip)]
   pub matchable_chain: Vec<String>,

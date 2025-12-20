@@ -26,6 +26,7 @@ pub trait IndexProvider: Clone + Send + Sync + 'static {
 ///
 /// If an entity changes IDs over time, it will not be found at previous IDs.
 /// Instead, a `Referent` will be returned with the entity's canonical ID.
+#[derive(Clone, Debug)]
 pub enum EntityHandle {
   /// The data of the actual entity that was requested
   Nominal(Box<Entity>),

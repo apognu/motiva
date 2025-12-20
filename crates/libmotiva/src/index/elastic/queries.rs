@@ -153,6 +153,8 @@ impl IndexProvider for ElasticsearchProvider {
   /// Get entities related to an entity.
   #[instrument(skip_all)]
   async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> Result<Vec<Entity>, MotivaError> {
+    const RELATED_ENTITIES_LIMIT: i64 = 100;
+
     let mut shoulds = vec![json!({ "ids": { "values": values } })];
 
     if let Some(root) = root {
@@ -171,7 +173,7 @@ impl IndexProvider for ElasticsearchProvider {
       }
     });
 
-    let response = self.es.search(SearchParts::Index(&["yente-entities"])).from(0).size(10).body(query).send().await?;
+    let response = self.es.search(SearchParts::Index(&["yente-entities"])).from(0).size(RELATED_ENTITIES_LIMIT).body(query).send().await?;
 
     if response.status_code() != StatusCode::OK {
       let body: EsErrorResponse = response.json().await?;

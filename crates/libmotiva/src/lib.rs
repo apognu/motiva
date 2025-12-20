@@ -8,6 +8,7 @@ mod index;
 mod matching;
 mod model;
 mod motiva;
+mod nested;
 mod schemas;
 mod scoring;
 
