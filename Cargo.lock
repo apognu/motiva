@@ -1806,6 +1806,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "serial_test",
+ "std-macro-extensions",
  "strsim 0.11.1",
  "thiserror 2.0.17",
  "tokio",
@@ -3567,6 +3568,12 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "std-macro-extensions"
+version = "0.26.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b904a9384682a125e1f82076549690d0e2fd3a952ec470b5dc614cfd871d3ee6"
 
 [[package]]
 name = "strsim"

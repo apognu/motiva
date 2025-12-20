@@ -1,9 +1,5 @@
-use std::{
-  collections::HashSet,
-  sync::{Arc, Mutex},
-};
+use std::sync::Arc;
 
-use ahash::{HashMap, RandomState};
 use anyhow::Context;
 use bon::bon;
 use jiff::Span;
@@ -16,9 +12,9 @@ use crate::{
   fetcher::CatalogFetcher,
   index::{EntityHandle, IndexProvider},
   matching::MatchParams,
-  model::{Entity, HasProperties, SearchEntity},
+  model::{Entity, SearchEntity},
+  nested::fetch_nested_entities,
   prelude::MatchingAlgorithm,
-  schemas::SCHEMAS,
   scoring,
 };
 
@@ -164,82 +160,11 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
       EntityHandle::Referent(id) => Ok(EntityHandle::Referent(id)),
 
       EntityHandle::Nominal(mut entity) => {
-        let id = id.to_string();
-
         if let GetEntityBehavior::RootOnly = behavior {
           return Ok(EntityHandle::Nominal(entity));
         }
 
-        let mut root = Some(&id);
-        let mut seen = HashSet::<_, RandomState>::from_iter([id.clone()]);
-
-        let mut ids: Vec<String> = Vec::new();
-        let mut root_arena: HashMap<String, String> = Default::default();
-        let mut arena: HashMap<String, (Arc<Mutex<Entity>>, String)> = Default::default();
-
-        if let Some(properties) = entity.schema.properties() {
-          for (name, property) in properties {
-            if property._type != "entity" {
-              continue;
-            }
-
-            for assoc in entity.props(&[&name]).iter() {
-              root_arena.insert(assoc.to_string(), name.clone());
-            }
-
-            ids.extend(entity.props(&[&name]).iter().cloned());
-          }
-
-          while !ids.is_empty() {
-            let associations = self.index.get_related_entities(root, &ids, &seen).await?;
-
-            root = None;
-            ids.clear();
-
-            for association in associations {
-              let Some(schema) = SCHEMAS.get(association.schema.as_str()) else {
-                continue;
-              };
-
-              let ptr = Arc::new(Mutex::new(association.clone()));
-
-              match root_arena.get_mut(&association.id) {
-                Some(attr) => entity.properties.entities.entry(attr.clone()).or_default().push(Arc::clone(&ptr)),
-
-                _ => {
-                  if let Some((parent, attr)) = arena.get_mut(&association.id)
-                    && let Ok(mut e) = parent.lock()
-                  {
-                    e.properties.entities.entry(attr.clone()).or_default().push(Arc::clone(&ptr));
-                  }
-                }
-              }
-
-              for (name, values) in &association.properties.strings {
-                let Some(property) = schema.properties.get(name) else {
-                  continue;
-                };
-                if property._type != "entity" {
-                  continue;
-                }
-
-                ids.extend(values.iter().cloned());
-
-                for value in values {
-                  arena.insert(value.clone(), (Arc::clone(&ptr), name.clone()));
-                }
-
-                if let Some(reverse) = property.reverse.as_ref()
-                  && values.contains(&entity.id)
-                {
-                  entity.properties.entities.entry(reverse.name.clone()).or_default().push(Arc::clone(&ptr));
-                }
-              }
-
-              seen.insert(association.id);
-            }
-          }
-        }
+        fetch_nested_entities(&self.index, &mut entity, id).await?;
 
         Ok(EntityHandle::Nominal(entity))
       }

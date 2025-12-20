@@ -47,6 +47,10 @@ impl Schema {
     asked.descendants.iter().any(|s| s == &self.0)
   }
 
+  pub(crate) fn is_edge(&self) -> bool {
+    SCHEMAS.get(self.as_str()).and_then(|s| s.edge.as_ref()).is_some()
+  }
+
   pub fn properties(&self) -> Option<Vec<(String, FtmProperty)>> {
     let schema = SCHEMAS.get(self.as_str())?;
 
@@ -249,7 +253,7 @@ impl HasProperties for Entity {
 #[bon]
 impl Entity {
   #[builder]
-  pub fn builder(#[builder(start_fn)] schema: &str, id: Option<&str>, properties: &[(&str, &[&str])]) -> Entity {
+  pub fn builder(#[builder(start_fn)] schema: &str, id: Option<&str>, #[builder(default)] properties: &[(&str, &[&str])]) -> Entity {
     let mut props: HashMap<_, _, RandomState> = HashMap::default();
 
     for (prop, values) in properties {
