@@ -1,3 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/macros", "crates/libmotiva", "crates/motiva"]
+
+[workspace.lints.clippy]
+print_stdout = "deny"
+print_stderr = "deny"

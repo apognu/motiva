@@ -70,3 +70,6 @@ serial_test = "3.2.0"
 std-macro-extensions = "0.26.8"
 tokio-test = "0.4.4"
 wiremock = "0.6.5"
+
+[lints]
+workspace = true
