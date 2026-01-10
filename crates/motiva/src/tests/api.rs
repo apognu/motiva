@@ -42,6 +42,33 @@ async fn api_health_healthy() {
 }
 
 #[tokio::test]
+async fn api_algorithms() {
+  let index = MockedElasticsearch::builder().healthy(true).build();
+
+  let state = AppState {
+    config: Config::default(),
+    prometheus: None,
+    motiva: Motiva::test(index).build().await.unwrap(),
+  };
+
+  let app = Router::new().route("/algorithms", post(handlers::algorithms)).with_state(state);
+  let server = TestServer::new(app).unwrap();
+  let response = server.post("/algorithms").await;
+
+  assert_eq!(response.status_code(), 200);
+
+  response.assert_json_contains(&json!({
+      "algorithms": [
+          { "name": "name-based" },
+          { "name": "name-qualified" },
+          { "name": "logic-v1" },
+      ],
+      "best": "logic-v1",
+      "default": "logic-v1"
+  }))
+}
+
+#[tokio::test]
 async fn api_match() {
   let index = MockedElasticsearch::builder()
     .entities(vec![

@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fs::File};
 
 use anyhow::Context;
+use reqwest::header;
 
 use crate::{
   Catalog,
@@ -9,7 +10,7 @@ use crate::{
 
 pub trait CatalogFetcher: Clone + Default + Send + Sync + 'static {
   fn fetch_manifest(&self) -> impl Future<Output = anyhow::Result<Manifest>> + Send;
-  fn fetch_catalog(&self, url: &str) -> impl Future<Output = anyhow::Result<Catalog>> + Send;
+  fn fetch_catalog(&self, url: &str, auth_token: Option<&str>) -> impl Future<Output = anyhow::Result<Catalog>> + Send;
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -73,8 +74,13 @@ impl CatalogFetcher for HttpCatalogFetcher {
     }
   }
 
-  async fn fetch_catalog(&self, url: &str) -> anyhow::Result<Catalog> {
-    Ok(reqwest::get(url).await?.json::<Catalog>().await?)
+  async fn fetch_catalog(&self, url: &str, auth_token: Option<&str>) -> anyhow::Result<Catalog> {
+    let client = reqwest::Client::default();
+
+    match auth_token {
+      Some(token) => Ok(client.get(url).header(header::AUTHORIZATION, format!("Token {token}")).send().await?.json::<Catalog>().await?),
+      None => Ok(client.get(url).send().await?.json::<Catalog>().await?),
+    }
   }
 }
 
@@ -133,7 +139,7 @@ impl CatalogFetcher for TestFetcher {
     Ok(self.manifest.clone())
   }
 
-  async fn fetch_catalog(&self, url: &str) -> anyhow::Result<Catalog> {
+  async fn fetch_catalog(&self, url: &str, _: Option<&str>) -> anyhow::Result<Catalog> {
     self.catalogs.get(url).ok_or_else(|| anyhow::anyhow!("unknown catalog url")).cloned()
   }
 }
@@ -172,7 +178,7 @@ mod tests {
 
     assert_eq!(manifest.catalogs[0].url, OPENSANCTIONS_CATALOG_URL);
     assert_eq!(manifest.catalogs[0].scope.as_deref(), Some("default"));
-    assert_eq!(manifest.catalogs[0].resource_name, "entities.ftm.json");
+    assert_eq!(manifest.catalogs[0].resource_name.as_deref(), Some("entities.ftm.json"));
   }
 
   #[test]
@@ -196,7 +202,7 @@ mod tests {
 
     assert_eq!(manifest.catalogs[0].url, "http://myurl.tld");
     assert_eq!(manifest.catalogs[0].scope.as_deref(), Some("myscope"));
-    assert_eq!(manifest.catalogs[0].resource_name, "ents.json");
+    assert_eq!(manifest.catalogs[0].resource_name.as_deref(), Some("ents.json"));
   }
 
   #[tokio::test]
@@ -221,7 +227,7 @@ mod tests {
 
       assert_eq!(manifest.catalogs[0].url, "http://myurl.tld");
       assert_eq!(manifest.catalogs[0].scope.as_deref(), Some("myscope"));
-      assert_eq!(manifest.catalogs[0].resource_name, "ents.json");
+      assert_eq!(manifest.catalogs[0].resource_name.as_deref(), Some("ents.json"));
     }
   }
 
@@ -243,7 +249,37 @@ mod tests {
 
     assert_eq!(manifest.catalogs[0].url, "http://myurl.tld");
     assert_eq!(manifest.catalogs[0].scope.as_deref(), Some("myscope"));
-    assert_eq!(manifest.catalogs[0].resource_name, "ents.json");
+    assert_eq!(manifest.catalogs[0].resource_name.as_deref(), Some("ents.json"));
+  }
+
+  #[tokio::test]
+  async fn valid_authed_http_json() {
+    let mock = MockServer::start().await;
+
+    Mock::given(method("GET"))
+      .and(path("/catalog.json"))
+      .and(header("authorization", "Token helloworld"))
+      .respond_with(ResponseTemplate::new(200).set_body_raw(
+        r#"{"datasets": [
+          {
+            "name": "thecatalog",
+            "title": "The Catalog",
+            "version": "20260110175500-abc"
+          }
+        ]}"#,
+        "application/json",
+      ))
+      .mount(&mock)
+      .await;
+
+    let catalog = HttpCatalogFetcher::from_manifest_url(Some(format!("{}/manifest.json", mock.uri())))
+      .unwrap()
+      .fetch_catalog(&format!("{}/catalog.json", mock.uri()), Some("helloworld"))
+      .await
+      .unwrap();
+
+    assert_eq!(catalog.datasets.len(), 1);
+    assert_eq!(catalog.datasets[0].name, "thecatalog");
   }
 
   #[tokio::test]
@@ -272,6 +308,6 @@ mod tests {
 
     assert_eq!(manifest.catalogs[0].url, "http://myurl.tld");
     assert_eq!(manifest.catalogs[0].scope.as_deref(), Some("myscope"));
-    assert_eq!(manifest.catalogs[0].resource_name, "ents.json");
+    assert_eq!(manifest.catalogs[0].resource_name.as_deref(), Some("ents.json"));
   }
 }
