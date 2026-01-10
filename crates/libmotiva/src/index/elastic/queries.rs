@@ -278,7 +278,14 @@ async fn build_datasets(catalog: &Arc<RwLock<Catalog>>, filters: &mut Vec<serde_
   let scope = {
     let guard = catalog.read().await;
 
-    guard.loaded_datasets.get(&params.scope).map(|dataset| dataset.children.clone()).unwrap_or_default()
+    guard
+      .loaded_datasets
+      .get(&params.scope)
+      .map(|dataset| match dataset._type.as_deref() {
+        Some("collection") => dataset.children.clone(),
+        _ => vec![dataset.name.clone()],
+      })
+      .unwrap_or_default()
   };
 
   if !params.include_dataset.is_empty() {
@@ -423,6 +430,7 @@ mod tests {
         CatalogDataset {
           name: "Real Dataset".to_string(),
           children: vec!["realdataset".to_string()],
+          _type: Some("collection".to_string()),
           ..Default::default()
         },
       );
@@ -432,6 +440,15 @@ mod tests {
         CatalogDataset {
           name: "Other Dataset".to_string(),
           children: vec!["otherdataset".to_string()],
+          _type: Some("collection".to_string()),
+          ..Default::default()
+        },
+      );
+
+      catalog.loaded_datasets.insert(
+        "baredataset".to_string(),
+        CatalogDataset {
+          name: "baredataset".to_string(),
           ..Default::default()
         },
       );
@@ -549,6 +566,24 @@ mod tests {
 
     assert_eq!(datasets.len(), 1);
     assert_json_eq!(datasets[0], json!({ "terms": { "datasets": ["realdataset"] } }));
+  }
+
+  #[tokio::test]
+  async fn build_datasets_bare() {
+    let catalog = fake_catalog();
+
+    let params = MatchParams {
+      scope: "baredataset".to_string(),
+      include_dataset: vec!["baredataset".to_string()],
+      ..Default::default()
+    };
+
+    let mut datasets = Vec::new();
+
+    super::build_datasets(&catalog, &mut datasets, &params).await;
+
+    assert_eq!(datasets.len(), 1);
+    assert_json_eq!(datasets[0], json!({ "terms": { "datasets": ["baredataset"] } }));
   }
 
   #[test]

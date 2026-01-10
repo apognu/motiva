@@ -25,7 +25,7 @@ impl Default for Manifest {
     Self {
       catalogs: vec![ManifestCatalog {
         url: OPENSANCTIONS_CATALOG_URL.to_string(),
-        resource_name: "entities.ftm.json".to_string(),
+        resource_name: Some("entities.ftm.json".to_string()),
         scope: Some("default".to_string()),
         ..Default::default()
       }],
@@ -40,7 +40,7 @@ impl Manifest {
     Self {
       catalogs: vec![ManifestCatalog {
         url: OPENSANCTIONS_CATALOG_URL.to_string(),
-        resource_name: "entities.ftm.json".to_string(),
+        resource_name: Some("entities.ftm.json".to_string()),
         scope: Some("default".to_string()),
         ..Default::default()
       }],
@@ -59,9 +59,10 @@ pub struct ManifestCatalog {
   pub scope: Option<String>,
   #[serde(default)]
   pub scopes: Vec<String>,
-  pub resource_name: String,
+  pub resource_name: Option<String>,
   #[serde(default)]
   pub datasets: Vec<String>,
+  pub auth_token: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -91,7 +92,7 @@ pub struct Catalog {
 pub struct CatalogDataset {
   pub name: String,
   pub title: String,
-  pub summary: String,
+  pub summary: Option<String>,
   #[serde(default)]
   pub tags: Vec<String>,
   #[serde(default)]
@@ -99,7 +100,11 @@ pub struct CatalogDataset {
   pub category: Option<String>,
   #[serde(default)]
   pub url: String,
+  #[serde(default)]
+  pub resources: Vec<CatalogDatasetResource>,
+  pub entities_url: Option<String>,
   pub delta_url: Option<String>,
+  #[serde(default)]
   pub entity_count: u64,
   #[serde(default)]
   pub thing_count: u64,
@@ -111,11 +116,25 @@ pub struct CatalogDataset {
   pub index_version: Option<String>,
   #[serde(default)]
   pub index_current: bool,
+  #[serde(rename = "type")]
+  pub _type: Option<String>,
   pub publisher: Option<CatalogDatasetPublisher>,
   pub coverage: Option<CatalogDatasetCoverage>,
-  pub last_change: DateTime,
-  pub last_export: DateTime,
-  pub updated_at: DateTime,
+  pub last_change: Option<DateTime>,
+  pub last_export: Option<DateTime>,
+  pub updated_at: Option<DateTime>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct CatalogDatasetResource {
+  name: String,
+  title: Option<String>,
+  url: String,
+  timestamp: Option<DateTime>,
+  size: u64,
+  mime_type: String,
+  mime_type_label: String,
+  checksum: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -144,7 +163,10 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
   let mut catalog = Catalog::default();
 
   for mut spec in manifest.catalogs {
-    let mut upstream: Catalog = fetcher.fetch_catalog(&spec.url).await?;
+    let Ok(mut upstream) = fetcher.fetch_catalog(&spec.url, spec.auth_token.as_deref()).await else {
+      tracing::warn!("encountered issue parsing dataset at {}", spec.url);
+      continue;
+    };
 
     if let Some(scope) = spec.scope {
       spec.scopes.push(scope);
@@ -155,11 +177,21 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
         ds.load = true;
       }
 
+      for resource in &ds.resources {
+        if resource.name == "entities.ftm.json" {
+          ds.entities_url = Some(resource.url.clone());
+        }
+      }
+
       if let Some((_, version)) = indices.iter().find(|(name, _)| name == &ds.name) {
         ds.index_version = Some(version.clone());
 
         match version.as_str() == ds.version {
-          true => ds.index_current = true,
+          true => {
+            ds.index_current = true;
+            catalog.current.push(ds.name.clone());
+          }
+
           false => {
             let Some(indexed_ts_str) = version.split("-").next() else {
               continue;
@@ -167,10 +199,14 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
 
             let Ok(indexed_timestamp) = DateTime::strptime("%Y%m%d%H%M%S", indexed_ts_str) else { continue };
 
-            if ds.last_export > indexed_timestamp + outdated_grace {
-              catalog.outdated.push(ds.name.clone());
-            } else {
-              catalog.current.push(ds.name.clone());
+            match ds.last_export {
+              Some(last_export) if last_export <= indexed_timestamp + outdated_grace => {
+                catalog.current.push(ds.name.clone());
+              }
+
+              _ => {
+                catalog.outdated.push(ds.name.clone());
+              }
             }
           }
         }
@@ -232,19 +268,19 @@ mod tests {
         CatalogDataset {
           name: "dataset1".to_string(),
           version: "20251125100000-pop".to_string(),
-          last_export: DateTime::constant(2025, 11, 25, 10, 0, 0, 0),
+          last_export: Some(DateTime::constant(2025, 11, 25, 10, 0, 0, 0)),
           ..Default::default()
         },
         CatalogDataset {
           name: "dataset2".to_string(),
           version: "20251125100000-pop".to_string(),
-          last_export: DateTime::constant(2025, 11, 25, 10, 0, 0, 0),
+          last_export: Some(DateTime::constant(2025, 11, 25, 10, 0, 0, 0)),
           ..Default::default()
         },
         CatalogDataset {
           name: "dataset3".to_string(),
           version: "3".to_string(),
-          last_export: DateTime::constant(2025, 11, 25, 10, 0, 0, 0),
+          last_export: Some(DateTime::constant(2025, 11, 25, 10, 0, 0, 0)),
           ..Default::default()
         },
       ],

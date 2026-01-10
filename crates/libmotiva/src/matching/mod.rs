@@ -22,7 +22,7 @@ pub(crate) mod replacers;
 pub(crate) mod validators;
 
 /// Matching algorithms supported by motiva
-#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Default, Deserialize)]
 pub enum Algorithm {
   #[serde(rename = "name-based")]
   NameBased,
@@ -141,5 +141,24 @@ impl MatchParams {
   /// accurate the results will be.
   pub fn candidate_limit(&self) -> usize {
     (self.limit * self.candidate_factor).clamp(20, 9999)
+  }
+}
+
+#[cfg(test)]
+mod testing {
+  use crate::Algorithm;
+
+  #[test]
+  fn default_algorithm() {
+    assert_eq!(Algorithm::default(), Algorithm::LogicV1);
+  }
+
+  #[test]
+  fn algorithm_to_name() {
+    use super::Algorithm::*;
+
+    for (alg, name) in [(NameBased, "name-based"), (NameQualified, "name-qualified"), (LogicV1, "logic-v1"), (Best, "best")] {
+      assert_eq!(alg.name(), name);
+    }
   }
 }
