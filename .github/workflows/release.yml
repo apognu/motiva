@@ -1,0 +1,27 @@
+name: Create release
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: motiva
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: motiva ${{ github.ref_name }}
+          make_latest: true
+          generate_release_notes: true
+          files: |
+            motiva

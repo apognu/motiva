@@ -17,3 +17,5 @@ jobs:
     uses: ./.github/workflows/docker.yml
     needs: [test]
     secrets: inherit
+    with:
+      tag: latest

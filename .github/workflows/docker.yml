@@ -2,6 +2,10 @@ name: Publish to Docker Hub
 
 on:
   workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -54,8 +58,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           tags: |
-            apognu/motiva:latest${{ matrix.combination.suffix }}
-            ghcr.io/apognu/motiva:latest${{ matrix.combination.suffix }}
+            apognu/motiva:${{ inputs.tag }}${{ matrix.combination.suffix }}
+            ghcr.io/apognu/motiva:${{ inputs.tag }}${{ matrix.combination.suffix }}
           build-args: |
             "BASE=${{ matrix.combination.base }}"
             ${{ matrix.combination.features != '' && format('CARGO_ARGS=--features {0}', matrix.combination.features) || '' }}

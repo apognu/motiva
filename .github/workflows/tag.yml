@@ -1,0 +1,28 @@
+name: Tag release
+
+on:
+  push:
+    tags: ["*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+
+  release:
+    uses: ./.github/workflows/release.yml
+    needs: [test]
+    secrets: inherit
+    with:
+      tag: ${{ github.ref_name }}
+
+  docker:
+    uses: ./.github/workflows/docker.yml
+    needs: [test]
+    secrets: inherit
+    with:
+      tag: ${{ github.ref_name }}
