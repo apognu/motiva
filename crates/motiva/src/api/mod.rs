@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use axum::{
   Router, middleware,
   routing::{get, post},
@@ -38,10 +36,11 @@ pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: &Config, fetche
 
   tokio::spawn({
     let motiva = motiva.clone();
+    let interval = config.catalog_refresh_interval.try_into().unwrap();
 
     async move {
       loop {
-        tokio::time::sleep(Duration::from_secs(60 * 60)).await;
+        tokio::time::sleep(interval).await;
 
         motiva.refresh_catalog().await;
       }
