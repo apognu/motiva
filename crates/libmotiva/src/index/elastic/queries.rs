@@ -261,6 +261,11 @@ fn build_must_nots(params: &MatchParams) -> Vec<serde_json::Value> {
     filters.push(json!({ "terms": { "schema": params.exclude_schema } }));
   }
 
+  if !params.exclude_entity_ids.is_empty() {
+    filters.push(json!({ "terms": { "entity_id": params.exclude_entity_ids } }));
+    filters.push(json!({ "terms": { "referents": params.exclude_entity_ids } }));
+  }
+
   filters
 }
 
@@ -472,6 +477,7 @@ mod tests {
   fn build_must_nots() {
     let params = MatchParams {
       exclude_schema: vec!["Person".into(), "Company".into()],
+      exclude_entity_ids: vec!["A1".into(), "A2".into()],
       ..Default::default()
     };
 
@@ -480,7 +486,9 @@ mod tests {
     assert_json_eq!(
       must_nots,
       json!([
-          { "terms": { "schema": ["Person", "Company"] } }
+          { "terms": { "schema": ["Person", "Company"] } },
+          { "terms": { "entity_id": ["A1", "A2"] } },
+          { "terms": { "referents": ["A1", "A2"] } }
       ])
     );
 

@@ -120,12 +120,15 @@ pub struct MatchParams {
   pub algorithm: Algorithm,
   /// Filter topics an entity must be part of to be considered.
   pub topics: Option<Vec<String>>,
-  #[serde(default)]
   /// Datasets to search from.
-  pub include_dataset: Vec<String>,
   #[serde(default)]
+  pub include_dataset: Vec<String>,
   /// Datasets to exclude from the search.
+  #[serde(default)]
   pub exclude_dataset: Vec<String>,
+  /// List of entity IDs that should not be returned with the matches
+  #[serde(default)]
+  pub exclude_entity_ids: Vec<String>,
   /// Only consider entities that were modified after the provided timestamp.
   pub changed_since: Option<Timestamp>,
   /// List of schema to exclude from the search.
