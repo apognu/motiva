@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File};
+use std::{collections::HashMap, env, fs::File};
 
 use anyhow::Context;
 use reqwest::header;
@@ -77,7 +77,13 @@ impl CatalogFetcher for HttpCatalogFetcher {
   async fn fetch_catalog(&self, url: &str, auth_token: Option<&str>) -> anyhow::Result<Catalog> {
     let client = reqwest::Client::default();
 
-    match auth_token {
+    let token = match auth_token {
+      Some(token) if token.starts_with('$') => env::var(token.trim_start_matches('$')).ok(),
+      Some(token) => Some(token.to_string()),
+      None => None,
+    };
+
+    match token {
       Some(token) => Ok(client.get(url).header(header::AUTHORIZATION, format!("Token {token}")).send().await?.json::<Catalog>().await?),
       None => Ok(client.get(url).send().await?.json::<Catalog>().await?),
     }
