@@ -21,6 +21,7 @@ pub struct Config {
 
   // Match settings
   pub manifest_url: Option<String>,
+  pub catalog_refresh_interval: Span,
   pub outdated_grace: Span,
   pub match_candidates: usize,
 
@@ -40,6 +41,7 @@ impl Config {
       api_key: env::var("API_KEY").ok(),
       match_candidates: parse_env("MATCH_CANDIDATES", 10)?,
       manifest_url: env::var("MANIFEST_URL").ok(),
+      catalog_refresh_interval: parse_env("CATALOG_REFRESH_INTERVAL", Span::from_str("1h").unwrap())?,
       outdated_grace: parse_env("OUTDATED_GRACE", Span::default())?,
       index_url: env::var("INDEX_URL").unwrap_or("http://localhost:9200".into()),
       index_auth_method: env::var("INDEX_AUTH_METHOD").unwrap_or("none".into()).parse::<WrappedEsAuthMethod>()?.0,

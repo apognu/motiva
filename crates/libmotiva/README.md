@@ -34,7 +34,8 @@ Some liberty was taken to adapt some logic and algorithms from Yente, so do not 
 
 - [x] POST /match/{dataset}
 - [x] GET /entities/{id}
-- [x] GET /catalog _(proxy)_
+- [x] GET /algorithms
+- [x] GET /catalog
 - [x] name-based
 - [x] name-qualified
 - [x] logic-v1 <sup>[1]</sup>
@@ -46,20 +47,21 @@ Some liberty was taken to adapt some logic and algorithms from Yente, so do not 
 
 Motiva is configured via environment variables. The following variables are supported:
 
-| Variable              | Description                                                                            | Default / Example       |
-| --------------------- | -------------------------------------------------------------------------------------- | ----------------------- |
-| `ENV`                 | Environment (`dev` or `production`)                                                    | `dev`                   |
-| `LISTEN_ADDR`         | Address to bind the API server                                                         | `0.0.0.0:8000`          |
-| `API_KEY`             | Bearer token used to authenticate requests                                             | _(none)_                |
-| `INDEX_URL`           | Elasticsearch URL                                                                      | `http://localhost:9200` |
-| `INDEX_AUTH_METHOD`   | Elasticsearch authentication (`none`, `basic`, `bearer`, `api_key`, `encoded_api_key`) | `none`                  |
-| `INDEX_CLIENT_ID`     | Elasticsearch client ID (required for `basic` or `api_key`)                            | _(none)_                |
-| `INDEX_CLIENT_SECRET` | Elasticsearch client secret (required for `basic`, `api_key` or `encoded_api_key`)     | _(none)_                |
-| `MANIFEST_URL`        | Optional URL to a custom manifest JSON file                                            | _(none)_                |
-| `MATCH_CANDIDATES`    | Number of candidates to consider for matching                                          | `10`                    |
-| `ENABLE_PROMETHEUS`   | Enable Prometheus metrics collection and /metrics endpoint                             | `0`                     |
-| `ENABLE_TRACING`      | Set to `1` to enable tracing                                                           | _(none)_                |
-| `TRACING_EXPORTER`    | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)            | `otlp`                  |
+| Variable                  | Description                                                                            | Default / Example       |
+| ------------------------- | -------------------------------------------------------------------------------------- | ----------------------- |
+| `ENV`                     | Environment (`dev` or `production`)                                                    | `dev`                   |
+| `LISTEN_ADDR`             | Address to bind the API server                                                         | `0.0.0.0:8000`          |
+| `API_KEY`                 | Bearer token used to authenticate requests                                             | _(none)_                |
+| `INDEX_URL`               | Elasticsearch URL                                                                      | `http://localhost:9200` |
+| `INDEX_AUTH_METHOD`       | Elasticsearch authentication (`none`, `basic`, `bearer`, `api_key`, `encoded_api_key`) | `none`                  |
+| `INDEX_CLIENT_ID`         | Elasticsearch client ID (required for `basic` or `api_key`)                            | _(none)_                |
+| `INDEX_CLIENT_SECRET`     | Elasticsearch client secret (required for `basic`, `api_key` or `encoded_api_key`)     | _(none)_                |
+| `MANIFEST_URL`            | Optional URL to a custom manifest JSON file                                            | _(none)_                |
+| `CATALOG_REFRESH_INTERVAL | Interval at which to pull the manifest and catalogs                                    | _1h_                    |
+| `MATCH_CANDIDATES`        | Number of candidates to consider for matching                                          | `10`                    |
+| `ENABLE_PROMETHEUS`       | Enable Prometheus metrics collection and /metrics endpoint                             | `0`                     |
+| `ENABLE_TRACING`          | Set to `1` to enable tracing                                                           | _(none)_                |
+| `TRACING_EXPORTER`        | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)            | `otlp`                  |
 
 Setting `MANIFEST_FILE` is required if you use a customized dataset list and would like your own manifest to be used for catalog generation. If omitted, the default manifest provided by Yente will be used. It requires either an HTTP URL or a local file path ending in `.json`, `.yml` or `.yaml`.
 
