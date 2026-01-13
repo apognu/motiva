@@ -1,10 +1,13 @@
+use std::time::Duration;
+
 use axum::{
   Router, middleware,
   routing::{get, post},
 };
 use libmotiva::prelude::*;
 use metrics_exporter_prometheus::PrometheusHandle;
-use tower_http::trace::TraceLayer;
+use reqwest::StatusCode;
+use tower_http::{timeout::TimeoutLayer, trace::TraceLayer};
 
 use crate::{
   api::{config::Config, middlewares::create_request_span},
@@ -67,6 +70,10 @@ pub(crate) fn router<F: CatalogFetcher, P: IndexProvider>(state: AppState<F, P>)
     .route("/match/{scope}", post(handlers::match_entities))
     .route("/entities/{id}", get(handlers::get_entity))
     .fallback(handlers::not_found)
+    .layer(TimeoutLayer::with_status_code(
+      StatusCode::REQUEST_TIMEOUT,
+      state.config.request_timeout.try_into().unwrap_or(Duration::from_secs(10)),
+    ))
     .layer(middleware::from_fn_with_state(state.clone(), middlewares::logging::api_logger))
     .layer(TraceLayer::new_for_http().make_span_with(create_request_span))
     .layer(middleware::from_fn(middlewares::metrics))
