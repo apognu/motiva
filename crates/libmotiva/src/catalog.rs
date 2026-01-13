@@ -163,57 +163,61 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
   let mut catalog = Catalog::default();
 
   for mut spec in manifest.catalogs {
-    let Ok(mut upstream) = fetcher.fetch_catalog(&spec.url, spec.auth_token.as_deref()).await else {
-      tracing::warn!("encountered issue parsing dataset at {}", spec.url);
-      continue;
-    };
-
-    if let Some(scope) = spec.scope {
-      spec.scopes.push(scope);
-    }
-
-    for ds in &mut upstream.datasets {
-      if spec.scopes.contains(&ds.name) {
-        ds.load = true;
-      }
-
-      for resource in &ds.resources {
-        if resource.name == "entities.ftm.json" {
-          ds.entities_url = Some(resource.url.clone());
+    match fetcher.fetch_catalog(&spec.url, spec.auth_token.as_deref()).await {
+      Ok(mut upstream) => {
+        if let Some(scope) = spec.scope {
+          spec.scopes.push(scope);
         }
-      }
 
-      if let Some((_, version)) = indices.iter().find(|(name, _)| name == &ds.name) {
-        ds.index_version = Some(version.clone());
-
-        match version.as_str() == ds.version {
-          true => {
-            ds.index_current = true;
-            catalog.current.push(ds.name.clone());
+        for ds in &mut upstream.datasets {
+          if spec.scopes.contains(&ds.name) {
+            ds.load = true;
           }
 
-          false => {
-            let Some(indexed_ts_str) = version.split("-").next() else {
-              continue;
-            };
+          for resource in &ds.resources {
+            if resource.name == "entities.ftm.json" {
+              ds.entities_url = Some(resource.url.clone());
+            }
+          }
 
-            let Ok(indexed_timestamp) = DateTime::strptime("%Y%m%d%H%M%S", indexed_ts_str) else { continue };
+          if let Some((_, version)) = indices.iter().find(|(name, _)| name == &ds.name) {
+            ds.index_version = Some(version.clone());
 
-            match ds.last_export {
-              Some(last_export) if last_export <= indexed_timestamp + outdated_grace => {
+            match version.as_str() == ds.version {
+              true => {
+                ds.index_current = true;
                 catalog.current.push(ds.name.clone());
               }
 
-              _ => {
-                catalog.outdated.push(ds.name.clone());
+              false => {
+                let Some(indexed_ts_str) = version.split("-").next() else {
+                  continue;
+                };
+
+                let Ok(indexed_timestamp) = DateTime::strptime("%Y%m%d%H%M%S", indexed_ts_str) else { continue };
+
+                match ds.last_export {
+                  Some(last_export) if last_export <= indexed_timestamp + outdated_grace => {
+                    catalog.current.push(ds.name.clone());
+                  }
+
+                  _ => {
+                    catalog.outdated.push(ds.name.clone());
+                  }
+                }
               }
             }
           }
         }
+
+        catalog.datasets.extend(upstream.datasets.into_iter());
+      }
+
+      Err(err) => {
+        tracing::warn!("error" = ?err, "encountered issue parsing dataset at {}", spec.url);
+        continue;
       }
     }
-
-    catalog.datasets.extend(upstream.datasets.into_iter());
   }
 
   for ds in manifest.datasets {
