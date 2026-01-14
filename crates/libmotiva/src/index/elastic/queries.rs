@@ -408,7 +408,7 @@ fn resolve_schemas(schema: &str, level: ResolveSchemaLevel) -> Result<Vec<String
 
   if let Some(def) = SCHEMAS.get(schema) {
     if root && schema != "Thing" && !def.matchable {
-      return Err(MotivaError::OtherError(anyhow::anyhow!("requested schema is not matchable")));
+      return Ok(vec![]);
     }
 
     if root || def.matchable {
@@ -656,7 +656,7 @@ mod tests {
     assert_eq!(resolve_schemas("Person", ResolveSchemaLevel::Root).unwrap(), &["Person", "LegalEntity"]);
     assert_eq!(resolve_schemas("Company", ResolveSchemaLevel::Root).unwrap(), &["Company", "Organization", "LegalEntity"]);
     assert_eq!(resolve_schemas("Airplane", ResolveSchemaLevel::Root).unwrap(), &["Airplane"]);
-    assert!(resolve_schemas("Vehicle", ResolveSchemaLevel::Root).is_err());
+    assert!(resolve_schemas("Vehicle", ResolveSchemaLevel::Root).unwrap().is_empty());
     assert_eq!(resolve_schemas("Thing", ResolveSchemaLevel::Root).unwrap(), &["Thing"]);
   }
 
