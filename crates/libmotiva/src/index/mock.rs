@@ -7,7 +7,7 @@ use tokio::sync::RwLock;
 use crate::{
   Catalog,
   error::MotivaError,
-  index::{EntityHandle, IndexProvider},
+  index::{EntityHandle, IndexProvider, elastic::version::IndexVersion},
   matching::MatchParams,
   model::{Entity, SearchEntity},
 };
@@ -26,6 +26,10 @@ pub struct MockedElasticsearch {
 }
 
 impl IndexProvider for MockedElasticsearch {
+  fn index_version(&self) -> IndexVersion {
+    IndexVersion::V4
+  }
+
   async fn health(&self) -> Result<bool, MotivaError> {
     match self.healthy {
       None => Err(MotivaError::OtherError(anyhow::anyhow!("an error"))),
