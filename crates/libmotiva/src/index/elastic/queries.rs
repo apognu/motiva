@@ -63,7 +63,7 @@ impl IndexProvider for ElasticsearchProvider {
   /// Search for candidate entities matching input parameters.
   #[instrument(skip_all)]
   async fn search(&self, catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, MotivaError> {
-    let query = build_query(catalog, entity, params).await?;
+    let query = build_query(catalog, self.index_version, entity, params).await?;
 
     tracing::trace!(%query, "running query");
 
@@ -231,12 +231,12 @@ fn parse_index_dataset_versions(indices: HashMap<String, serde_json::Value>) -> 
     .collect::<Vec<_>>()
 }
 
-async fn build_query(catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, params: &MatchParams) -> Result<serde_json::Value, MotivaError> {
+async fn build_query(catalog: &Arc<RwLock<Catalog>>, index_version: IndexVersion, entity: &SearchEntity, params: &MatchParams) -> Result<serde_json::Value, MotivaError> {
   Ok(json!({
       "query": {
           "bool": {
               "filter": build_filters(catalog, entity, params).await?,
-              "should": build_shoulds(entity)?,
+              "should": build_shoulds(index_version, entity)?,
               "must_not": build_must_nots(params),
               "minimum_should_match": 1,
           }
@@ -318,7 +318,7 @@ fn build_topics(params: &MatchParams, filters: &mut Vec<serde_json::Value>) {
   }
 }
 
-fn build_shoulds(entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>> {
+fn build_shoulds(index_version: IndexVersion, entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>> {
   let mut should = Vec::<serde_json::Value>::new();
 
   if let Some(names) = entity.properties.get("name") {
@@ -337,9 +337,16 @@ fn build_shoulds(entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>
       }));
     }
 
-    for name in extractors::index_name_keys(names.iter()) {
-      add_term(&mut should, "name_keys", &name, 4.0);
+    if index_version == IndexVersion::V4 {
+      for name in extractors::index_name_keys(names.iter()) {
+        add_term(&mut should, "name_keys", &name, 4.0);
+      }
     }
+
+    if index_version == IndexVersion::V5 {
+      // TODO: add name_symbols filters
+    }
+
     for name in extractors::index_name_parts(names.iter()) {
       add_term(&mut should, "name_parts", &name, 1.0);
     }
@@ -437,7 +444,10 @@ mod tests {
   use crate::{
     Catalog,
     catalog::CatalogDataset,
-    index::elastic::queries::{ResolveSchemaLevel, resolve_schemas},
+    index::elastic::{
+      queries::{ResolveSchemaLevel, resolve_schemas},
+      version::IndexVersion,
+    },
     model::SearchEntity,
     prelude::MatchParams,
   };
@@ -524,7 +534,7 @@ mod tests {
       ])
       .build();
 
-    super::build_query(&fake_catalog(), &entity, &MatchParams::default()).await.unwrap();
+    super::build_query(&fake_catalog(), IndexVersion::V4, &entity, &MatchParams::default()).await.unwrap();
   }
 
   #[test]
@@ -538,7 +548,7 @@ mod tests {
       ])
       .build();
 
-    let shoulds = super::build_shoulds(&entity).unwrap();
+    let shoulds = super::build_shoulds(IndexVersion::V4, &entity).unwrap();
 
     assert_json_contains!(
         container: shoulds,
