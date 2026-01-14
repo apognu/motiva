@@ -15,7 +15,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
   let config = Config::from_env().await?;
-  let provider = ElasticsearchProvider::new(&config.index_url, config.index_auth_method.clone())?;
+  let provider = ElasticsearchProvider::new(&config.index_url, config.index_auth_method.clone(), None).await?;
 
   run(config, provider).await
 }

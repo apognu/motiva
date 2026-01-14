@@ -91,6 +91,8 @@ impl<P: IndexProvider> Motiva<P> {
     let fetcher = HttpCatalogFetcher::default();
     let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
 
+    tracing::info!(version = ?provider.index_version(), "detected yente version used from index");
+
     Ok(Motiva {
       config,
       index: provider,
@@ -104,6 +106,8 @@ impl<P: IndexProvider> Motiva<P> {
     crate::init();
 
     let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
+
+    tracing::info!(version = ?provider.index_version(), "detected yente version used from index");
 
     Ok(Motiva {
       config,

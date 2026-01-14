@@ -1,5 +1,6 @@
 pub(crate) mod builder;
 pub(crate) mod queries;
+pub(crate) mod version;
 
 use std::{collections::HashMap, fmt::Debug};
 
@@ -9,6 +10,7 @@ use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+  index::elastic::version::IndexVersion,
   model::{Entity, Properties, Schema},
   schemas::SCHEMAS,
 };
@@ -17,6 +19,7 @@ use crate::{
 #[derive(Clone)]
 pub struct ElasticsearchProvider {
   pub es: Elasticsearch,
+  pub(crate) index_version: IndexVersion,
 }
 
 #[derive(Deserialize)]

@@ -1,9 +1,9 @@
 use elasticsearch::{Elasticsearch, auth::Credentials, http::transport::Transport};
 
-use crate::{error::MotivaError, prelude::ElasticsearchProvider};
+use crate::{error::MotivaError, index::elastic::version::IndexVersion, prelude::ElasticsearchProvider};
 
 impl ElasticsearchProvider {
-  pub fn new(url: &str, auth: EsAuthMethod) -> Result<ElasticsearchProvider, MotivaError> {
+  pub async fn new(url: &str, auth: EsAuthMethod, version: Option<IndexVersion>) -> Result<ElasticsearchProvider, MotivaError> {
     let es = {
       let transport = Transport::single_node(url)?;
 
@@ -18,7 +18,13 @@ impl ElasticsearchProvider {
       Elasticsearch::new(transport)
     };
 
-    Ok(ElasticsearchProvider { es })
+    let mut provider = ElasticsearchProvider { es, index_version: IndexVersion::V4 };
+
+    if version.is_none() {
+      provider.index_version = provider.detect_index_version().await?;
+    }
+
+    Ok(provider)
   }
 }
 
@@ -40,16 +46,25 @@ pub enum EsAuthMethod {
 
 #[cfg(test)]
 mod tests {
-  use crate::prelude::{ElasticsearchProvider, EsAuthMethod};
+  use crate::{
+    index::elastic::version::IndexVersion,
+    prelude::{ElasticsearchProvider, EsAuthMethod},
+  };
 
-  #[test]
-  fn es_builder() {
+  #[tokio::test]
+  async fn es_builder() {
     let (u, p) = ("secret".to_string(), "secret".to_string());
 
-    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::None).unwrap();
-    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::Basic(u.clone(), p.clone())).unwrap();
-    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::Bearer(p.clone())).unwrap();
-    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::ApiKey(u.clone(), p.clone())).unwrap();
-    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::EncodedApiKey(p.clone())).unwrap();
+    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::None, Some(IndexVersion::V4)).await.unwrap();
+    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::Basic(u.clone(), p.clone()), Some(IndexVersion::V4))
+      .await
+      .unwrap();
+    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::Bearer(p.clone()), Some(IndexVersion::V4)).await.unwrap();
+    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::ApiKey(u.clone(), p.clone()), Some(IndexVersion::V4))
+      .await
+      .unwrap();
+    ElasticsearchProvider::new("http://url:9200", EsAuthMethod::EncodedApiKey(p.clone()), Some(IndexVersion::V4))
+      .await
+      .unwrap();
   }
 }

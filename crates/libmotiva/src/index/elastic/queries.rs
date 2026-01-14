@@ -21,7 +21,7 @@ use crate::{
   error::MotivaError,
   index::{
     EntityHandle, IndexProvider,
-    elastic::{EsEntity, EsErrorResponse, EsHealth, EsResponse},
+    elastic::{EsEntity, EsErrorResponse, EsHealth, EsResponse, version::IndexVersion},
   },
   matching::{MatchParams, extractors},
   model::{Entity, SearchEntity},
@@ -30,6 +30,10 @@ use crate::{
 };
 
 impl IndexProvider for ElasticsearchProvider {
+  fn index_version(&self) -> IndexVersion {
+    self.index_version
+  }
+
   /// Whether the Elasticsearch cluster is up and healthy.
   ///
   /// The cluster will only be considered healthy if the index is `green` or `yellow`.
