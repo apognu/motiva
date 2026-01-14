@@ -349,18 +349,30 @@ fn build_shoulds(entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>
   }
 
   let schema = SCHEMAS.get(entity.schema.as_str()).ok_or(anyhow::anyhow!("unknown schema"))?;
+  let properties = schema.properties(&SCHEMAS);
 
   for (property, values) in &entity.properties {
-    if property == "name" || !schema.properties.get(property).is_some_and(|p| p.matchable) {
+    let Some(prop) = properties.get(property) else {
+      continue;
+    };
+
+    if property == "name" || !prop.matchable {
       continue;
     }
 
-    let lhs = match property.as_str() {
+    let lhs = match prop._type.as_str() {
       "address" => "addresses",
-      "birthDate" => "dates",
-      "country" | "nationality" => "countries",
-      "registrationNumber" => "identifiers",
-      _ => continue, // TODO: fix
+      "date" => "dates",
+      "country" => "countries",
+      "identifier" => "identifiers",
+      "phone" => "phones",
+      "email" => "emails",
+      "language" => "languages",
+      "gender" => "genders",
+      "iban" => "ibans",
+      "ip" => "ips",
+      "url" => "urls",
+      _ => continue,
     };
 
     for value in values {

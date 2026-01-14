@@ -109,6 +109,18 @@ pub struct FtmSchema {
   pub descendants: Vec<String>,
 }
 
+impl FtmSchema {
+  pub fn properties(&self, schemas: &HashMap<String, FtmSchema, RandomState>) -> HashMap<String, FtmProperty, RandomState> {
+    let mut out = self.properties.clone();
+
+    for parent in &self.extends {
+      out.extend(schemas.get(parent).unwrap().properties(schemas));
+    }
+
+    out
+  }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct FtmProperty {
   #[serde(default, rename = "type")]
