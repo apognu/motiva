@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::{ElasticsearchProvider, MotivaError};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IndexVersion {
   V4,
   V5,
