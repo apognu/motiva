@@ -9,11 +9,21 @@ pub(crate) mod symbols;
 
 #[derive(Embed)]
 #[folder = "./assets/rigour/resources"]
-struct Dictionaries;
+pub(crate) struct Dictionaries;
+
+#[cfg(not(debug_assertions))]
+#[derive(Embed)]
+#[folder = "./assets/rigour/rigour/data"]
+pub(crate) struct RigourData;
+
+#[cfg(debug_assertions)]
+#[derive(Embed)]
+#[folder = "./assets/excerpts/rigour_data"]
+pub(crate) struct RigourData;
 
 #[derive(Embed)]
 #[folder = "./assets/fingerprints/fingerprints"]
-struct Fingerprints;
+pub(crate) struct Fingerprints;
 
 pub(crate) fn replace<R>(aho: &AhoCorasick, replacements: &[R], haystack: &str) -> String
 where

@@ -158,7 +158,6 @@ pub struct CatalogDatasetCoverage {
 
 pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F, index: &P, outdated_grace: Span) -> anyhow::Result<Catalog> {
   let manifest = fetcher.fetch_manifest().await?;
-
   let indices = index.list_indices().await?;
   let mut catalog = Catalog::default();
 

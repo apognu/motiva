@@ -11,6 +11,7 @@ mod motiva;
 mod nested;
 mod schemas;
 mod scoring;
+mod symbols;
 
 #[cfg(any(test, feature = "benchmarks"))]
 mod tests;
@@ -20,6 +21,9 @@ pub(crate) fn init() {
   let _ = *crate::matching::replacers::company_types::ORG_TYPES;
   let _ = *crate::matching::replacers::addresses::ADDRESS_FORMS;
   let _ = *crate::matching::replacers::ordinals::ORDINALS;
+
+  let _ = *crate::symbols::tagger::ORG_TAGGER;
+  let _ = *crate::symbols::tagger::PERSON_TAGGER;
 }
 
 /// Module including most features needed to use the library.

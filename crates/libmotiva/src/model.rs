@@ -23,6 +23,12 @@ pub trait HasProperties {
   fn props(&self, keys: &[&str]) -> Cow<'_, [String]>;
 }
 
+#[derive(Eq, PartialEq)]
+pub(crate) enum ResolveSchemaLevel {
+  Root,
+  Deep,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Schema(String);
 
@@ -45,6 +51,31 @@ impl Schema {
     };
 
     asked.descendants.iter().any(|s| s == &self.0)
+  }
+
+  pub(crate) fn matchable_schemas(&self, level: ResolveSchemaLevel) -> Vec<String> {
+    let mut out = Vec::with_capacity(8);
+    let root = level == ResolveSchemaLevel::Root;
+
+    if let Some(schema) = SCHEMAS.get(self.as_str()) {
+      if root {
+        out.extend(schema.descendants.clone());
+      }
+
+      if root || schema.matchable {
+        out.push(self.as_str().to_string());
+      }
+
+      for parent in &schema.extends {
+        out.extend(Schema::from(parent).matchable_schemas(ResolveSchemaLevel::Deep));
+      }
+    }
+
+    out
+  }
+
+  pub(crate) fn can_match(&self, schema: &str) -> bool {
+    Schema::from(schema).matchable_schemas(ResolveSchemaLevel::Root).iter().any(|s| s == &self.0)
   }
 
   pub(crate) fn is_edge(&self) -> bool {
@@ -272,9 +303,11 @@ impl Entity {
 
 #[cfg(test)]
 mod tests {
+  use ahash::HashSet;
+
   use crate::{
     HasProperties, SearchEntity,
-    model::{Entity, Schema},
+    model::{Entity, ResolveSchemaLevel, Schema},
   };
 
   #[test]
@@ -283,6 +316,11 @@ mod tests {
 
     assert!(entity.schema.is_a("Organization"));
     assert!(!entity.schema.is_a("Nothing"));
+    assert!(entity.schema.is_a("Thing"));
+
+    let entity = Entity::builder("Thing").properties(&[]).build();
+
+    assert!(!entity.schema.is_a("Person"));
   }
 
   #[test]
@@ -323,5 +361,60 @@ mod tests {
       .build();
 
     assert_eq!(se.names_and_aliases(), &["Vladimir Vladimirovitch Putin"]);
+  }
+
+  #[test]
+  fn resolve_schema_chain() {
+    assert_eq!(Schema::from("Person").matchable_schemas(ResolveSchemaLevel::Root), &["Person", "LegalEntity"]);
+    assert_eq!(Schema::from("Company").matchable_schemas(ResolveSchemaLevel::Root), &["Company", "Organization", "LegalEntity"]);
+    assert_eq!(Schema::from("Airplane").matchable_schemas(ResolveSchemaLevel::Root), &["Airplane"]);
+    // assert!(Schema::from("Vehicle").matchable_schemas(ResolveSchemaLevel::Root).is_empty());
+    assert_eq!(
+      HashSet::from_iter(Schema::from("Thing").matchable_schemas(ResolveSchemaLevel::Root).iter()),
+      HashSet::from_iter(
+        [
+          "Video".to_string(),
+          "Table".to_string(),
+          "CryptoWallet".to_string(),
+          "Event".to_string(),
+          "Pages".to_string(),
+          "CallForTenders".to_string(),
+          "License".to_string(),
+          "Project".to_string(),
+          "Note".to_string(),
+          "Security".to_string(),
+          "PlainText".to_string(),
+          "Contract".to_string(),
+          "Document".to_string(),
+          "UserAccount".to_string(),
+          "Email".to_string(),
+          "Package".to_string(),
+          "Audio".to_string(),
+          "Person".to_string(),
+          "Folder".to_string(),
+          "Vessel".to_string(),
+          "Message".to_string(),
+          "Workbook".to_string(),
+          "BankAccount".to_string(),
+          "Vehicle".to_string(),
+          "Image".to_string(),
+          "HyperText".to_string(),
+          "Address".to_string(),
+          "RealEstate".to_string(),
+          "Position".to_string(),
+          "Article".to_string(),
+          "Company".to_string(),
+          "Asset".to_string(),
+          "Airplane".to_string(),
+          "LegalEntity".to_string(),
+          "Organization".to_string(),
+          "CourtCase".to_string(),
+          "PublicBody".to_string(),
+          "Trip".to_string(),
+          "Thing".to_string(),
+        ]
+        .iter()
+      )
+    );
   }
 }
