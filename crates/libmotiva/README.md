@@ -43,6 +43,10 @@ Some liberty was taken to adapt some logic and algorithms from Yente, so do not 
 
 <sup>[1]</sup>: Features that are disabled by default were omited for now.
 
+#### Yente version compatibility
+
+Before v0.5.0, motiva is only compatible with data indexer with Yente v4.x. Starting with v0.5.0, it will try to determine, at startup, which version of Yente was used to index the data (v4.x or v5.x), and adapt its queries to support it.
+
 ## Configuration
 
 Motiva is configured via environment variables. The following variables are supported:
@@ -62,6 +66,7 @@ Motiva is configured via environment variables. The following variables are supp
 | `ENABLE_PROMETHEUS`        | Enable Prometheus metrics collection and /metrics endpoint                             | `0`                     |
 | `ENABLE_TRACING`           | Set to `1` to enable tracing                                                           | _(none)_                |
 | `TRACING_EXPORTER`         | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)            | `otlp`                  |
+| `REQUEST_TIMEOUT`          | Maximum duration for a match request                                                   | _10s_                   |
 
 Setting `MANIFEST_FILE` is required if you use a customized dataset list and would like your own manifest to be used for catalog generation. If omitted, the default manifest provided by Yente will be used. It requires either an HTTP URL or a local file path ending in `.json`, `.yml` or `.yaml`.
 
