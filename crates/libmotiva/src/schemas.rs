@@ -58,7 +58,7 @@ pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema, RandomState>> = LazyLock
   schemas
 });
 
-fn resolve_schemas(schemas: &HashMap<String, FtmSchema, RandomState>, schema: &str, if_matchable: bool) -> Option<Vec<String>> {
+pub fn resolve_schemas(schemas: &HashMap<String, FtmSchema, RandomState>, schema: &str, if_matchable: bool) -> Option<Vec<String>> {
   let mut out = Vec::with_capacity(8);
 
   if let Some(def) = schemas.get(schema) {
@@ -71,7 +71,7 @@ fn resolve_schemas(schemas: &HashMap<String, FtmSchema, RandomState>, schema: &s
     }
 
     for parent in &def.extends {
-      out.extend(resolve_schemas(schemas, parent, false)?);
+      out.extend(resolve_schemas(schemas, parent, if_matchable)?);
     }
   }
 

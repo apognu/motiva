@@ -23,7 +23,7 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, cut
     let then = Instant::now();
     let _enter = span.enter();
 
-    if !hit.schema.is_a(entity.schema.as_str()) {
+    if !hit.schema.can_match(entity.schema.as_str()) {
       tracing::debug!(score = 0.0, "incomparable schemas, skipping");
 
       return (hit, 0.0);

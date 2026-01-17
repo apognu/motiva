@@ -24,9 +24,10 @@ use crate::{
     elastic::{EsEntity, EsErrorResponse, EsHealth, EsResponse, version::IndexVersion},
   },
   matching::{MatchParams, extractors},
-  model::{Entity, SearchEntity},
+  model::{Entity, ResolveSchemaLevel, SearchEntity},
   prelude::ElasticsearchProvider,
   schemas::SCHEMAS,
+  symbols::tagger::{ORG_TAGGER, PERSON_TAGGER},
 };
 
 impl IndexProvider for ElasticsearchProvider {
@@ -274,9 +275,7 @@ fn build_must_nots(params: &MatchParams) -> Vec<serde_json::Value> {
 }
 
 fn build_schemas(entity: &SearchEntity, filters: &mut Vec<serde_json::Value>) -> Result<(), MotivaError> {
-  let schema = SCHEMAS.get(entity.schema.as_str()).ok_or(MotivaError::InvalidSchema(entity.schema.as_str().to_string()))?;
-  let mut schemas = resolve_schemas(entity.schema.as_str(), ResolveSchemaLevel::Root)?;
-  schemas.extend(schema.descendants.clone());
+  let schemas = entity.schema.matchable_schemas(ResolveSchemaLevel::Root);
 
   filters.push(json!({ "terms": { "schema": schemas } }));
 
@@ -341,17 +340,71 @@ fn build_shoulds(index_version: IndexVersion, entity: &SearchEntity) -> anyhow::
       for name in extractors::index_name_keys(names.iter()) {
         add_term(&mut should, "name_keys", &name, 4.0);
       }
+      for name in extractors::index_name_parts(names.iter()) {
+        add_term(&mut should, "name_parts", &name, 1.0);
+      }
+      for name in extractors::phonetic_name(&Metaphone::new(None), names.iter()) {
+        add_term(&mut should, "name_phonetic", &name, 0.8);
+      }
     }
 
     if index_version == IndexVersion::V5 {
-      // TODO: add name_symbols filters
-    }
+      for name in &names {
+        let symbols = match entity.schema.as_str() {
+          "Person" => PERSON_TAGGER.tag(name),
+          "LegalEntity" | "Organization" | "Company" | "PublicBody" => ORG_TAGGER.tag(name),
+          _ => vec![(name.to_string(), None)],
+        };
 
-    for name in extractors::index_name_parts(names.iter()) {
-      add_term(&mut should, "name_parts", &name, 1.0);
-    }
-    for name in extractors::phonetic_name(&Metaphone::new(None), names.iter()) {
-      add_term(&mut should, "name_phonetic", &name, 0.8);
+        let name_symbols = symbols.into_iter().into_group_map();
+
+        for (name_part, symbols) in &name_symbols {
+          let mut boost = if symbols.iter().all(Option::is_none) { 1.0f64 } else { 0.0f64 };
+          let mut dis_max: Vec<serde_json::Value> = vec![];
+
+          for symbol in symbols {
+            let Some(symbol) = symbol else {
+              continue;
+            };
+
+            boost = boost.max(symbol.category.boost().unwrap_or_default());
+          }
+          if boost == 0.0 {
+            boost = 1.0;
+          }
+
+          for name in extractors::index_name_parts([name_part.to_owned()].iter()) {
+            add_term(&mut dis_max, "name_parts", &name, boost);
+          }
+          for name in extractors::phonetic_name(&Metaphone::new(None), [name_part.to_owned()].iter()) {
+            add_term(&mut dis_max, "name_phonetic", &name, boost * 0.5);
+          }
+
+          for symbol in symbols {
+            let Some(symbol) = symbol else {
+              continue;
+            };
+
+            let key = format!("{}:{}", symbol.category, symbol.id);
+
+            dis_max.push(json!({
+                "term": {
+                    "name_symbols": {
+                        "value": key,
+                        "boost": boost * 0.7,
+                    }
+                }
+            }))
+          }
+
+          should.push(json!({
+              "dis_max": {
+                  "queries": dis_max,
+                  "tie_breaker": 0.2,
+              }
+          }));
+        }
+      }
     }
   }
 
@@ -403,33 +456,6 @@ fn add_term(queries: &mut Vec<serde_json::Value>, key: &str, name: &str, boost: 
   }));
 }
 
-#[derive(Eq, PartialEq)]
-enum ResolveSchemaLevel {
-  Root,
-  Deep,
-}
-
-fn resolve_schemas(schema: &str, level: ResolveSchemaLevel) -> Result<Vec<String>, MotivaError> {
-  let mut out = Vec::with_capacity(8);
-  let root = level == ResolveSchemaLevel::Root;
-
-  if let Some(def) = SCHEMAS.get(schema) {
-    if root && schema != "Thing" && !def.matchable {
-      return Ok(vec![]);
-    }
-
-    if root || def.matchable {
-      out.push(schema.to_string());
-    }
-
-    for parent in &def.extends {
-      out.extend(resolve_schemas(parent, ResolveSchemaLevel::Deep)?);
-    }
-  }
-
-  Ok(out)
-}
-
 #[cfg(test)]
 mod tests {
   use std::{
@@ -441,16 +467,7 @@ mod tests {
   use serde_json_assert::{assert_json_contains, assert_json_eq, assert_json_include};
   use tokio::sync::RwLock;
 
-  use crate::{
-    Catalog,
-    catalog::CatalogDataset,
-    index::elastic::{
-      queries::{ResolveSchemaLevel, resolve_schemas},
-      version::IndexVersion,
-    },
-    model::SearchEntity,
-    prelude::MatchParams,
-  };
+  use crate::{Catalog, catalog::CatalogDataset, index::elastic::version::IndexVersion, model::SearchEntity, prelude::MatchParams};
 
   fn fake_catalog() -> Arc<RwLock<Catalog>> {
     Arc::new(RwLock::new({
@@ -538,7 +555,7 @@ mod tests {
   }
 
   #[test]
-  fn build_should() {
+  fn build_should_v4() {
     let entity = SearchEntity::builder("Person")
       .properties(&[
         ("name", &["Vladimir Putin"]),
@@ -582,6 +599,122 @@ mod tests {
 
     assert_json_contains!(container: shoulds, contained: json!([{ "match": { "dates": "01-01-1010" } }]));
     assert_json_contains!(container: shoulds, contained: json!([{ "match": { "countries": "ru" } }]));
+    assert_json_contains!(container: shoulds, contained: json!([{ "match": { "identifiers": "1234" } }]));
+  }
+
+  #[test]
+  fn build_should_v5() {
+    let entity = SearchEntity::builder("Person")
+      .properties(&[
+        ("name", &["Júki Pustyncev Jr. II"]),
+        ("birthDate", &["01-01-1010"]),
+        ("nationality", &["ru"]),
+        ("registrationNumber", &["1234"]),
+      ])
+      .build();
+
+    let shoulds = super::build_shoulds(IndexVersion::V5, &entity).unwrap();
+
+    assert_json_contains!(
+        container: shoulds,
+        contained: json!([{ "match": { "names": { "boost": 3.0, "fuzziness": "AUTO", "operator": "AND", "query": "Júki Pustyncev Jr. II" } } }]),
+    );
+
+    assert_json_contains!(
+        container: shoulds,
+        contained: json!([{
+            "dis_max": {
+                "tie_breaker": 0.2,
+                "queries": [
+                    { "term": { "name_parts": { "boost": 1.0, "value": "juki" } } },
+                    { "term": { "name_symbols": { "boost": 0.7, "value": "NAME:10000058" } } },
+                ]
+            }
+        }])
+    );
+
+    assert_json_contains!(
+        container: shoulds,
+        contained: json!([{
+            "dis_max": {
+                "tie_breaker": 0.2,
+                "queries": [
+                    { "term": { "name_parts": { "boost": 1.0, "value": "pustyncev" } } },
+                    { "term": { "name_phonetic": { "boost": 0.5, "value": "PSTNSF" } } },
+                    { "term": { "name_symbols": { "boost": 0.7, "value": "NAME:10001488" } } },
+                ]
+            }
+        }])
+    );
+
+    assert_json_contains!(
+        container: shoulds,
+        contained: json!([{
+            "dis_max": {
+                "tie_breaker": 0.2,
+                "queries": [
+                    { "term": { "name_parts": { "boost": 1.4, "value": "ii" } } },
+                    { "term": { "name_symbols": { "boost": 0.9799999999999999, "value": "NUM:2" } } },
+                ]
+            }
+        }])
+    );
+
+    assert_json_contains!(
+        container: shoulds,
+        contained: json!([{
+            "dis_max": {
+                "tie_breaker": 0.2,
+                "queries": [
+                    { "term": { "name_parts": { "boost": 0.8, "value": "jr" } } },
+                    { "term": { "name_symbols": { "boost": 0.5599999999999999, "value": "SYMBOL:JR" } } },
+                ]
+            }
+        }])
+    );
+
+    assert_json_contains!(container: shoulds, contained: json!([{ "match": { "dates": "01-01-1010" } }]));
+    assert_json_contains!(container: shoulds, contained: json!([{ "match": { "countries": "ru" } }]));
+    assert_json_contains!(container: shoulds, contained: json!([{ "match": { "identifiers": "1234" } }]));
+  }
+
+  #[test]
+  fn build_should_v5_org() {
+    let entity = SearchEntity::builder("Company").properties(&[("name", &["Coca-Cola France Inc."])]).build();
+    let shoulds = super::build_shoulds(IndexVersion::V5, &entity).unwrap();
+
+    assert_json_contains!(
+        container: shoulds,
+        contained: json!([{ "match": { "names": { "boost": 3.0, "fuzziness": "AUTO", "operator": "AND", "query": "Coca-Cola France Inc." } } }]),
+    );
+
+    assert_json_contains!(
+        container: shoulds,
+        contained: json!([{
+            "dis_max": {
+                "tie_breaker": 0.2,
+                "queries": [
+                    { "term": { "name_parts": { "boost": 1.1, "value": "france" } } },
+                    { "term": { "name_phonetic": { "boost": 0.55, "value": "FRNS" } } },
+                    { "term": { "name_symbols": { "boost": 0.77, "value": "LOC:fr" } } },
+                ]
+            }
+        }])
+    );
+
+    assert_json_contains!(
+        container: shoulds,
+        contained: json!([{
+            "dis_max": {
+                "tie_breaker": 0.2,
+                "queries": [
+                    { "term": { "name_parts": { "boost": 0.7, "value": "inc" } } },
+                    { "term": { "name_phonetic": { "boost": 0.35, "value": "INK" } } },
+                    { "term": { "name_symbols": { "boost": 0.48999999999999994, "value": "ORGCLS:LLC" } } },
+                ]
+            }
+        }])
+    );
   }
 
   #[tokio::test]
@@ -659,15 +792,6 @@ mod tests {
     assert_eq!(terms.len(), 2);
     assert_json_eq!(terms[0], json!({ "term": { "a": { "value": "b", "boost": 3.0 } } }));
     assert_json_eq!(terms[1], json!({ "term": { "c": { "value": "d", "boost": -10.0 } } }));
-  }
-
-  #[test]
-  fn resolve_schema_chain() {
-    assert_eq!(resolve_schemas("Person", ResolveSchemaLevel::Root).unwrap(), &["Person", "LegalEntity"]);
-    assert_eq!(resolve_schemas("Company", ResolveSchemaLevel::Root).unwrap(), &["Company", "Organization", "LegalEntity"]);
-    assert_eq!(resolve_schemas("Airplane", ResolveSchemaLevel::Root).unwrap(), &["Airplane"]);
-    assert!(resolve_schemas("Vehicle", ResolveSchemaLevel::Root).unwrap().is_empty());
-    assert_eq!(resolve_schemas("Thing", ResolveSchemaLevel::Root).unwrap(), &["Thing"]);
   }
 
   #[test]

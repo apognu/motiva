@@ -1921,6 +1921,7 @@ dependencies = [
  "serde",
  "serde-inline-default",
  "serde-json-assert",
+ "serde-jsonlines",
  "serde_json",
  "serde_yaml",
  "serial_test",
@@ -1930,6 +1931,7 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tracing",
+ "unaccent",
  "unicode-general-category",
  "unicode-normalization",
  "validator",
@@ -3312,7 +3314,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3508,6 +3510,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1868f55385c1cbda8c62aec205ab5874536f3492e11456e04265509848fe982"
 dependencies = [
  "float-cmp",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "serde-jsonlines"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "013e069239d98648ea43a9c01845b381445e88de08b5a895ef9302e3bffde03d"
+dependencies = [
  "serde",
  "serde_json",
 ]
@@ -4295,6 +4307,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.114",
+]
+
+[[package]]
+name = "unaccent"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e732eb499ccf541e76badc7eb2a929cf8749cfd79022dde9e2cb4628d885a69a"
+dependencies = [
+ "unicode-normalization",
 ]
 
 [[package]]
