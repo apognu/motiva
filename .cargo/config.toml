@@ -1,0 +1,2 @@
+[env]
+PYTHONPATH = { value = ".venv/lib/python3.14/site-packages", relative = true }
