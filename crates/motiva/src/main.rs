@@ -5,6 +5,7 @@ mod trace;
 mod tests;
 
 use libmotiva::{ElasticsearchProvider, HttpCatalogFetcher, IndexProvider};
+use rustls::crypto::aws_lc_rs;
 use tokio::signal;
 
 use crate::api::config::Config;
@@ -14,6 +15,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+  aws_lc_rs::default_provider().install_default().expect("could not install default cryptography provider");
+
   let config = Config::from_env().await?;
   let provider = ElasticsearchProvider::new(&config.index_url, config.index_auth_method.clone(), None).await?;
 
