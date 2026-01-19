@@ -83,12 +83,11 @@ $ echo '{"queries":{"test":{"schema":"Person","properties":{"name":["Vladimir Pu
 
 ### Test suite
 
-To run the tests, a Python environment must be set up with the required dependencies (this include `libicu`). You can install it in a virtualenv by using the Poetry file at the root of this repository and (manually) setting the `PYTHONPATH`:
+To run the tests, a Python 3.14 environment must be set up with the required dependencies (this include `libicu`). You can install it in a virtualenv by using the `uv` file at the root of this repository:
 
 ```sh
-$ poetry install
-$ export PYTHONPATH="$(pwd).venv/lib/python3.13/site-packages"
-$ cargo test
+$ uv sync
+$ cargo test --tests
 ```
 
 One quite lengthy test is ignored by default (scoring the cartesian product of 50x50 entities against each other) and compare it against nomenklatura. You can still run this test by running `cargo test -- --include-ignored`.
