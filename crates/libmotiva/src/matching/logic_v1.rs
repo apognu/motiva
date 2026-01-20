@@ -54,19 +54,12 @@ impl MatchingAlgorithm for LogicV1 {
       (&IdentifierMatch::new("vessel_imo_mmsi_match", &["imoNumber", "mmsi"], Some(validate_imo_mmsi)), 0.95),
       (&IdentifierMatch::new("inn_code_match", &["innCode"], Some(validate_inn)), 0.95),
       (&IdentifierMatch::new("bic_code_match", &["bicCode"], Some(validate_bic)), 0.95),
-      (
-        &SimpleMatch::new(
-          "identifier_match",
-          &|e| e.props(&["registrationNumber", "taxNumber", "leiCode", "innCode", "bicCode", "ogrnCode", "imoNumber", "mmsi"]),
-          None,
-        ),
-        0.85,
-      ), // TODO: add cleaning
+      (&SimpleMatch::new("identifier_match", &|e| e.prop_group("identifier"), None), 0.85), // TODO: add cleaning
       (&SimpleMatch::new("weak_alias_match", &|e| e.props(&["weakAlias", "name"]), None), 0.8),
     ];
 
     let qualifiers: &[(&dyn Feature, f64)] = &[
-      (&SimpleMismatch::new("country_mismatch", &|e| e.props(&["country", "nationality", "citizenship"]), None), -0.2),
+      (&SimpleMismatch::new("country_mismatch", &|e| e.prop_group("country"), None), -0.2),
       (&SimpleMismatch::new("last_name_mismatch", &|e| e.props(&["lastName"]), None), -0.2),
       (&SimpleMismatch::new("dob_year_disjoint", &|e| e.props(&["birthDate"]), Some(dob_year_disjoint)), -0.15),
       (&SimpleMismatch::new("dob_day_disjoint", &|e| e.props(&["birthDate"]), Some(dob_day_disjoint)), -0.2),
