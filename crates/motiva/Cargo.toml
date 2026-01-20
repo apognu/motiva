@@ -1,7 +1,6 @@
 [package]
 name = "motiva"
 description = "Sanctioned entities matching API"
-version = "0.5.0"
 edition = "2024"
 license = "MIT"
 
@@ -75,3 +74,6 @@ serial_test = "3.2.0"
 
 [lints]
 workspace = true
+
+[build-dependencies]
+git-version = "0.3.9"

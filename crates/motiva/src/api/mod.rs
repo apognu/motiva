@@ -82,6 +82,7 @@ pub(crate) fn router<F: CatalogFetcher, P: IndexProvider>(state: AppState<F, P>)
     .route("/healthz", get(handlers::healthz))
     .route("/readyz", get(handlers::readyz))
     .route("/metrics", get(handlers::prometheus))
+    .route("/-/version", get(handlers::version))
     .layer(middleware::from_fn(middlewares::request_id))
     .with_state(state)
 }

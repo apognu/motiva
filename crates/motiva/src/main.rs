@@ -28,7 +28,7 @@ async fn run<P: IndexProvider>(config: Config, provider: P) -> anyhow::Result<()
   let app = api::routes(&config, HttpCatalogFetcher::from_manifest_url(config.manifest_url.clone())?, provider).await?;
   let listener = tokio::net::TcpListener::bind(&config.listen_addr).await.expect("could not create listener");
 
-  tracing::info!("listening on {}", listener.local_addr()?.to_string());
+  tracing::info!(motiva = env!("VERSION"), "listening on {}", listener.local_addr()?.to_string());
 
   axum::serve(listener, app).with_graceful_shutdown(shutdown()).await.expect("could not start app");
 

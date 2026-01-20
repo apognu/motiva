@@ -9,7 +9,7 @@ use libmotiva::prelude::*;
 use reqwest::StatusCode;
 
 use crate::api::AppState;
-use crate::api::dto::{AlgorithmDescription, Algorithms};
+use crate::api::dto::{AlgorithmDescription, Algorithms, Version};
 use crate::api::errors::AppError;
 
 pub use self::catalog::get_catalog;
@@ -46,5 +46,12 @@ pub async fn algorithms() -> Json<Algorithms> {
     algorithms: ALGORITHMS.into_iter().map(|alg| AlgorithmDescription { name: alg.name() }).collect(),
     best: Algorithm::best().name(),
     default: Algorithm::default().name(),
+  })
+}
+
+pub async fn version<F: CatalogFetcher, P: IndexProvider>(State(state): State<AppState<F, P>>) -> Json<Version> {
+  Json(Version {
+    motiva: env!("VERSION").into(),
+    index: state.motiva.index_version().to_string(),
   })
 }

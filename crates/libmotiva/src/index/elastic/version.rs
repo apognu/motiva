@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use ahash::HashMap;
 use elasticsearch::indices::IndicesGetMappingParts;
 use serde::Deserialize;
@@ -8,6 +10,19 @@ use crate::{ElasticsearchProvider, MotivaError};
 pub enum IndexVersion {
   V4,
   V5,
+}
+
+impl Display for IndexVersion {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(
+      f,
+      "{}",
+      match self {
+        IndexVersion::V4 => "v4",
+        IndexVersion::V5 => "v5",
+      }
+    )
+  }
 }
 
 #[derive(Deserialize)]
