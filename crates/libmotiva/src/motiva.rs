@@ -10,7 +10,7 @@ use crate::{
   catalog::{Catalog, get_merged_catalog},
   error::MotivaError,
   fetcher::CatalogFetcher,
-  index::{EntityHandle, IndexProvider},
+  index::{EntityHandle, IndexProvider, elastic::version::IndexVersion},
   matching::MatchParams,
   model::{Entity, SearchEntity},
   nested::fetch_nested_entities,
@@ -147,6 +147,13 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
   /// index is available and ready to be queried.
   pub async fn health(&self) -> Result<bool, MotivaError> {
     self.index.health().await
+  }
+
+  /// Get the detected index version.
+  ///
+  /// This represents the version of Yente the data was indexed with.
+  pub fn index_version(&self) -> IndexVersion {
+    self.index.index_version()
   }
 
   /// Perform an entity search and return the candidates.

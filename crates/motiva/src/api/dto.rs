@@ -60,3 +60,9 @@ pub struct Algorithms {
 pub struct AlgorithmDescription {
   pub name: &'static str,
 }
+
+#[derive(Serialize)]
+pub struct Version {
+  pub motiva: String,
+  pub index: String,
+}
