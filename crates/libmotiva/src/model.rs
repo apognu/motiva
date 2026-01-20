@@ -13,7 +13,7 @@ use validator::Validate;
 
 use crate::{
   matching::extractors,
-  schemas::{FtmProperty, SCHEMAS},
+  schemas::{FtmProperty, SCHEMAS, resolve_schemas},
 };
 
 const EMPTY: [String; 0] = [];
@@ -21,6 +21,7 @@ const EMPTY: [String; 0] = [];
 pub trait HasProperties {
   fn names_and_aliases(&self) -> Vec<String>;
   fn props(&self, keys: &[&str]) -> Cow<'_, [String]>;
+  fn prop_group(&self, group: &str) -> Cow<'_, [String]>;
 }
 
 #[derive(Eq, PartialEq)]
@@ -175,6 +176,28 @@ impl HasProperties for SearchEntity {
       }
     }
   }
+
+  fn prop_group(&self, group: &str) -> Cow<'_, [String]> {
+    let schemas = resolve_schemas(&SCHEMAS, self.schema.as_str(), false).unwrap_or_default();
+    let mut keys = Vec::new();
+
+    for (_, schema) in SCHEMAS.iter().filter(|(s, _)| schemas.contains(s)) {
+      for (prop, _) in schema.properties.iter().filter(|(_, p)| p._type == group) {
+        keys.push(prop.to_owned());
+      }
+    }
+
+    let capacity: usize = keys.iter().filter_map(|key| self.properties.get(key)).map(|v| v.len()).sum();
+    let mut values = Vec::with_capacity(capacity);
+
+    for key in keys {
+      if let Some(prop_values) = self.properties.get(&key) {
+        values.extend(prop_values.iter().cloned());
+      }
+    }
+
+    Cow::Owned(values)
+  }
 }
 
 #[bon]
@@ -279,6 +302,28 @@ impl HasProperties for Entity {
       }
     }
   }
+
+  fn prop_group(&self, group: &str) -> Cow<'_, [String]> {
+    let schemas = resolve_schemas(&SCHEMAS, self.schema.as_str(), false).unwrap_or_default();
+    let mut keys = Vec::new();
+
+    for (_, schema) in SCHEMAS.iter().filter(|(s, _)| schemas.contains(s)) {
+      for (prop, _) in schema.properties.iter().filter(|(_, p)| p._type == group) {
+        keys.push(prop);
+      }
+    }
+
+    let capacity: usize = keys.iter().filter_map(|key| self.properties.strings.get(*key)).map(|v| v.len()).sum();
+    let mut values = Vec::with_capacity(capacity);
+
+    for key in keys {
+      if let Some(prop_values) = self.properties.strings.get(key) {
+        values.extend(prop_values.iter().cloned());
+      }
+    }
+
+    Cow::Owned(values)
+  }
 }
 
 #[bon]
@@ -352,6 +397,34 @@ mod tests {
     assert_eq!(name, "parent");
     assert!(prop.reverse.is_some());
     assert_eq!(prop.reverse.unwrap().name, "subsidiaries");
+  }
+
+  #[test]
+  fn schema_property_group() {
+    let se = SearchEntity::builder("Person")
+      .properties(&[
+        ("vatCode", &["VAT"]),
+        ("idNumber", &["ID"]),
+        ("passportNumber", &["PN"]),
+        ("socialSecurityNumber", &["SSN"]),
+        ("country", &["COUNTRY"]),
+        ("jurisdiction", &["JURIS"]),
+        ("nationality", &["NAT"]),
+        ("citizenship", &["CIT"]),
+      ])
+      .build();
+
+    let identifiers = se.prop_group("identifier");
+    let countries = se.prop_group("country");
+
+    assert!(identifiers.as_ref().iter().any(|p| p == "VAT"));
+    assert!(identifiers.as_ref().iter().any(|p| p == "ID"));
+    assert!(identifiers.as_ref().iter().any(|p| p == "PN"));
+    assert!(identifiers.as_ref().iter().any(|p| p == "SSN"));
+    assert!(countries.as_ref().iter().any(|p| p == "COUNTRY"));
+    assert!(countries.as_ref().iter().any(|p| p == "JURIS"));
+    assert!(countries.as_ref().iter().any(|p| p == "NAT"));
+    assert!(countries.as_ref().iter().any(|p| p == "CIT"));
   }
 
   #[test]
