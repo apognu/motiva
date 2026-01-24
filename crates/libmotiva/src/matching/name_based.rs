@@ -45,6 +45,21 @@ mod tests {
   };
 
   #[test]
+  fn name() {
+    assert_eq!(NameBased::name(), "name-based");
+  }
+
+  #[test]
+  fn incompatible_schemas() {
+    let e1 = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
+    let e2 = Entity::builder("Company").properties(&[("name", &["Vladimir Putin"])]).build();
+
+    let (score, _) = NameBased::score(&Bump::new(), &e1, &e2, 0.0);
+
+    assert_eq!(score, 0.0);
+  }
+
+  #[test]
   fn name_based() {
     let e1 = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
     let e2 = Entity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();

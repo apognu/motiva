@@ -4,7 +4,7 @@ From the Greek _μοτίβα_, meaning _patterns_, or the recognization of simil
 
 [![Crates.io](https://img.shields.io/crates/v/libmotiva)](https://crates.io/crates/libmotiva)
 [![Documentation](https://docs.rs/libmotiva/badge.svg)](https://docs.rs/libmotiva)
-[![Coverage](https://codecov.io/gh/apognu/motiva/graph/badge.svg?token=YVR2HP5E2U)](https://codecov.io/gh/apognu/motiva)
+[![Coverage](https://coveralls.io/repos/github/apognu/motiva/badge.svg?branch=main)](https://coveralls.io/github/apognu/motiva?branch=main)
 
 This is a scoped-down reimplementation of [Yente](https://github.com/opensanctions/yente) and [nomenklatura](https://github.com/opensanctions/nomenklatura), used to match entities against sanctions lists.
 

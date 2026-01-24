@@ -108,10 +108,7 @@ jobs:
       - name: Test
         run: cargo llvm-cov --locked --tests --lcov --output-path lcov.info
 
-      - uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: true
+      - uses: coverallsapp/github-action@v2
 
   benches:
     runs-on: ubuntu-latest

@@ -51,7 +51,11 @@ pub use crate::index::mock::MockedElasticsearch;
 
 #[cfg(test)]
 mod testing {
+  use bumpalo::Bump;
+  use libmotiva_macros::scoring_feature;
+
   use crate::{
+    Entity, Feature, SearchEntity,
     matching::replacers::{addresses::ADDRESS_FORMS, company_types::ORG_TYPES, ordinals::ORDINALS},
     schemas::SCHEMAS,
   };
@@ -68,5 +72,19 @@ mod testing {
     assert_eq!(ORG_TYPES.0.patterns_len(), ORG_TYPES.1.len());
     assert_eq!(ORDINALS.0.patterns_len(), ORDINALS.1.len());
     assert_eq!(ADDRESS_FORMS.0.patterns_len(), ADDRESS_FORMS.1.len());
+  }
+
+  #[scoring_feature(TestFeature, name = "test_feature")]
+  fn score_feature(&self, _: &Bump, _: &SearchEntity, rhs: &Entity) -> f64 {
+    42.0
+  }
+
+  #[test]
+  fn feature_macro() {
+    let lhs = SearchEntity::builder("Person").properties(&[]).build();
+    let rhs = Entity::builder("Person").properties(&[]).build();
+
+    assert_eq!(TestFeature.name(), "test_feature");
+    assert_eq!(TestFeature.score_feature(&Bump::default(), &lhs, &rhs), 42.0);
   }
 }
