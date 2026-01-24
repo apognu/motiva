@@ -1,4 +1,7 @@
-use axum::{Router, routing::post};
+use axum::{
+  Router,
+  routing::{get, post},
+};
 use axum_test::TestServer;
 use libmotiva::{MockedElasticsearch, prelude::*};
 use serde_json::json;
@@ -6,6 +9,37 @@ use serde_json::json;
 use crate::api::{AppState, config::Config, handlers};
 
 use libmotiva::TestFetcher;
+
+#[tokio::test]
+async fn api_not_found() {
+  let app = Router::new().fallback(handlers::not_found);
+  let server = TestServer::new(app).unwrap();
+  let response = server.get("/nope").await;
+
+  assert_eq!(response.status_code(), 404);
+}
+
+#[tokio::test]
+async fn api_not_version() {
+  let index = MockedElasticsearch::builder().healthy(false).build();
+
+  let state = AppState {
+    config: Config::default(),
+    prometheus: None,
+    motiva: Motiva::test(index).fetcher(TestFetcher::default()).build().await.unwrap(),
+  };
+
+  let app = Router::new().route("/-/version", get(handlers::version)).with_state(state);
+  let server = TestServer::new(app).unwrap();
+  let response = server.get("/-/version").await;
+
+  assert_eq!(response.status_code(), 200);
+
+  response.assert_json_contains(&json!({
+      "motiva": env!("VERSION"),
+      "index": "v4",
+  }))
+}
 
 #[tokio::test]
 async fn api_health_unhealthy() {

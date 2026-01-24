@@ -89,10 +89,15 @@ impl IntoResponse for ApiError {
 
 #[cfg(test)]
 mod tests {
+  use std::io::{self, ErrorKind};
+
   use axum::{
     body::to_bytes,
+    extract::Query,
+    http::Uri,
     response::{IntoResponse, Response},
   };
+  use libmotiva::{MatchParams, MotivaError};
   use reqwest::StatusCode;
   use serde_json::json;
   use serde_json_assert::assert_json_include;
@@ -100,9 +105,51 @@ mod tests {
   use crate::api::errors::AppError;
 
   #[tokio::test]
+  async fn motiva_error_to_app() {
+    let expecteds = vec![
+      (
+        MotivaError::ConfigError("config error".into()),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "invalid configuration: config error",
+      ),
+      (MotivaError::ResourceNotFound, StatusCode::NOT_FOUND, "missing resource"),
+      (
+        MotivaError::IndexError(io::Error::new(ErrorKind::AddrInUse, anyhow::anyhow!("index error")).into()),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "error from indexer: index error",
+      ),
+      (MotivaError::InvalidSchema("invalid schema".into()), StatusCode::BAD_REQUEST, "bad request"),
+      (MotivaError::OtherError(anyhow::anyhow!("any error")), StatusCode::INTERNAL_SERVER_ERROR, "any error"),
+    ];
+
+    for (error, status, message) in expecteds {
+      let expected: AppError = error.into();
+      let resp: Response = expected.into_response();
+
+      assert_eq!(resp.status(), status);
+
+      let body: serde_json::Value = serde_json::from_slice(&to_bytes(resp.into_body(), 128).await.unwrap()).unwrap();
+
+      assert_json_include!(
+          actual: body,
+          expected: json!({
+              "message": message
+          })
+      );
+    }
+  }
+
+  #[tokio::test]
   async fn error_to_response() {
+    let uri: Uri = "https://example.com/path?threshold=invalid".parse().unwrap();
+
     let expecteds = vec![
       (AppError::BadRequest, StatusCode::BAD_REQUEST, "bad request"),
+      (
+        AppError::InvalidQuery(Query::<MatchParams>::try_from_uri(&uri).unwrap_err()),
+        StatusCode::BAD_REQUEST,
+        "invalid query parameter",
+      ),
       (AppError::ResourceNotFound, StatusCode::NOT_FOUND, "missing resource"),
       (AppError::InvalidCredentials, StatusCode::UNAUTHORIZED, "invalid credentials"),
       (AppError::IndexError("index error".into()), StatusCode::INTERNAL_SERVER_ERROR, "error from indexer: index error"),
@@ -111,17 +158,17 @@ mod tests {
       (AppError::OtherError(anyhow::anyhow!("any error")), StatusCode::INTERNAL_SERVER_ERROR, "any error"),
     ];
 
-    for expected in expecteds {
-      let resp: Response = expected.0.into_response();
+    for (error, status, message) in expecteds {
+      let resp: Response = error.into_response();
 
-      assert_eq!(resp.status(), expected.1);
+      assert_eq!(resp.status(), status);
 
       let body: serde_json::Value = serde_json::from_slice(&to_bytes(resp.into_body(), 128).await.unwrap()).unwrap();
 
       assert_json_include!(
           actual: body,
           expected: json!({
-              "message": expected.2
+              "message": message
           })
       );
     }

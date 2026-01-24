@@ -59,6 +59,21 @@ mod tests {
   };
 
   #[test]
+  fn name() {
+    assert_eq!(NameQualified::name(), "name-qualified");
+  }
+
+  #[test]
+  fn incompatible_schemas() {
+    let e1 = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
+    let e2 = Entity::builder("Company").properties(&[("name", &["Vladimir Putin"])]).build();
+
+    let (score, _) = NameQualified::score(&Bump::new(), &e1, &e2, 0.0);
+
+    assert_eq!(score, 0.0);
+  }
+
+  #[test]
   #[serial_test::serial]
   fn person_against_nomenklatura() {
     Python::initialize();
