@@ -17,12 +17,12 @@ pub(crate) struct SimpleMatch<'e> {
 }
 
 impl<'e> SimpleMatch<'e> {
-  pub(crate) fn new(name: &'static str, extractor: MatchExtractor<'e>, matcher: MismatchMatcher) -> Self {
-    SimpleMatch { name, extractor, matcher }
+  pub(crate) fn new(name: &'static str, extractor: MatchExtractor<'e>, matcher: MismatchMatcher) -> &'static Self {
+    Box::leak(Box::new(SimpleMatch { name, extractor, matcher }))
   }
 }
 
-impl<'e> Feature<'e> for SimpleMatch<'e> {
+impl<'e> Feature for SimpleMatch<'e> {
   fn name(&self) -> &'static str {
     self.name
   }

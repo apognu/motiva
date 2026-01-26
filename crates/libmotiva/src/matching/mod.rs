@@ -65,15 +65,18 @@ pub trait MatchingAlgorithm {
 }
 
 /// A scoring facet composed into a [`MatchingAlgorithm`]
-pub trait Feature<'e>: Send + Sync {
+pub trait Feature: Send + Sync {
   /// Readable name for the feature
   fn name(&self) -> &'static str;
   /// Score an entity against search parameters.
-  fn score_feature(&self, bump: &Bump, lhs: &'e SearchEntity, rhs: &'e Entity) -> f64;
+  fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64;
 }
 
-fn run_features<'e>(bump: &Bump, lhs: &'e SearchEntity, rhs: &'e Entity, cutoff: f64, init: f64, features: &[(&dyn Feature<'e>, f64)], results: &mut Vec<(&'static str, f64)>) -> f64 {
-  features.iter().fold(init, move |score, (func, weight)| {
+fn run_features<'f, F>(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, cutoff: f64, init: f64, features: F, results: &mut Vec<(&'static str, f64)>) -> f64
+where
+  F: IntoIterator<Item = &'f (&'f dyn Feature, f64)>,
+{
+  features.into_iter().fold(init, move |score, (func, weight)| {
     // We assume all modifiers (with negative weights) tail the models, so if we
     // are already below the cutoff, there is no way the score could go up
     // again, so we skip the rest.

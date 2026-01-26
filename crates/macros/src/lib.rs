@@ -18,7 +18,7 @@ pub fn scoring_feature(attrs: TokenStream, input: TokenStream) -> TokenStream {
   quote! {
       pub struct #ident;
 
-      impl<'e> Feature<'e> for #ident {
+      impl Feature for #ident {
         fn name(&self) -> &'static str {
             #name
         }

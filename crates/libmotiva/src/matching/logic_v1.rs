@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{sync::LazyLock, time::Instant};
 
 use bumpalo::Bump;
 use tracing::instrument;
@@ -24,6 +24,43 @@ use crate::matching::{
 /// Default matching algorithm
 pub struct LogicV1;
 
+static FEATURES: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
+  vec![
+    (&NameLiteralMatch, 1.0),
+    (&PersonNameJaroWinkler, 0.8),
+    (&PersonNamePhoneticMatch, 0.9),
+    (&NameFingerprintLevenshtein, 0.9),
+    // TODO: The weight of those two features are 0.0 by default, so until we
+    // implement a way to customize weights, there is no use implementing
+    // them:
+    //
+    //  - name_metaphone_match
+    //  - name_soundex_match
+    (&AddressEntityMatch, 0.98),
+    (&CryptoWalletMatch, 0.98),
+    (IdentifierMatch::new("isin_security_match", &["isin"], Some(validate_isin)), 0.98),
+    (IdentifierMatch::new("lei_code_match", &["leiCode"], Some(lei::validate)), 0.95),
+    (IdentifierMatch::new("ogrn_code_match", &["ogrnCode"], Some(validate_ogrn)), 0.95),
+    (IdentifierMatch::new("vessel_imo_mmsi_match", &["imoNumber", "mmsi"], Some(validate_imo_mmsi)), 0.95),
+    (IdentifierMatch::new("inn_code_match", &["innCode"], Some(validate_inn)), 0.95),
+    (IdentifierMatch::new("bic_code_match", &["bicCode"], Some(validate_bic)), 0.95),
+    (SimpleMatch::new("identifier_match", &|e| e.prop_group("identifier"), None), 0.85), // TODO: add cleaning
+    (SimpleMatch::new("weak_alias_match", &|e| e.props(&["weakAlias", "name"]), None), 0.8),
+  ]
+});
+
+static QUALIFIERS: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
+  vec![
+    (SimpleMismatch::new("country_mismatch", &|e| e.prop_group("country"), None), -0.2),
+    (SimpleMismatch::new("last_name_mismatch", &|e| e.props(&["lastName"]), None), -0.2),
+    (SimpleMismatch::new("dob_year_disjoint", &|e| e.props(&["birthDate"]), Some(dob_year_disjoint)), -0.15),
+    (SimpleMismatch::new("dob_day_disjoint", &|e| e.props(&["birthDate"]), Some(dob_day_disjoint)), -0.2),
+    (SimpleMismatch::new("gender_mismatch", &|e| e.props(&["gender"]), None), -0.2),
+    (&OrgIdMismatch, -0.2),
+    (&NumbersMismatch, -0.1),
+  ]
+});
+
 impl MatchingAlgorithm for LogicV1 {
   fn name() -> &'static str {
     "logic-v1"
@@ -35,43 +72,10 @@ impl MatchingAlgorithm for LogicV1 {
       return (0.0, vec![]);
     }
 
-    let features: &[(&dyn Feature, f64)] = &[
-      (&NameLiteralMatch, 1.0),
-      (&PersonNameJaroWinkler, 0.8),
-      (&PersonNamePhoneticMatch, 0.9),
-      (&NameFingerprintLevenshtein, 0.9),
-      // TODO: The weight of those two features are 0.0 by default, so until we
-      // implement a way to customize weights, there is no use implementing
-      // them:
-      //
-      //  - name_metaphone_match
-      //  - name_soundex_match
-      (&AddressEntityMatch, 0.98),
-      (&CryptoWalletMatch, 0.98),
-      (&IdentifierMatch::new("isin_security_match", &["isin"], Some(validate_isin)), 0.98),
-      (&IdentifierMatch::new("lei_code_match", &["leiCode"], Some(lei::validate)), 0.95),
-      (&IdentifierMatch::new("ogrn_code_match", &["ogrnCode"], Some(validate_ogrn)), 0.95),
-      (&IdentifierMatch::new("vessel_imo_mmsi_match", &["imoNumber", "mmsi"], Some(validate_imo_mmsi)), 0.95),
-      (&IdentifierMatch::new("inn_code_match", &["innCode"], Some(validate_inn)), 0.95),
-      (&IdentifierMatch::new("bic_code_match", &["bicCode"], Some(validate_bic)), 0.95),
-      (&SimpleMatch::new("identifier_match", &|e| e.prop_group("identifier"), None), 0.85), // TODO: add cleaning
-      (&SimpleMatch::new("weak_alias_match", &|e| e.props(&["weakAlias", "name"]), None), 0.8),
-    ];
-
-    let qualifiers: &[(&dyn Feature, f64)] = &[
-      (&SimpleMismatch::new("country_mismatch", &|e| e.prop_group("country"), None), -0.2),
-      (&SimpleMismatch::new("last_name_mismatch", &|e| e.props(&["lastName"]), None), -0.2),
-      (&SimpleMismatch::new("dob_year_disjoint", &|e| e.props(&["birthDate"]), Some(dob_year_disjoint)), -0.15),
-      (&SimpleMismatch::new("dob_day_disjoint", &|e| e.props(&["birthDate"]), Some(dob_day_disjoint)), -0.2),
-      (&SimpleMismatch::new("gender_mismatch", &|e| e.props(&["gender"]), None), -0.2),
-      (&OrgIdMismatch, -0.2),
-      (&NumbersMismatch, -0.1),
-    ];
-
-    let mut results = Vec::with_capacity(features.len() + qualifiers.len());
+    let mut results = Vec::with_capacity(FEATURES.len() + QUALIFIERS.len());
     let mut score = 0.0f64;
 
-    for (func, weight) in features {
+    for (func, weight) in FEATURES.iter() {
       let then = Instant::now();
       let feature_score = func.score_feature(bump, lhs, rhs);
 
@@ -84,7 +88,7 @@ impl MatchingAlgorithm for LogicV1 {
       tracing::debug!(feature = func.name(), score = feature_score, latency = ?then.elapsed(), "computed feature score");
     }
 
-    let score = run_features(bump, lhs, rhs, cutoff, score, qualifiers, &mut results);
+    let score = run_features(bump, lhs, rhs, cutoff, score, QUALIFIERS.iter(), &mut results);
 
     (score.clamp(0.0, 1.0), results)
   }

@@ -18,8 +18,8 @@ pub(crate) struct IdentifierMatch<'p> {
 }
 
 impl<'p> IdentifierMatch<'p> {
-  pub(crate) fn new(name: &'static str, properties: &'p [&'p str], validator: Option<fn(&str) -> bool>) -> Self {
-    Self { name, properties, validator }
+  pub(crate) fn new(name: &'static str, properties: &'p [&'p str], validator: Option<fn(&str) -> bool>) -> &'static Self {
+    Box::leak(Box::new(Self { name, properties, validator }))
   }
 
   fn match_property(&self, bump: &Bump, schema: &Schema, lhs: &impl HasProperties, rhs: &impl HasProperties, property: &str) -> bool {
@@ -85,7 +85,7 @@ impl<'p> IdentifierMatch<'p> {
   }
 }
 
-impl<'p> Feature<'p> for IdentifierMatch<'p> {
+impl<'p> Feature for IdentifierMatch<'p> {
   fn name(&self) -> &'static str {
     self.name
   }

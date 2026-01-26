@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use bumpalo::Bump;
 use tracing::instrument;
 
@@ -18,6 +20,18 @@ use crate::{
 /// Simple matching algorithm using name similarity, and penalty for disjoint attributes
 pub struct NameQualified;
 
+static FEATURES: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
+  vec![
+    (&SoundexNameParts, 0.5),
+    (&JaroNameParts, 0.5),
+    (SimpleMismatch::new("country_disjoint", &|e| e.props(&["country"]), None), -0.1),
+    (SimpleMismatch::new("dob_year_disjoint", &|e| e.props(&["birthDate"]), Some(dob_year_disjoint)), -0.1),
+    (SimpleMismatch::new("dob_day_disjoint", &|e| e.props(&["birthDate"]), Some(dob_day_disjoint)), -0.15),
+    (SimpleMismatch::new("gender_disjoint", &|e| e.props(&["gender"]), None), -0.1),
+    (&OrgIdMismatch, -0.1),
+  ]
+});
+
 impl MatchingAlgorithm for NameQualified {
   fn name() -> &'static str {
     "name-qualified"
@@ -29,18 +43,8 @@ impl MatchingAlgorithm for NameQualified {
       return (0.0, vec![]);
     }
 
-    let features: &[(&dyn Feature, f64)] = &[
-      (&SoundexNameParts, 0.5),
-      (&JaroNameParts, 0.5),
-      (&SimpleMismatch::new("country_disjoint", &|e| e.props(&["country"]), None), -0.1),
-      (&SimpleMismatch::new("dob_year_disjoint", &|e| e.props(&["birthDate"]), Some(dob_year_disjoint)), -0.1),
-      (&SimpleMismatch::new("dob_day_disjoint", &|e| e.props(&["birthDate"]), Some(dob_day_disjoint)), -0.15),
-      (&SimpleMismatch::new("gender_disjoint", &|e| e.props(&["gender"]), None), -0.1),
-      (&OrgIdMismatch, -0.1),
-    ];
-
-    let mut results = Vec::with_capacity(features.len());
-    let score = run_features(bump, lhs, rhs, 0.0, cutoff, features, &mut results);
+    let mut results = Vec::with_capacity(FEATURES.len());
+    let score = run_features(bump, lhs, rhs, 0.0, cutoff, FEATURES.iter(), &mut results);
 
     (score.clamp(0.0, 1.0), results)
   }
