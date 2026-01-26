@@ -380,7 +380,7 @@ fn build_shoulds(index_version: IndexVersion, entity: &SearchEntity) -> anyhow::
             add_term(&mut dis_max, "name_phonetic", &name, boost * 0.5);
           }
 
-          for symbol in symbols {
+          for symbol in HashSet::<_, ahash::RandomState>::from_iter(symbols.iter()) {
             let Some(symbol) = symbol else {
               continue;
             };
@@ -395,6 +395,10 @@ fn build_shoulds(index_version: IndexVersion, entity: &SearchEntity) -> anyhow::
                     }
                 }
             }))
+          }
+
+          if dis_max.is_empty() {
+            continue;
           }
 
           should.push(json!({
