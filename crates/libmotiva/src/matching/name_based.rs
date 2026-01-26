@@ -13,6 +13,8 @@ use crate::{
 /// Simple matching algorithm using name similarity
 pub struct NameBased;
 
+const FEATURES: &[(&dyn Feature, f64)] = &[(&SoundexNameParts, 0.5), (&JaroNameParts, 0.5)];
+
 impl MatchingAlgorithm for NameBased {
   fn name() -> &'static str {
     "name-based"
@@ -24,9 +26,8 @@ impl MatchingAlgorithm for NameBased {
       return (0.0, vec![]);
     }
 
-    let features: &[(&dyn Feature, f64)] = &[(&SoundexNameParts, 0.5), (&JaroNameParts, 0.5)];
-    let mut results = Vec::with_capacity(features.len());
-    let score = run_features(bump, lhs, rhs, 0.0, cutoff, features, &mut results);
+    let mut results = Vec::with_capacity(FEATURES.len());
+    let score = run_features(bump, lhs, rhs, 0.0, cutoff, FEATURES.iter(), &mut results);
 
     (score.clamp(0.0, 1.0), results)
   }
