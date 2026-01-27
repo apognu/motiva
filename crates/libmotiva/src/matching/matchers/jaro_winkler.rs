@@ -62,14 +62,31 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   let mut score = 0.0f64;
 
   for (lhs_parts, rhs_parts) in lhs_names.into_iter().cartesian_product(rhs_names.iter()) {
-    let lhs_joined = lhs_parts.join("");
-    let rhs_joined = rhs_parts.join("");
+    let lhs_len: usize = lhs_parts.iter().map(|s| s.len()).sum();
+    let rhs_len: usize = rhs_parts.iter().map(|s| s.len()).sum();
 
-    if is_levenshtein_plausible(&lhs_joined, &rhs_joined) {
-      score = score.max(jaro_winkler(&lhs_joined, &rhs_joined).powi(lhs_joined.len() as i32));
+    if lhs_len > 0 && rhs_len > 0 {
+      let len_ratio = lhs_len.min(rhs_len) as f64 / lhs_len.max(rhs_len) as f64;
+
+      if len_ratio >= 0.5 {
+        let lhs_joined = lhs_parts.join("");
+        let rhs_joined = rhs_parts.join("");
+
+        if is_levenshtein_plausible(&lhs_joined, &rhs_joined) {
+          score = score.max(jaro_winkler(&lhs_joined, &rhs_joined).powi(lhs_joined.len() as i32));
+
+          if score >= 1.0 {
+            return 1.0;
+          }
+        }
+      }
     }
 
     score = score.max(align_name_parts(&lhs_parts, rhs_parts));
+
+    if score >= 1.0 {
+      return 1.0;
+    }
   }
 
   score
@@ -86,6 +103,30 @@ mod tests {
     model::{Entity, SearchEntity},
     tests::python::nomenklatura_comparer,
   };
+
+  #[test]
+  fn jaro_name_parts_empty() {
+    let lhs = SearchEntity::builder("Organization").properties(&[("name", &[""])]).build();
+    let rhs = Entity::builder("Company").properties(&[("name", &["bob"])]).build();
+    let score = super::PersonNameJaroWinkler.score_feature(&Bump::new(), &lhs, &rhs);
+
+    assert_eq!(score, 0.0);
+
+    let lhs = SearchEntity::builder("Organization").properties(&[("name", &["bob"])]).build();
+    let rhs = Entity::builder("Company").properties(&[("name", &[""])]).build();
+    let score = super::PersonNameJaroWinkler.score_feature(&Bump::new(), &lhs, &rhs);
+
+    assert_eq!(score, 0.0);
+  }
+
+  #[test]
+  fn jaro_winkler_schema_mismatch() {
+    let lhs = SearchEntity::builder("Organization").properties(&[("name", &["bob"])]).build();
+    let rhs = Entity::builder("Company").properties(&[("name", &["bob"])]).build();
+    let score = super::PersonNameJaroWinkler.score_feature(&Bump::new(), &lhs, &rhs);
+
+    assert_eq!(score, 0.0);
+  }
 
   #[test]
   #[serial_test::serial]

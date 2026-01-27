@@ -121,6 +121,8 @@ pub struct SearchEntity {
 
 impl SearchEntity {
   pub fn precompute(&mut self) {
+    const MAX_NAME_COMBINATIONS: usize = 100;
+
     let props = [
       self.props(&["firstName"]),
       self.props(&["secondName"]),
@@ -129,9 +131,12 @@ impl SearchEntity {
       self.props(&["lastName"]),
     ];
 
-    let mut combined = HashSet::with_capacity(props.iter().map(|n| if n.is_empty() { 1 } else { n.len() }).product());
+    let mut combined = HashSet::with_capacity_and_hasher(
+      props.iter().map(|n| if n.is_empty() { 1 } else { n.len() }).product::<usize>().min(MAX_NAME_COMBINATIONS),
+      RandomState::default(),
+    );
 
-    for combination in props.iter().map(|v| v.as_ref()).filter(|v| !v.is_empty()).multi_cartesian_product() {
+    for combination in props.iter().map(|v| v.as_ref()).filter(|v| !v.is_empty()).multi_cartesian_product().take(MAX_NAME_COMBINATIONS) {
       if !combination.is_empty() {
         combined.insert(combination.iter().join(" "));
       }

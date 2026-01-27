@@ -10,7 +10,7 @@ use itertools::Itertools;
 use metrics::{counter, histogram};
 use opentelemetry::global;
 use reqwest::StatusCode;
-use rphonetic::Metaphone;
+
 use serde_json::json;
 use tokio::sync::RwLock;
 use tracing::instrument;
@@ -343,7 +343,7 @@ fn build_shoulds(index_version: IndexVersion, entity: &SearchEntity) -> anyhow::
       for name in extractors::index_name_parts(names.iter()) {
         add_term(&mut should, "name_parts", &name, 1.0);
       }
-      for name in extractors::phonetic_name(&Metaphone::new(None), names.iter()) {
+      for name in extractors::phonetic_name(names.iter()) {
         add_term(&mut should, "name_phonetic", &name, 0.8);
       }
     }
@@ -376,7 +376,7 @@ fn build_shoulds(index_version: IndexVersion, entity: &SearchEntity) -> anyhow::
           for name in extractors::index_name_parts([name_part.to_owned()].iter()) {
             add_term(&mut dis_max, "name_parts", &name, boost);
           }
-          for name in extractors::phonetic_name(&Metaphone::new(None), [name_part.to_owned()].iter()) {
+          for name in extractors::phonetic_name([name_part.to_owned()].iter()) {
             add_term(&mut dis_max, "name_phonetic", &name, boost * 0.5);
           }
 
