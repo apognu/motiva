@@ -20,8 +20,6 @@ fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 fn fingerprint_name(name: &str) -> String {
   let output = replacers::replace(&STOPWORDS.0, &STOPWORDS.1, name);
   let output = replacers::replace(&ORG_TYPES.0, &ORG_TYPES.1, &output);
-  // This was not supposed to be here.
-  // let output = replacers::replace(&ORG_SYMBOLS.0, &ORG_SYMBOLS.1, &output);
 
   output.trim().to_string()
 }
@@ -43,10 +41,11 @@ pub(crate) fn name_fingerprint_levenshtein(lhs: &SearchEntity, rhs: &Entity) -> 
       let mut score = default_levenshtein_similarity(&qn, &rn);
 
       let (qfp, rfp) = (fingerprint_name(&qn), fingerprint_name(&rn));
-      let qfp_no_spaces = qfp.chars().filter(|c| !c.is_whitespace()).collect::<String>();
-      let rfp_no_spaces = rfp.chars().filter(|c| !c.is_whitespace()).collect::<String>();
 
-      if !qfp_no_spaces.is_empty() && !rfp_no_spaces.is_empty() {
+      if qfp.chars().any(|c| !c.is_whitespace()) && rfp.chars().any(|c| !c.is_whitespace()) {
+        let qfp_no_spaces = qfp.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+        let rfp_no_spaces = rfp.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+
         score = score.max(default_levenshtein_similarity(&qfp_no_spaces, &rfp_no_spaces));
       }
 
@@ -57,7 +56,12 @@ pub(crate) fn name_fingerprint_levenshtein(lhs: &SearchEntity, rhs: &Entity) -> 
         return score;
       }
 
-      let mut token_scores: Vec<_> = qtokens.iter().cartesian_product(rtokens.iter()).map(|(q, r)| ((q, r), levenshtein_similarity(q, r, 4))).collect();
+      let mut token_scores: Vec<_> = Vec::with_capacity(qtokens.len() * rtokens.len());
+      for (qi, q) in qtokens.iter().enumerate() {
+        for (ri, r) in rtokens.iter().enumerate() {
+          token_scores.push(((qi, ri), levenshtein_similarity(q, r, 4)));
+        }
+      }
 
       token_scores.sort_unstable_by(|&(_, s1), &(_, s2)| s1.partial_cmp(&s2).unwrap_or(std::cmp::Ordering::Equal).reverse());
 
@@ -67,15 +71,13 @@ pub(crate) fn name_fingerprint_levenshtein(lhs: &SearchEntity, rhs: &Entity) -> 
       let mut used_q = vec![false; qtokens.len()];
       let mut used_r = vec![false; rtokens.len()];
 
-      for ((q, r), _) in token_scores {
-        let q_idx = qtokens.iter().position(|t| t == q && !used_q[qtokens.iter().position(|x| x == q).unwrap()]);
-        let r_idx = rtokens.iter().position(|t| t == r && !used_r[rtokens.iter().position(|x| x == r).unwrap()]);
-
-        if let (Some(qi), Some(ri)) = (q_idx, r_idx) {
+      for ((qi, ri), _) in token_scores {
+        if !used_q[qi] && !used_r[ri] {
           used_q[qi] = true;
           used_r[ri] = true;
-          aligned_q.push_str(q);
-          aligned_r.push_str(r);
+
+          aligned_q.push_str(&qtokens[qi]);
+          aligned_r.push_str(&rtokens[ri]);
         }
       }
 

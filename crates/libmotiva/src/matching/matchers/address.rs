@@ -56,16 +56,20 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
       return 1.0;
     }
 
-    let lhs_remainder = lhs.iter().filter(|word| !overlap.contains(word)).sorted();
-    let rhs_remainder = rhs.iter().filter(|word| !overlap.contains(word)).sorted();
+    let lhs_remainder: std::vec::Vec<_> = lhs.iter().filter(|word| !overlap.contains(word)).sorted().collect();
+    let rhs_remainder: std::vec::Vec<_> = rhs.iter().filter(|word| !overlap.contains(word)).sorted().collect();
 
-    let lhs_remainder_str = lhs_remainder.clone().join(" ");
-    let rhs_remainder_str = rhs_remainder.clone().join(" ");
+    let lhs_remainder_str = lhs_remainder.iter().join(" ");
+    let rhs_remainder_str = rhs_remainder.iter().join(" ");
     let levenshtein_max_edits = lhs_remainder_str.len().max(rhs_remainder_str.len());
 
     let score = levenshtein_similarity(&lhs_remainder_str, &rhs_remainder_str, levenshtein_max_edits);
     let remainder_len = lhs_remainder.len().max(rhs_remainder.len());
     let score = (overlap.len() as f64 + (remainder_len as f64 * score)) / (remainder_len + overlap.len()) as f64;
+
+    if score >= 1.0 {
+      return 1.0;
+    }
 
     max_score = score.max(max_score);
   }

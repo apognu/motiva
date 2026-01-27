@@ -9,7 +9,7 @@ use whatlang::Script;
 
 use crate::matching::latinize::latinize;
 
-const IGNORED_SEPARATORS: &[char] = &['.', '\'', '’', '"'];
+static METAPHONE: LazyLock<Metaphone> = LazyLock::new(|| Metaphone::new(None));
 
 const SEPARATOR_CATEGORIES: &[GeneralCategory] = {
   use GeneralCategory::*;
@@ -32,6 +32,11 @@ const SEPARATOR_CATEGORIES: &[GeneralCategory] = {
   ]
 };
 
+#[inline(always)]
+const fn is_ignored_separator(c: char) -> bool {
+  matches!(c, '.' | '\'' | '’' | '"')
+}
+
 fn is_name_separator(c: char) -> bool {
   SEPARATOR_CATEGORIES.iter().contains(&get_general_category(c))
 }
@@ -52,7 +57,7 @@ where
   names.map(|s| {
     s.borrow()
       .chars()
-      .filter(|c| !IGNORED_SEPARATORS.iter().contains(c))
+      .filter(|c| !is_ignored_separator(*c))
       .join("")
       .split(is_name_separator)
       .map(|token| token.to_string())
@@ -71,7 +76,7 @@ where
       latinize(s.borrow())
         .to_lowercase()
         .chars()
-        .filter(|c| !IGNORED_SEPARATORS.iter().contains(c))
+        .filter(|c| !is_ignored_separator(*c))
         .join("")
         .split(is_name_separator)
         .map(|s| s.chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
@@ -156,17 +161,17 @@ where
     .unique()
 }
 
-pub(crate) fn phonetic_name<'s, I, S>(metaphone: &Metaphone, names: I) -> impl Iterator<Item = String>
+pub(crate) fn phonetic_name<'s, I, S>(names: I) -> impl Iterator<Item = String>
 where
   S: Borrow<str> + 's,
   I: Iterator<Item = &'s S> + 's,
 {
   tokenize_names(names)
-    .flat_map(|s| s.into_iter().filter(|s| is_modern_alphabet(s) && s.chars().count() >= 3).map(|s| metaphone.encode(&any_ascii(&s))))
+    .flat_map(|s| s.into_iter().filter(|s| is_modern_alphabet(s) && s.chars().count() >= 3).map(|s| METAPHONE.encode(&any_ascii(&s))))
     .filter(|phoneme| phoneme.len() > 2)
 }
 
-pub(crate) fn phonetic_names_tuples<'s, I, S>(metaphone: &Metaphone, names: I) -> Vec<Vec<(String, Option<String>)>>
+pub(crate) fn phonetic_names_tuples<'s, I, S>(names: I) -> Vec<Vec<(String, Option<String>)>>
 where
   S: Borrow<str> + 's,
   I: Iterator<Item = &'s S> + 's,
@@ -176,7 +181,7 @@ where
       s.into_iter()
         .filter(|name| name.len() >= 2)
         .map(|s| {
-          let phoneme = metaphone.encode(&s);
+          let phoneme = METAPHONE.encode(&s);
 
           (s, { if phoneme.len() < 3 { None } else { Some(phoneme) } })
         })
@@ -268,8 +273,6 @@ where
 mod tests {
   use std::collections::HashSet;
 
-  use rphonetic::Metaphone;
-
   #[test]
   fn name_tokenization() {
     let inputs: Vec<(&str, Vec<&str>)> = vec![("ben'laden,ossama", vec!["benladen", "ossama"]), ("Ser. Bobby O'Brian", vec!["Ser", "Bobby", "OBrian"])];
@@ -333,9 +336,9 @@ mod tests {
 
   #[test]
   fn phonetic_name() {
-    let names = super::phonetic_name(&Metaphone::default(), ["Vladimir Putin", "Saddam Hussein", "Barack Hussein Obama"].iter()).collect::<Vec<_>>();
+    let names = super::phonetic_name(["Vladimir Putin", "Saddam Hussein", "Barack Hussein Obama"].iter()).collect::<Vec<_>>();
 
-    assert_eq!(names, vec!["FLTM", "PTN", "STM", "HSN", "BRK", "HSN", "OBM"]);
+    assert_eq!(names, vec!["FLTMR", "PTN", "STM", "HSN", "BRK", "HSN", "OBM"]);
   }
 
   #[test]
