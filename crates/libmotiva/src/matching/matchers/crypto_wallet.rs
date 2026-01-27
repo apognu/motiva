@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use bumpalo::Bump;
 use libmotiva_macros::scoring_feature;
 
@@ -15,13 +13,17 @@ fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   }
 
   let lhs_props = lhs.props(&["publicKey"]);
-  let lhs_addresses = HashSet::<&String>::from_iter(lhs_props.iter());
   let rhs_props = rhs.props(&["publicKey"]);
-  let rhs_addresses = HashSet::<&String>::from_iter(rhs_props.iter());
 
-  for address in lhs_addresses.intersection(&rhs_addresses) {
-    if address.len() > 10 {
-      return 1.0;
+  let (bigger, smaller) = if lhs_props.len() > rhs_props.len() { (&lhs_props, &rhs_props) } else { (&rhs_props, &lhs_props) };
+
+  for a in smaller.iter() {
+    if a.len() > 10 {
+      for b in bigger.iter() {
+        if b.len() > 10 && a == b {
+          return 1.0;
+        }
+      }
     }
   }
 
@@ -45,5 +47,10 @@ mod tests {
     let rhs = Entity::builder("CryptoWallet").properties(&[("publicKey", &["1234", "TFXGYjZhsTLXz6ncMxtVQfwddJG5LoHcvZ"])]).build();
 
     assert_eq!(super::CryptoWalletMatch.score_feature(&Bump::new(), &lhs, &rhs), 1.0);
+
+    let lhs = SearchEntity::builder("CryptoWallet").properties(&[("publicKey", &["1234"])]).build();
+    let rhs = Entity::builder("CryptoWallet").properties(&[("publicKey", &["1234"])]).build();
+
+    assert_eq!(super::CryptoWalletMatch.score_feature(&Bump::new(), &lhs, &rhs), 0.0);
   }
 }

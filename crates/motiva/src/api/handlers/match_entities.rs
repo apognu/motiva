@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use ahash::RandomState;
 use axum::extract::Path;
@@ -32,10 +33,13 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
     entity.precompute();
   });
 
+  let state = Arc::new(state);
+  let query = Arc::new(query);
+
   let tasks = body.queries.into_iter().map(|(id, entity)| {
     tokio::spawn({
-      let state = state.clone();
-      let query = query.clone();
+      let state = Arc::clone(&state);
+      let query = Arc::clone(&query);
 
       async move {
         let hits = match state.motiva.search(&entity, &query).await {
@@ -95,19 +99,18 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
     })
   });
 
-  let mut hits = Vec::with_capacity(tasks.len());
+  let mut responses = HashMap::with_capacity_and_hasher(tasks.len(), RandomState::default());
 
   for task in tasks {
     match task.await {
       Err(_) => return Err(AppError::ServerError),
-      Ok(results) => hits.push(results),
+      Ok((id, results)) => {
+        responses.insert(id, results);
+      }
     }
   }
 
-  let response = MatchResponse {
-    responses: hits.into_iter().collect::<HashMap<_, _, RandomState>>(),
-    limit: query.limit,
-  };
+  let response = MatchResponse { responses, limit: query.limit };
 
   Ok((StatusCode::OK, Json(response)))
 }
