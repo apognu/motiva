@@ -226,10 +226,10 @@ where
 
 pub(crate) fn flip_date(mut date: Vec<char>) -> Vec<char> {
   let (m1, m2) = (date[0], date[1]);
-  let (d1, d2) = (date[3], date[4]);
+  let (d1, d2) = (date[2], date[3]);
 
   (date[0], date[1]) = (d1, d2);
-  (date[3], date[4]) = (m1, m2);
+  (date[2], date[3]) = (m1, m2);
 
   date
 }

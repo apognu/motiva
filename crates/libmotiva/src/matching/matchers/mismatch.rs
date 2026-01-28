@@ -92,17 +92,8 @@ pub(crate) fn dob_year_disjoint<S: AsRef<str>>(bump: &Bump, lhs: &[S], rhs: &[S]
 }
 
 pub(crate) fn dob_day_disjoint<S: AsRef<str>>(bump: &Bump, lhs: &[S], rhs: &[S]) -> f64 {
-  let lhs_months = lhs
-    .iter()
-    .filter(|d| d.as_ref().len() >= 10)
-    .map(|d| d.as_ref().chars().skip(5).collect::<std::vec::Vec<char>>())
-    .collect_in::<Vec<_>>(bump);
-
-  let rhs_months = rhs
-    .iter()
-    .filter(|d| d.as_ref().len() >= 10)
-    .map(|d| d.as_ref().chars().skip(5).collect::<std::vec::Vec<char>>())
-    .collect_in::<Vec<_>>(bump);
+  let lhs_months = lhs.iter().filter(|d| d.as_ref().len() >= 10).map(extract_month_day).collect_in::<Vec<_>>(bump);
+  let rhs_months = rhs.iter().filter(|d| d.as_ref().len() >= 10).map(extract_month_day).collect_in::<Vec<_>>(bump);
 
   if lhs_months.is_empty() || rhs_months.is_empty() {
     return 0.0;
@@ -116,13 +107,17 @@ pub(crate) fn dob_day_disjoint<S: AsRef<str>>(bump: &Bump, lhs: &[S], rhs: &[S])
     return 0.0;
   }
 
-  let lhs_flipped = lhs_months.into_iter().filter(|d| d.len() == 5).map(extractors::flip_date).collect_in::<Vec<_>>(bump);
+  let lhs_flipped = lhs_months.into_iter().filter(|d| d.len() == 4).map(extractors::flip_date).collect_in::<Vec<_>>(bump);
 
   if !is_disjoint_chars(&lhs_flipped, &rhs_months) {
     return 0.5;
   }
 
   1.0
+}
+
+fn extract_month_day<S: AsRef<str>>(date: S) -> std::vec::Vec<char> {
+  date.as_ref().chars().skip(5).enumerate().filter(|(idx, _)| idx != &2).map(|(_, c)| c).collect::<std::vec::Vec<char>>()
 }
 
 #[cfg(test)]
@@ -137,17 +132,21 @@ mod tests {
   #[test]
   fn dob_year_disjoint() {
     assert_eq!(super::dob_year_disjoint(&Bump::new(), &["1988-07-22"], &["1989-07-22"]), 1.0);
+    assert_eq!(super::dob_year_disjoint(&Bump::new(), &["1988/07/22"], &["1989x07x22"]), 1.0);
     assert_eq!(super::dob_year_disjoint(&Bump::new(), &["2022-07-22"], &["2022-07-22"]), 0.0);
+    assert_eq!(super::dob_year_disjoint(&Bump::new(), &["2022x07x22"], &["2022+07+22"]), 0.0);
   }
 
   #[test]
   fn dob_day_disjoint() {
     assert_eq!(super::dob_day_disjoint(&Bump::new(), &["2022-07-22"], &["2022-07-22"]), 0.0);
+    assert_eq!(super::dob_day_disjoint(&Bump::new(), &["2022/07/22"], &["2022x07x22"]), 0.0);
 
     assert_eq!(super::dob_day_disjoint(&Bump::new(), &["2022-01-02"], &["2022-10-11"]), 1.0);
     assert_eq!(super::dob_day_disjoint(&Bump::new(), &["2022-01-02"], &["2022-01-02"]), 0.0);
     assert_eq!(super::dob_day_disjoint(&Bump::new(), &["2022-01-02"], &["2022-02-01"]), 0.5);
     assert_eq!(super::dob_day_disjoint(&Bump::new(), &["1987-07-20", "2022-01-02"], &["2022-03-04", "1987-20-07"]), 0.5);
+    assert_eq!(super::dob_day_disjoint(&Bump::new(), &["1987/07/20", "2022o01o02"], &["2022*03*04", "1987💃20💃07"]), 0.5);
   }
 
   #[test]
