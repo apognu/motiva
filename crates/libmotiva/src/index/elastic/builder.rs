@@ -1,11 +1,31 @@
-use elasticsearch::{Elasticsearch, auth::Credentials, http::transport::Transport};
-
 use crate::{error::MotivaError, index::elastic::version::IndexVersion, prelude::ElasticsearchProvider};
+use anyhow::Context;
+use elasticsearch::cert::{Certificate, CertificateValidation};
+use elasticsearch::http::Url;
+use elasticsearch::http::transport::{SingleNodeConnectionPool, TransportBuilder};
+use elasticsearch::{Elasticsearch, auth::Credentials, http::transport::Transport};
+use std::fs;
 
 impl ElasticsearchProvider {
   pub async fn new(url: &str, auth: EsAuthMethod, version: Option<IndexVersion>) -> Result<ElasticsearchProvider, MotivaError> {
     let es = {
-      let transport = Transport::single_node(url)?;
+      let parsed_url = Url::parse(url).unwrap();
+      let transport = if let Ok(ca_path) = std::env::var("CA_CERT_PATH") {
+        let pem = fs::read(ca_path.clone()).context(format!("could not read CA_CERT_PATH from {}", ca_path))?;
+        let cert = Certificate::from_pem(&pem).context("invalid CA certificate")?;
+        let cert_validation = CertificateValidation::Full(cert);
+        TransportBuilder::new(SingleNodeConnectionPool::new(parsed_url))
+          .cert_validation(cert_validation)
+          .build()
+          .context("could not build single node connection pool with CA_CERT_PATH option")?
+      } else if std::env::var("TRUST_ALL_SSL") == Ok("true".to_string()) {
+        TransportBuilder::new(SingleNodeConnectionPool::new(parsed_url))
+          .cert_validation(CertificateValidation::None)
+          .build()
+          .context("could not build single node connection pool with TRUST_ALL_SSL option")?
+      } else {
+        Transport::single_node(url)?
+      };
 
       match auth {
         EsAuthMethod::Basic(username, password) => transport.set_auth(Credentials::Basic(username, password)),
