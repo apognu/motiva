@@ -31,7 +31,8 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, cut
 
     let (score, features) = A::score(&bump, entity, &hit, cutoff);
 
-    hit.features = features.into_iter().filter(|(_, score)| score > &0.0).collect::<Vec<(_, _)>>();
+    hit.features = features;
+    hit.features.retain(|(_, score)| *score > 0.0);
 
     tracing::debug!(score = score, latency = ?then.elapsed(), "computed score");
 

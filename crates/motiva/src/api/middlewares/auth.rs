@@ -31,7 +31,7 @@ where
   async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
     let State(app_state) = parts.extract_with_state::<State<AppState<_, P>>, S>(state).await.unwrap();
 
-    let Some(api_key) = app_state.config.api_key else {
+    let Some(api_key) = &app_state.config.api_key else {
       return Ok(Auth { _marker: PhantomData });
     };
 

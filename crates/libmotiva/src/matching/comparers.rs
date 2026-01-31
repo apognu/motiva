@@ -1,12 +1,22 @@
 use std::{borrow::Borrow, cmp::Ordering};
 
+use ahash::{HashMap, HashSet, RandomState};
 use itertools::Itertools;
 use strsim::{jaro_winkler, levenshtein};
 
+#[inline]
 pub(crate) fn is_disjoint<'s, S>(lhs: &[S], rhs: &[S]) -> bool
 where
   S: Borrow<str> + Ord + Clone + 's,
 {
+  let (bigger, smaller) = if lhs.len() > rhs.len() { (&lhs, &rhs) } else { (&rhs, &lhs) };
+
+  if bigger.len() > 5 {
+    let set = smaller.iter().map(|s| s.borrow()).collect::<HashSet<_>>();
+
+    return bigger.iter().all(|b| !set.contains(b.borrow()));
+  }
+
   for a in lhs {
     for b in rhs {
       if a == b {
@@ -18,6 +28,7 @@ where
   true
 }
 
+#[inline]
 pub(crate) fn is_disjoint_chars(lhs: &[Vec<char>], rhs: &[Vec<char>]) -> bool {
   for a in lhs {
     for b in rhs {
@@ -30,6 +41,7 @@ pub(crate) fn is_disjoint_chars(lhs: &[Vec<char>], rhs: &[Vec<char>]) -> bool {
   true
 }
 
+#[inline]
 pub(crate) fn compare_name_phonetic_tuples((l_name, l_phone): (&str, Option<&str>), (r_name, r_phone): (&str, Option<&str>)) -> bool {
   if l_phone.is_none() || r_phone.is_none() {
     return l_name == r_name;
@@ -42,6 +54,7 @@ pub(crate) fn compare_name_phonetic_tuples((l_name, l_phone): (&str, Option<&str
   false
 }
 
+#[inline]
 pub(crate) fn is_levenshtein_plausible(lhs: &str, rhs: &str) -> bool {
   if lhs == rhs {
     return true;
@@ -53,6 +66,7 @@ pub(crate) fn is_levenshtein_plausible(lhs: &str, rhs: &str) -> bool {
   levenshtein(&lhs.to_lowercase(), &rhs.to_lowercase()) <= threshold
 }
 
+#[inline]
 pub(crate) fn default_levenshtein_similarity(lhs: &str, rhs: &str) -> f64 {
   levenshtein_similarity(lhs, rhs, 4)
 }
@@ -139,16 +153,13 @@ where
 
 #[inline(always)]
 fn count_parts<'s, S: Borrow<str> + 's>(parts: &'s [S]) -> Vec<(&'s str, usize)> {
-  let mut counts = Vec::with_capacity(parts.len());
+  let mut map: HashMap<&str, usize> = HashMap::with_capacity_and_hasher(parts.len(), RandomState::default());
 
   for part in parts {
-    match counts.iter_mut().find(|(s, _)| *s == part.borrow()) {
-      Some(entry) => entry.1 += 1,
-      _ => counts.push((part.borrow(), 1)),
-    }
+    *map.entry(part.borrow()).or_insert(0) += 1;
   }
 
-  counts
+  map.into_iter().collect()
 }
 
 #[cfg(test)]
@@ -157,6 +168,24 @@ mod tests {
   use pyo3::Python;
 
   use crate::tests::python::nomenklatura_str_list;
+
+  #[test]
+  fn is_disjoint() {
+    assert!(super::is_disjoint(&["a", "b", "c"], &["d", "e"]));
+    assert!(super::is_disjoint(&["a", "b", "c"], &["d", "e", "f", "g"]));
+    assert!(!super::is_disjoint(&["a", "b", "c"], &["d", "c", "f", "g"]));
+    assert!(super::is_disjoint(&["a", "b", "c", "d", "e", "f"], &["g"]));
+    assert!(!super::is_disjoint(&["a", "b", "c", "d", "e", "f"], &["d"]));
+  }
+
+  #[test]
+  fn count_parts() {
+    let counts = super::count_parts(&["a", "a", "b", "c", "a", "c", "b"]);
+
+    assert!(counts.contains(&("a", 3)));
+    assert!(counts.contains(&("b", 2)));
+    assert!(counts.contains(&("c", 2)));
+  }
 
   #[test]
   fn is_levenshtein_plausible() {

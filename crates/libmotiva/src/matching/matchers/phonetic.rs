@@ -4,7 +4,6 @@ use bumpalo::{
 };
 use itertools::Itertools;
 use libmotiva_macros::scoring_feature;
-use rphonetic::Metaphone;
 
 use crate::{
   matching::{Feature, comparers::compare_name_phonetic_tuples, extractors},
@@ -20,32 +19,31 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   let lhs_names = extractors::clean_names(lhs.names_and_aliases().iter()).collect_in::<Vec<_>>(bump);
   let rhs_names = extractors::clean_names(rhs.names_and_aliases().iter()).collect_in::<Vec<_>>(bump);
 
-  let metaphone = Metaphone::new(None);
-  let lhs_phone = extractors::phonetic_names_tuples(&metaphone, lhs_names.iter());
-  let rhs_phone = extractors::phonetic_names_tuples(&metaphone, rhs_names.iter());
+  let lhs_phone = extractors::phonetic_names_tuples(lhs_names.iter());
+  let rhs_phone = extractors::phonetic_names_tuples(rhs_names.iter());
 
   let mut score = 0.0f64;
 
-  lhs_phone.iter().cartesian_product(rhs_phone.iter()).for_each(|(ls, rs)| {
+  for (ls, rs) in lhs_phone.iter().cartesian_product(rhs_phone.iter()) {
     let mut matched = 0;
-    let mut comp = rs.clone();
+    let mut used = vec![false; rs.len()];
 
     for (l_name, l_phone) in ls {
-      for (r_name, r_phone) in comp.iter() {
-        if compare_name_phonetic_tuples((l_name, l_phone.as_deref()), (r_name, r_phone.as_deref())) {
+      for (idx, (r_name, r_phone)) in rs.iter().enumerate() {
+        if !used[idx] && compare_name_phonetic_tuples((l_name, l_phone.as_deref()), (r_name, r_phone.as_deref())) {
           matched += 1;
-
-          if let Some(index) = comp.iter().position(|x| *x == (r_name.clone(), r_phone.clone())) {
-            comp.remove(index);
-          }
-
+          used[idx] = true;
           break;
         }
       }
     }
 
     score = score.max(matched as f64 / ls.len() as f64);
-  });
+
+    if score >= 1.0 {
+      return 1.0;
+    }
+  }
 
   score
 }

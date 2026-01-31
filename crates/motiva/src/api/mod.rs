@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use axum::{
   Router, middleware,
@@ -23,12 +23,12 @@ pub mod middlewares;
 
 #[derive(Clone)]
 pub struct AppState<F: CatalogFetcher, P: IndexProvider> {
-  pub config: Config,
+  pub config: Arc<Config>,
   pub prometheus: Option<PrometheusHandle>,
   pub motiva: Motiva<P, F>,
 }
 
-pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: &Config, fetcher: F, provider: P) -> anyhow::Result<Router> {
+pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: Config, fetcher: F, provider: P) -> anyhow::Result<Router> {
   let motiva = {
     let config = MotivaConfig {
       outdated_grace: config.outdated_grace,
@@ -56,7 +56,7 @@ pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: &Config, fetche
   };
 
   let state = AppState {
-    config: config.clone(),
+    config: Arc::new(config),
     prometheus,
     motiva,
   };
