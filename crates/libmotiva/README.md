@@ -60,6 +60,8 @@ Motiva is configured via environment variables. The following variables are supp
 | `INDEX_AUTH_METHOD`        | Elasticsearch authentication (`none`, `basic`, `bearer`, `api_key`, `encoded_api_key`) | `none`                  |
 | `INDEX_CLIENT_ID`          | Elasticsearch client ID (required for `basic` or `api_key`)                            | _(none)_                |
 | `INDEX_CLIENT_SECRET`      | Elasticsearch client secret (required for `basic`, `api_key` or `encoded_api_key`)     | _(none)_                |
+| `INDEX_TLS_CA_CERT`        | Path to a PEM-encoded certificate chain to use for TLS validation                      | _(none)_                |
+| `INDEX_TLS_SKIP_VERIFY`    | If `1`, do not validate the TLS certificate served by the Elasticsearch cluster        | _0_                     |
 | `MANIFEST_URL`             | Optional URL to a custom manifest JSON file                                            | _(none)_                |
 | `CATALOG_REFRESH_INTERVAL` | Interval at which to pull the manifest and catalogs                                    | _1h_                    |
 | `MATCH_CANDIDATES`         | Number of candidates to consider for matching                                          | `10`                    |
