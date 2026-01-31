@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::{
   Router,
   routing::{get, post},
@@ -24,7 +26,7 @@ async fn api_not_version() {
   let index = MockedElasticsearch::builder().healthy(false).build();
 
   let state = AppState {
-    config: Config::default(),
+    config: Arc::new(Config::default()),
     prometheus: None,
     motiva: Motiva::test(index).fetcher(TestFetcher::default()).build().await.unwrap(),
   };
@@ -46,7 +48,7 @@ async fn api_health_unhealthy() {
   let index = MockedElasticsearch::builder().healthy(false).build();
 
   let state = AppState {
-    config: Config::default(),
+    config: Arc::new(Config::default()),
     prometheus: None,
     motiva: Motiva::test(index).fetcher(TestFetcher::default()).build().await.unwrap(),
   };
@@ -63,7 +65,7 @@ async fn api_health_healthy() {
   let index = MockedElasticsearch::builder().healthy(true).build();
 
   let state = AppState {
-    config: Config::default(),
+    config: Arc::new(Config::default()),
     prometheus: None,
     motiva: Motiva::test(index).build().await.unwrap(),
   };
@@ -80,7 +82,7 @@ async fn api_algorithms() {
   let index = MockedElasticsearch::builder().healthy(true).build();
 
   let state = AppState {
-    config: Config::default(),
+    config: Arc::new(Config::default()),
     prometheus: None,
     motiva: Motiva::test(index).build().await.unwrap(),
   };
@@ -112,7 +114,7 @@ async fn api_match() {
     .build();
 
   let state = AppState {
-    config: Config::default(),
+    config: Arc::new(Config::default()),
     prometheus: None,
     motiva: Motiva::test(index).build().await.unwrap(),
   };
@@ -165,7 +167,7 @@ async fn api_invalid_query() {
   let index = MockedElasticsearch::builder().healthy(false).build();
 
   let state = AppState {
-    config: Config::default(),
+    config: Arc::new(Config::default()),
     prometheus: None,
     motiva: Motiva::test(index).build().await.unwrap(),
   };
@@ -184,7 +186,7 @@ async fn api_unparsable_payload() {
   let index = MockedElasticsearch::builder().healthy(false).build();
 
   let state = AppState {
-    config: Config::default(),
+    config: Arc::new(Config::default()),
     prometheus: None,
     motiva: Motiva::test(index).build().await.unwrap(),
   };
@@ -210,7 +212,7 @@ async fn api_invalid_payload() {
   let index = MockedElasticsearch::builder().healthy(false).build();
 
   let state = AppState {
-    config: Config::default(),
+    config: Arc::new(Config::default()),
     prometheus: None,
     motiva: Motiva::test(index).build().await.unwrap(),
   };
