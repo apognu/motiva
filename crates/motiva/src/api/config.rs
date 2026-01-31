@@ -18,6 +18,9 @@ pub struct Config {
   // Elasticsearch
   pub index_url: String,
   pub index_auth_method: EsAuthMethod,
+  pub index_use_tls: bool,
+  pub index_tls_ca_cert: Option<String>,
+  pub index_tls_skip_verify: bool,
 
   // Timeouts
   pub request_timeout: Span,
@@ -49,6 +52,9 @@ impl Config {
       outdated_grace: parse_env("OUTDATED_GRACE", Span::default())?,
       index_url: env::var("INDEX_URL").unwrap_or("http://localhost:9200".into()),
       index_auth_method: env::var("INDEX_AUTH_METHOD").unwrap_or("none".into()).parse::<WrappedEsAuthMethod>()?.0,
+      index_use_tls: env::var("INDEX_USE_TLS").unwrap_or_default() == "1",
+      index_tls_ca_cert: env::var("INDEX_TLS_CA_CERT").ok(),
+      index_tls_skip_verify: env::var("INDEX_TLS_SKIP_VERIFY").unwrap_or_default() == "1",
       enable_prometheus: env::var("ENABLE_PROMETHEUS").unwrap_or_default() == "1",
       enable_tracing: env::var("ENABLE_TRACING").unwrap_or_default() == "1",
       tracing_exporter: env::var("TRACING_EXPORTER").unwrap_or("otlp".into()).parse()?,

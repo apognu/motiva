@@ -4,7 +4,8 @@ mod trace;
 #[cfg(test)]
 mod tests;
 
-use libmotiva::{ElasticsearchProvider, HttpCatalogFetcher, IndexProvider};
+use anyhow::Context;
+use libmotiva::{ElasticsearchProvider, EsTLSOption, HttpCatalogFetcher, IndexProvider};
 use rustls::crypto::aws_lc_rs;
 use tokio::signal;
 
@@ -18,7 +19,20 @@ async fn main() -> anyhow::Result<()> {
   aws_lc_rs::default_provider().install_default().expect("could not install default cryptography provider");
 
   let config = Config::from_env().await?;
-  let provider = ElasticsearchProvider::new(&config.index_url, config.index_auth_method.clone(), None).await?;
+  let provider = ElasticsearchProvider::new(
+    &config.index_url,
+    config.index_auth_method.clone(),
+    None,
+    if config.index_use_tls {
+      if config.index_tls_skip_verify {
+        EsTLSOption::SkipVerify
+      } else {
+        EsTLSOption::CAFilePath(config.index_tls_ca_cert.clone().context("INDEX_TLS_CA_CERT is required when INDEX_USE_TLS is 1 and INDEX_TLS_SKIP_VERIFY is not 1")?)
+      }
+    } else {
+      EsTLSOption::None
+    }
+  ).await?;
 
   run(config, provider).await
 }
