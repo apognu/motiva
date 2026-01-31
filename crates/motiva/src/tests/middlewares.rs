@@ -20,10 +20,10 @@ async fn api_invalid_credentials() {
   let index = MockedElasticsearch::builder().healthy(false).build();
 
   let state = AppState {
-    config: Config {
+    config: Arc::new(Config {
       api_key: Some("myapikey".into()),
       ..Default::default()
-    },
+    }),
     prometheus: None,
     motiva: Motiva::test(index).build().await.unwrap(),
   };
@@ -48,10 +48,10 @@ async fn api_valid_credentials() {
   let index = MockedElasticsearch::builder().healthy(false).build();
 
   let state = AppState {
-    config: Config {
+    config: Arc::new(Config {
       api_key: Some("myapikey".into()),
       ..Default::default()
-    },
+    }),
     prometheus: None,
     motiva: Motiva::test(index).build().await.unwrap(),
   };
@@ -114,10 +114,10 @@ rusty_fork_test! {
             let index = MockedElasticsearch::builder().healthy(true).build();
 
             let state = AppState {
-                config: Config {
+                config: Arc::new(Config {
                     enable_tracing: true,
                     ..Default::default()
-                },
+                }),
                 prometheus: None,
                 motiva: Motiva::test(index).build().await.unwrap(),
             };
@@ -150,10 +150,10 @@ rusty_fork_test! {
             let index = MockedElasticsearch::builder().healthy(true).build();
 
             let state = AppState {
-                config: Config {
+                config: Arc::new(Config {
                     enable_prometheus: true,
                     ..Default::default()
-                },
+                }),
                 prometheus: Some(build_prometheus().unwrap()),
                 motiva: Motiva::test(index).build().await.unwrap(),
             };
