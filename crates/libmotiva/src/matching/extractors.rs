@@ -96,7 +96,7 @@ where
       s.borrow()
         .to_lowercase()
         .chars()
-        .filter(|c| !IGNORED_SEPARATORS.iter().contains(c))
+        .filter(|c| !is_ignored_separator(*c))
         .join("")
         .split(is_name_separator)
         .map(|s| s.chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())

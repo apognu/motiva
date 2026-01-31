@@ -11,7 +11,7 @@ use libmotiva::{EsTlsVerification, prelude::EsAuthMethod};
 
 use crate::api::errors::AppError;
 
-#[derive(Clone, Default, Debug)]
+#[derive(Default, Debug)]
 pub struct Config {
   pub env: Env,
   pub listen_addr: String,
