@@ -74,8 +74,6 @@ Setting `MANIFEST_FILE` is required if you use a customized dataset list and wou
 
 ## Run
 
-Right now, there are _no configuration_ possible on this project, and it will remain that way until it is in a good enough shape to be used widely.
-
 ```sh
 $ cargo run --release
 $ echo '{"queries":{"test":{"schema":"Person","properties":{"name":["Vladimir Putin"]}}}}' | curl -XPOST 127.0.0.1:8080/match/sanctions -H content-type:application/json -d @-
@@ -83,17 +81,50 @@ $ echo '{"queries":{"test":{"schema":"Person","properties":{"name":["Vladimir Pu
 
 ## Development
 
+### Building
+
+```bash
+$ git clone --recurse-submodules git@github.com:apognu/motiva.git
+$ cd motiva
+```
+
+## Building
+
+```bash
+# Standard build
+$ cargo build
+# Build with libicu support (requires libicu-dev)
+$ cargo build --release --features icu
+# Build with GCP tracing support
+$ cargo build --release --features gcp
+```
+
+### Docker
+
+Pre-built images are available in this repositor's packages section, at `ghcr.io/apognu/motiva`, for each combination of features. Alternatively, you can build the image thus:
+
+```bash
+# Build without libicu
+$ docker build -t motiva .
+# Build without standalone features
+$ docker build --build-arg CARGO_ARGS="--features gcp" -t motiva:gcp .
+# Build with libicu support
+$ docker build --build-arg BASE=icu --build-arg CARGO_ARGS="--features icu" -t motiva:icu .
+```
+
 ### Test suite
 
-To run the tests, a Python 3.14 environment must be set up with the required dependencies (this include `libicu`). You can install it in a virtualenv by using the `uv` file at the root of this repository:
+To run the tests, a Python 3.13+ environment must be set up with the required dependencies (this include `libicu`). You can install it in a virtualenv by using the `uv` file at the root of this repository:
 
 ```sh
 $ uv sync
-$ cargo test --tests
+$ cargo test
 ```
 
 One quite lengthy test is ignored by default (scoring the cartesian product of 50x50 entities against each other) and compare it against nomenklatura. You can still run this test by running `cargo test -- --include-ignored`.
 
 ### Contributing
 
-Motiva is a work in progress. Contributions and feedback are welcome!
+Motiva is a work in progress.=
+
+Contributions and feedback are welcome! Please familiarize yourself with the [`CONTRIBUTING.md`](./CONTRIBUTING.md) guidelines beforehand.
