@@ -124,7 +124,7 @@ rusty_fork_test! {
 
             let buf = Arc::new(Mutex::new(Vec::default()));
             let (writer, wait) = VecLogWriter::new(Arc::clone(&buf));
-            let (_guard, _) = init_tracing(&state.config, writer).await;
+            let _guards = init_tracing(&state.config, writer).await;
 
             let app = api::router(state);
             let server = TestServer::new(app).unwrap();

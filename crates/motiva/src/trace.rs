@@ -10,7 +10,7 @@ use opentelemetry_sdk::{
 };
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_opentelemetry::MetricsLayer;
-use tracing_subscriber::fmt;
+use tracing_subscriber::{EnvFilter, Layer, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg(feature = "gcp")]
 use opentelemetry_gcloud_trace::GcpCloudTraceExporterBuilder;
@@ -27,12 +27,23 @@ pub fn build_prometheus() -> Result<PrometheusHandle, BuildError> {
   builder.install_recorder()
 }
 
-pub async fn init_tracing(config: &Config, writer: impl Write + Send + 'static) -> (WorkerGuard, Option<SdkTracerProvider>) {
-  use tracing_subscriber::{EnvFilter, prelude::*};
+pub struct TraceGuards {
+  _logging: WorkerGuard,
+  trace: Option<SdkTracerProvider>,
+}
 
+impl Drop for TraceGuards {
+  fn drop(&mut self) {
+    if let Some(provider) = &self.trace {
+      provider.shutdown().unwrap();
+    }
+  }
+}
+
+pub async fn init_tracing(config: &Config, writer: impl Write + Send + 'static) -> TraceGuards {
   let (appender, logging_guard) = tracing_appender::non_blocking(writer);
 
-  let formatter = match config.env {
+  let logging_formatter = match config.env {
     #[cfg(not(test))]
     Env::Dev => fmt::layer().compact().with_writer(appender).with_ansi(true).boxed(),
     Env::Production => json_subscriber::layer()
@@ -47,69 +58,83 @@ pub async fn init_tracing(config: &Config, writer: impl Write + Send + 'static) 
     Env::Dev => fmt::layer().compact().with_writer(appender).with_ansi(false).boxed(),
   };
 
-  let (tracing_layer, tracing_provider, metrics_layer, metrics_provider, error) = match config.enable_tracing {
-    true => {
-      let resource = Resource::builder_empty().with_attributes([KeyValue::new("service.name", "motiva")]).build();
+  let guard = TraceGuards { _logging: logging_guard, trace: None };
+  let (guard, tracing_layers) = tracing_layers(guard, config).await;
+  let mut errors: Vec<anyhow::Error> = vec![];
 
-      let tracing_provider_builder = SdkTracerProvider::builder()
-        .with_sampler(Sampler::TraceIdRatioBased(config::parse_env("OTEL_TRACES_SAMPLER_ARGS", 0.1).unwrap_or(0.1)))
-        .with_resource(resource.clone());
-
-      match config.tracing_exporter {
-        TracingExporter::Otlp => {
-          let tracing_otlp = opentelemetry_otlp::SpanExporter::builder().with_tonic().build().unwrap();
-          let processor = BatchSpanProcessor::builder(tracing_otlp)
-            .with_batch_config(BatchConfigBuilder::default().with_max_queue_size(8192).build())
-            .build();
-
-          let tracing_provider = tracing_provider_builder.with_span_processor(processor).build();
-          let tracer = tracing_provider.tracer("motiva");
-          let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-
-          let metrics_otlp = opentelemetry_otlp::MetricExporter::builder().with_tonic().build().unwrap();
-          let metrics_provider = MeterProviderBuilder::default().with_periodic_exporter(metrics_otlp).with_resource(resource).build();
-          let metrics_layer = MetricsLayer::new(metrics_provider.clone());
-
-          (Some(tracing_layer), Some(tracing_provider), Some(metrics_layer), Some(metrics_provider), Option::<anyhow::Error>::None)
-        }
-
-        #[cfg(feature = "gcp")]
-        TracingExporter::Gcp => {
-          let gcp_trace_exporter = GcpCloudTraceExporterBuilder::new(config.gcp_project_id.clone()).with_resource(resource.clone());
-          let tracing_provider = gcp_trace_exporter.create_provider_from_builder(tracing_provider_builder).await;
-
-          match tracing_provider {
-            Ok(tracing_provider) => {
-              let tracer: opentelemetry_sdk::trace::Tracer = gcp_trace_exporter.install(&tracing_provider).await.unwrap();
-              let tracing_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-
-              (Some(tracing_layer), Some(tracing_provider), None, None, None)
-            }
-
-            Err(err) => (None, None, None, None, Some(err.into())),
-          }
-        }
-      }
-    }
-
-    false => (None, None, None, None, None),
-  };
-
-  if let Some(provider) = metrics_provider {
-    global::set_meter_provider(provider);
-  }
   global::set_text_map_propagator(TraceContextPropagator::new());
 
-  tracing_subscriber::registry()
-    .with(EnvFilter::builder().try_from_env().or_else(|_| EnvFilter::try_new("info")).unwrap())
-    .with(metrics_layer)
-    .with(tracing_layer)
-    .with(formatter)
-    .init();
+  let layers = EnvFilter::builder().try_from_env().or_else(|_| EnvFilter::try_new("info")).unwrap().and_then(logging_formatter);
 
-  if let Some(error) = error {
-    tracing::warn!(%error, "could not initialize tracing provider");
+  let layers = match tracing_layers {
+    Ok(tracing_layers) => tracing_layers.into_iter().fold(layers.boxed(), |registry, layer| registry.and_then(layer).boxed()),
+
+    Err(err) => {
+      errors.push(err);
+      layers.boxed()
+    }
+  };
+
+  tracing_subscriber::registry().with(layers).init();
+
+  for err in errors {
+    tracing::warn!(%err, "could not initialize tracing provider");
   }
 
-  (logging_guard, tracing_provider)
+  guard
+}
+
+type TracingLayers = Vec<Box<dyn Layer<Registry> + Send + Sync>>;
+
+async fn tracing_layers(mut guards: TraceGuards, config: &Config) -> (TraceGuards, Result<TracingLayers, anyhow::Error>) {
+  if !config.enable_tracing {
+    return (guards, Ok(vec![]));
+  }
+
+  let resource = Resource::builder_empty().with_attributes([KeyValue::new("service.name", "motiva")]).build();
+
+  let tracing_provider_builder = SdkTracerProvider::builder()
+    .with_sampler(Sampler::TraceIdRatioBased(config::parse_env("OTEL_TRACES_SAMPLER_ARGS", 0.1).unwrap_or(0.1)))
+    .with_resource(resource.clone());
+
+  let layers: Result<TracingLayers, anyhow::Error> = match config.tracing_exporter {
+    TracingExporter::Otlp => {
+      let tracing_otlp = opentelemetry_otlp::SpanExporter::builder().with_tonic().build().unwrap();
+      let processor = BatchSpanProcessor::builder(tracing_otlp)
+        .with_batch_config(BatchConfigBuilder::default().with_max_queue_size(8192).build())
+        .build();
+
+      let provider = tracing_provider_builder.with_span_processor(processor).build();
+      let tracer = provider.tracer("motiva");
+
+      let metrics_otlp = opentelemetry_otlp::MetricExporter::builder().with_tonic().build().unwrap();
+      let metrics_provider = MeterProviderBuilder::default().with_periodic_exporter(metrics_otlp).with_resource(resource).build();
+
+      global::set_meter_provider(metrics_provider.clone());
+
+      guards.trace = Some(provider);
+
+      Ok(vec![tracing_opentelemetry::layer().with_tracer(tracer).boxed(), MetricsLayer::new(metrics_provider).boxed()])
+    }
+
+    #[cfg(feature = "gcp")]
+    TracingExporter::Gcp => {
+      let gcp_trace_exporter = GcpCloudTraceExporterBuilder::new(config.gcp_project_id.clone()).with_resource(resource.clone());
+      let provider_result = gcp_trace_exporter.create_provider_from_builder(tracing_provider_builder).await;
+
+      match provider_result {
+        Ok(provider) => {
+          let tracer: opentelemetry_sdk::trace::Tracer = gcp_trace_exporter.install(&provider).await.unwrap();
+
+          guards.trace = Some(provider);
+
+          Ok(vec![tracing_opentelemetry::layer().with_tracer(tracer).boxed()])
+        }
+
+        Err(err) => Err(err.into()),
+      }
+    }
+  };
+
+  (guards, layers)
 }
