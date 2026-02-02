@@ -245,7 +245,7 @@ pub struct Entity {
   pub features: Vec<(&'static str, f64)>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 #[serde(bound(deserialize = "'de: 'static"))]
 pub struct Properties {
   #[serde(flatten)]
@@ -254,6 +254,29 @@ pub struct Properties {
   // be thread-safe, there should be no concurrency on this field.
   #[serde(flatten, skip_deserializing)]
   pub entities: HashMap<String, Vec<Arc<Mutex<Entity>>>, RandomState>,
+}
+
+// Custom serializer for output properties, since we might have duplicated keys
+// after enrichment. We want to only serialize simple `strings` propeties if
+// the key has not been expanded in the `entities` field.
+impl Serialize for Properties {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut map = serializer.serialize_map(None)?;
+
+    for (k, v) in &self.strings {
+      if !self.entities.contains_key(k) {
+        map.serialize_entry(k, v)?;
+      }
+    }
+    for (k, v) in &self.entities {
+      map.serialize_entry(k, v)?;
+    }
+
+    map.end()
+  }
 }
 
 fn features_to_map<S: Serializer>(input: &[(&'static str, f64)], ser: S) -> Result<S::Ok, S::Error> {
