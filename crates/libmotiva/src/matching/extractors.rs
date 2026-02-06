@@ -81,6 +81,26 @@ where
 }
 
 #[inline(always)]
+pub(crate) fn clean_names_light<'s, I, S>(names: I) -> impl Iterator<Item = String> + Clone
+where
+  S: Borrow<str> + 's,
+  I: Iterator<Item = &'s S> + Clone + 's,
+{
+  names
+    .map(|s| {
+      s.borrow()
+        .to_lowercase()
+        .chars()
+        .filter(|c| !IGNORED_SEPARATORS.iter().contains(c))
+        .join("")
+        .split(is_name_separator)
+        .map(|s| s.chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
+        .join(" ")
+    })
+    .unique()
+}
+
+#[inline(always)]
 pub(crate) fn normalize_identifiers<'s, I, S>(ids: I) -> impl Iterator<Item = String> + Clone
 where
   S: Borrow<str> + 's,
@@ -280,6 +300,16 @@ mod tests {
   #[test]
   fn clean_names() {
     assert_eq!(super::clean_names(vec!["Bob-a O'Brien#2nd"].iter()).collect::<Vec<_>>(), vec!["bob a obrien 2nd"]);
+    assert_eq!(super::clean_names(vec!["Владимир Владимирович Путин"].iter()).collect::<Vec<_>>(), vec!["vladimir vladimirovich putin"]);
+  }
+
+  #[test]
+  fn clean_names_light() {
+    assert_eq!(super::clean_names_light(vec!["Vladimir Putin Jr."].iter()).collect::<Vec<_>>(), vec!["vladimir putin jr"]);
+    assert_eq!(
+      super::clean_names_light(vec!["Владимир Владимирович Путин"].iter()).collect::<Vec<_>>(),
+      vec!["владимир владимирович путин"]
+    );
   }
 
   #[test]

@@ -10,7 +10,7 @@ use crate::matching::{
     crypto_wallet::CryptoWalletMatch,
     identifier::IdentifierMatch,
     jaro_winkler::PersonNameJaroWinkler,
-    match_::SimpleMatch,
+    match_::{SimpleMatch, WeakAliasMatch},
     mismatch::{NumbersMismatch, SimpleMismatch, dob_day_disjoint, dob_year_disjoint},
     name_fingerprint_levenshtein::NameFingerprintLevenshtein,
     name_literal_match::NameLiteralMatch,
@@ -45,7 +45,7 @@ static FEATURES: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
     (IdentifierMatch::new("inn_code_match", &["innCode"], Some(validate_inn)), 0.95),
     (IdentifierMatch::new("bic_code_match", &["bicCode"], Some(validate_bic)), 0.95),
     (SimpleMatch::new("identifier_match", &|e| e.prop_group("identifier"), None), 0.85), // TODO: add cleaning
-    (SimpleMatch::new("weak_alias_match", &|e| e.props(&["weakAlias", "name"]), None), 0.8),
+    (&WeakAliasMatch, 0.8),
   ]
 });
 
