@@ -114,13 +114,34 @@ pub(crate) fn validate_isin(code: &str) -> bool {
     return false;
   }
 
-  let code = format!("{}{}{}", chars[0] as u8 - 55, chars[1] as u8 - 55, &code[2..]);
+  let code = to_luhn(code);
 
   luhn::valid(&code)
 }
 
+fn to_luhn(isin: &str) -> String {
+  let mut luhn_string = String::with_capacity(24);
+
+  for c in isin.chars() {
+    if c.is_ascii_digit() {
+      luhn_string.push(c);
+    } else if c.is_ascii_alphabetic() {
+      let val = c.to_ascii_uppercase() as u32 - 'A' as u32 + 10;
+
+      luhn_string.push_str(&val.to_string());
+    }
+  }
+
+  luhn_string
+}
+
 #[cfg(test)]
 mod tests {
+  #[test]
+  fn code_to_luhn() {
+    assert_eq!(super::to_luhn("US0378331005"), "30280378331005");
+  }
+
   #[test]
   fn validate_ogrn() {
     assert!(super::validate_ogrn("1027700132195"));
@@ -158,6 +179,7 @@ mod tests {
   fn validate_isin() {
     assert!(super::validate_isin("US0378331005"));
     assert!(super::validate_isin("GB0002634946"));
+    assert!(super::validate_isin("INE00GY01016"));
     assert!(!super::validate_isin("US0378331006"));
     assert!(!super::validate_isin("US03783310A5"));
     assert!(!super::validate_isin("U0378331005"));
