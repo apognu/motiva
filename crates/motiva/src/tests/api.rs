@@ -106,7 +106,7 @@ async fn api_algorithms() {
 async fn api_match() {
   let index = MockedElasticsearch::builder()
     .entities(vec![
-      Entity::builder("Person").id("Q7747").properties(&[("name", &["Vladimir Putin"])]).build(),
+      Entity::builder("Person").id("Q7747").properties(&[("name", &["Vladimir Putin"]), ("weakAlias", &["That Guy"])]).build(),
       Entity::builder("Person").id("A1234").properties(&[("name", &["Bob the Builder"])]).build(),
     ])
     .build();
@@ -127,7 +127,7 @@ async fn api_match() {
             "test": {
                 "schema": "Person",
                 "properties": {
-                    "name": ["Vladimir Putin"]
+                    "name": ["Vladimir Putin", "that guy"],
                 }
             }
         }
