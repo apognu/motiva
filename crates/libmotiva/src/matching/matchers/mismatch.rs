@@ -70,8 +70,8 @@ fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
       HashSet::<String>::from_iter(extract_numbers(rhs.props(&["full"]).iter()).map(ToOwned::to_owned)),
     ),
     false => (
-      HashSet::<String>::from_iter(extract_numbers(lhs.names_and_aliases().iter()).map(ToOwned::to_owned)),
-      HashSet::<String>::from_iter(extract_numbers(rhs.names_and_aliases().iter()).map(ToOwned::to_owned)),
+      HashSet::<String>::from_iter(extract_numbers(lhs.prop_group("name").iter()).map(ToOwned::to_owned)),
+      HashSet::<String>::from_iter(extract_numbers(rhs.prop_group("name").iter()).map(ToOwned::to_owned)),
     ),
   };
 

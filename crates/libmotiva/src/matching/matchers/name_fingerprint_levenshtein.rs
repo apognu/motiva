@@ -29,8 +29,8 @@ pub(crate) fn name_fingerprint_levenshtein(lhs: &SearchEntity, rhs: &Entity) -> 
     return 0.0;
   }
 
-  let qiter = lhs.names_and_aliases();
-  let riter = rhs.names_and_aliases();
+  let qiter = lhs.prop_group("name");
+  let riter = rhs.prop_group("name");
 
   let query_names = clean_names(qiter.iter()).filter(|word| word.len() >= 2);
   let result_names = clean_names(riter.iter()).filter(|word| word.len() >= 2);

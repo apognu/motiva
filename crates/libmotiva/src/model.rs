@@ -6,7 +6,6 @@ use std::{
 
 use ahash::RandomState;
 use bon::bon;
-use itertools::Itertools;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use validator::Validate;
@@ -19,7 +18,6 @@ use crate::{
 const EMPTY: [String; 0] = [];
 
 pub trait HasProperties {
-  fn names_and_aliases(&self) -> Vec<String>;
   fn props(&self, keys: &[&str]) -> Cow<'_, [String]>;
   fn prop_group(&self, group: &str) -> Cow<'_, [String]>;
 }
@@ -116,48 +114,22 @@ pub struct SearchEntity {
 
   // Those attributes will be precomputed when receiving the request to skip the computation for every matching entity.
   #[serde(skip)]
-  pub(crate) name_parts: HashSet<String>,
+  pub(crate) clean_names: Vec<String>,
+  #[serde(skip)]
+  pub(crate) name_parts_flat: HashSet<String>,
+  #[serde(skip)]
+  pub(crate) name_parts: Vec<Vec<String>>,
 }
 
 impl SearchEntity {
   pub fn precompute(&mut self) {
-    const MAX_NAME_COMBINATIONS: usize = 100;
-
-    let props = [
-      self.props(&["firstName"]),
-      self.props(&["secondName"]),
-      self.props(&["middleName"]),
-      self.props(&["fatherName"]),
-      self.props(&["lastName"]),
-    ];
-
-    let mut combined = HashSet::with_capacity_and_hasher(
-      props.iter().map(|n| if n.is_empty() { 1 } else { n.len() }).product::<usize>().min(MAX_NAME_COMBINATIONS),
-      RandomState::default(),
-    );
-
-    for combination in props.iter().map(|v| v.as_ref()).filter(|v| !v.is_empty()).multi_cartesian_product().take(MAX_NAME_COMBINATIONS) {
-      if !combination.is_empty() {
-        combined.insert(combination.iter().join(" "));
-      }
-    }
-
-    let names = self.properties.entry("name".to_string()).or_default();
-    names.reserve(combined.len());
-    names.extend(combined);
-
-    self.name_parts = extractors::name_parts_flat(self.props(&["name"]).iter()).collect();
+    self.clean_names = extractors::clean_names(self.prop_group("name").iter()).collect();
+    self.name_parts = extractors::name_parts(self.prop_group("name").iter()).collect();
+    self.name_parts_flat = extractors::name_parts_flat(self.prop_group("name").iter()).collect();
   }
 }
 
 impl HasProperties for SearchEntity {
-  fn names_and_aliases(&self) -> Vec<String> {
-    let names = self.props(&["name"]);
-    let aliases = self.props(&["alias"]);
-
-    names.iter().chain(aliases.iter()).cloned().collect()
-  }
-
   fn props(&self, keys: &[&str]) -> Cow<'_, [String]> {
     match keys.len() {
       0 => Cow::Borrowed(&EMPTY),
@@ -218,7 +190,9 @@ impl SearchEntity {
     let mut entity = SearchEntity {
       schema: Schema::from(schema),
       properties: props,
+      clean_names: Default::default(),
       name_parts: Default::default(),
+      name_parts_flat: Default::default(),
     };
 
     entity.precompute();
@@ -297,16 +271,6 @@ fn features_to_map<S: Serializer>(input: &[(&'static str, f64)], ser: S) -> Resu
 }
 
 impl HasProperties for Entity {
-  fn names_and_aliases(&self) -> Vec<String> {
-    let names = self.props(&["name"]);
-    let aliases = self.props(&["alias"]);
-
-    let mut values = Vec::with_capacity(names.len() + aliases.len());
-    values.extend_from_slice(&names);
-    values.extend_from_slice(&aliases);
-    values
-  }
-
   fn props(&self, keys: &[&str]) -> Cow<'_, [String]> {
     match keys.len() {
       0 => Cow::Borrowed(&EMPTY),
@@ -453,15 +417,6 @@ mod tests {
     assert!(countries.as_ref().iter().any(|p| p == "JURIS"));
     assert!(countries.as_ref().iter().any(|p| p == "NAT"));
     assert!(countries.as_ref().iter().any(|p| p == "CIT"));
-  }
-
-  #[test]
-  fn precompute() {
-    let se = SearchEntity::builder("Person")
-      .properties(&[("firstName", &["Vladimir"]), ("fatherName", &["Vladimirovitch"]), ("lastName", &["Putin"])])
-      .build();
-
-    assert_eq!(se.names_and_aliases(), &["Vladimir Vladimirovitch Putin"]);
   }
 
   #[test]

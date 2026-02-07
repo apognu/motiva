@@ -17,14 +17,14 @@ static SOUNDEX: LazyLock<Soundex> = LazyLock::new(Soundex::default);
 
 #[scoring_feature(SoundexNameParts, name = "soundex_name_parts")]
 fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
-  let mut similarities = Vec::with_capacity_in(lhs.name_parts.len(), bump);
+  let mut similarities = Vec::with_capacity_in(lhs.name_parts_flat.len(), bump);
 
-  let rhs_soundexes = extractors::name_parts_flat(rhs.names_and_aliases().iter())
+  let rhs_soundexes = extractors::name_parts_flat(rhs.prop_group("name").iter())
     .unique()
     .map(|s| SOUNDEX.encode(&s.to_string()))
     .collect_in::<Vec<_>>(bump);
 
-  for part in &lhs.name_parts {
+  for part in &lhs.name_parts_flat {
     let lhs_soundex = SOUNDEX.encode(part);
     let matched = rhs_soundexes.contains(&lhs_soundex);
 

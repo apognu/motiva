@@ -17,19 +17,19 @@ use crate::{
 
 #[scoring_feature(JaroNameParts, name = "jaro_name_parts")]
 fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
-  if lhs.name_parts.is_empty() {
+  if lhs.name_parts_flat.is_empty() {
     return 0.0;
   }
 
-  let rhs_parts = extractors::name_parts_flat(rhs.names_and_aliases().iter()).collect_in::<Vec<_>>(bump);
+  let rhs_parts = extractors::name_parts_flat(rhs.prop_group("name").iter()).collect_in::<Vec<_>>(bump);
 
   if rhs_parts.is_empty() {
     return 0.0;
   }
 
-  let mut similarities = Vec::with_capacity_in(lhs.name_parts.len(), bump);
+  let mut similarities = Vec::with_capacity_in(lhs.name_parts_flat.len(), bump);
 
-  for part in &lhs.name_parts {
+  for part in &lhs.name_parts_flat {
     let mut best = 0.0f64;
 
     for other in &rhs_parts {
@@ -56,12 +56,12 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     return 0.0;
   }
 
-  let lhs_names = extractors::name_parts(lhs.names_and_aliases().iter()).collect_in::<Vec<_>>(bump);
-  let rhs_names = extractors::name_parts(rhs.names_and_aliases().iter()).collect_in::<Vec<_>>(bump);
+  let lhs_names = &lhs.name_parts;
+  let rhs_names = extractors::name_parts(rhs.prop_group("name").iter()).collect_in::<Vec<_>>(bump);
 
   let mut score = 0.0f64;
 
-  for (lhs_parts, rhs_parts) in lhs_names.into_iter().cartesian_product(rhs_names.iter()) {
+  for (lhs_parts, rhs_parts) in lhs_names.iter().cartesian_product(rhs_names.iter()) {
     let lhs_len: usize = lhs_parts.iter().map(|s| s.len()).sum();
     let rhs_len: usize = rhs_parts.iter().map(|s| s.len()).sum();
 
@@ -82,7 +82,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
       }
     }
 
-    score = score.max(align_name_parts(&lhs_parts, rhs_parts));
+    score = score.max(align_name_parts(lhs_parts, rhs_parts));
 
     if score >= 1.0 {
       return 1.0;

@@ -34,7 +34,7 @@ const SEPARATOR_CATEGORIES: &[GeneralCategory] = {
 
 #[inline(always)]
 const fn is_ignored_separator(c: char) -> bool {
-  matches!(c, '.' | '\'' | '’' | '"')
+  matches!(c, '.' | '\'' | '’' | '"' | 'ʿ')
 }
 
 fn is_name_separator(c: char) -> bool {
@@ -273,6 +273,8 @@ where
 mod tests {
   use std::collections::HashSet;
 
+  use crate::{HasProperties, SearchEntity};
+
   #[test]
   fn name_tokenization() {
     let inputs: Vec<(&str, Vec<&str>)> = vec![("ben'laden,ossama", vec!["benladen", "ossama"]), ("Ser. Bobby O'Brian", vec!["Ser", "Bobby", "OBrian"])];
@@ -350,8 +352,14 @@ mod tests {
 
   #[test]
   fn name_parts() {
-    let names = super::name_parts_flat(["Vladimir Vladimorovich Putin", "Barack Hussein Obama"].iter()).collect::<Vec<_>>();
+    let lhs = SearchEntity::builder("Person")
+      .properties(&[("name", &["Vladimir Vladimorovich Putin"]), ("alias", &["Barack Hussein Obama"])])
+      .build();
+    let names = super::name_parts_flat(lhs.prop_group("name").iter()).collect::<Vec<_>>();
 
-    assert_eq!(names, vec!["vladimir", "vladimorovich", "putin", "barack", "hussein", "obama"]);
+    assert_eq!(
+      HashSet::<String>::from_iter(names),
+      HashSet::from_iter(["vladimir", "vladimorovich", "putin", "barack", "hussein", "obama"].into_iter().map(str::to_string))
+    );
   }
 }
