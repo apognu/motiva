@@ -418,13 +418,23 @@ mod tests {
     assert!(countries.as_ref().iter().any(|p| p == "NAT"));
     assert!(countries.as_ref().iter().any(|p| p == "CIT"));
   }
+  #[test]
+  fn precompute() {
+    let se = SearchEntity::builder("Person").properties(&[("name", &["vladimir-putin", "bar'ack obama", "バラク・オバマ"])]).build();
+
+    assert_eq!(se.name_parts, [["vladimir", "putin"], ["barack", "obama"], ["baraku", "obama"]]);
+    assert_eq!(
+      se.name_parts_flat,
+      std::collections::HashSet::from_iter(["vladimir", "putin", "barack", "obama", "baraku", "obama"].into_iter().map(String::from))
+    );
+    assert_eq!(se.clean_names, ["vladimir putin", "barack obama", "baraku obama"]);
+  }
 
   #[test]
   fn resolve_schema_chain() {
     assert_eq!(Schema::from("Person").matchable_schemas(ResolveSchemaLevel::Root), &["Person", "LegalEntity"]);
     assert_eq!(Schema::from("Company").matchable_schemas(ResolveSchemaLevel::Root), &["Company", "Organization", "LegalEntity"]);
     assert_eq!(Schema::from("Airplane").matchable_schemas(ResolveSchemaLevel::Root), &["Airplane"]);
-    // assert!(Schema::from("Vehicle").matchable_schemas(ResolveSchemaLevel::Root).is_empty());
     assert_eq!(
       HashSet::from_iter(Schema::from("Thing").matchable_schemas(ResolveSchemaLevel::Root).iter()),
       HashSet::from_iter(
