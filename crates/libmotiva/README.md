@@ -125,6 +125,6 @@ One quite lengthy test is ignored by default (scoring the cartesian product of 5
 
 ### Contributing
 
-Motiva is a work in progress.=
+Motiva is a work in progress.
 
 Contributions and feedback are welcome! Please familiarize yourself with the [`CONTRIBUTING.md`](./CONTRIBUTING.md) guidelines beforehand.
