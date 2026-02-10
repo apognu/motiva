@@ -1,11 +1,18 @@
 ARG BASE=native
 
 # Distroless image if not building native dependencies
-FROM rust:1.90-slim-bookworm AS base-native
+FROM lukemathwalker/cargo-chef:latest-rust-1.93.0-slim-bookworm AS base-native
 
 # Install build environment, header files and libraries if building libicu
-FROM rust:1.90-slim-bookworm AS base-icu
+FROM lukemathwalker/cargo-chef:latest-rust-1.93.0-slim-bookworm AS base-icu
 RUN apt update && apt install -y pkg-config libclang-dev libicu72 libicu-dev
+
+FROM base-${BASE} AS planner
+
+WORKDIR /app
+
+COPY . .
+RUN cargo chef prepare --bin motiva --recipe-path recipe.json
 
 # Fork base layer depending on whether we build native dependencies
 FROM base-${BASE} AS builder
@@ -13,22 +20,12 @@ ARG CARGO_ARGS=""
 
 WORKDIR /app
 
-COPY Cargo.toml Cargo.lock /app/
-COPY crates/libmotiva/Cargo.toml /app/crates/libmotiva/
-COPY crates/motiva/Cargo.toml /app/crates/motiva/
-COPY crates/macros /app/crates/macros
-
-RUN \
-    mkdir -p crates/libmotiva/src crates/libmotiva/benches crates/motiva/src && \
-    echo 'fn main() {}' | tee crates/libmotiva/src/lib.rs crates/libmotiva/benches/scoring.rs crates/motiva/src/main.rs
-
-RUN cargo build --release --bin motiva ${CARGO_ARGS}
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release ${CARGO_ARGS} --recipe-path recipe.json
 
 COPY . /app/
 
-RUN \
-    touch /app/crates/libmotiva/src/lib.rs /app/crates/motiva/src/main.rs && \
-    cargo build --release --bin motiva ${CARGO_ARGS}
+RUN cargo build --release --bin motiva ${CARGO_ARGS}
 
 FROM gcr.io/distroless/cc:latest
 

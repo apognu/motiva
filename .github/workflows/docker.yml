@@ -64,5 +64,5 @@ jobs:
             "BASE=${{ matrix.combination.base }}"
             ${{ matrix.combination.features != '' && format('CARGO_ARGS=--features {0}', matrix.combination.features) || '' }}
           push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=features${{ matrix.combination.suffix}}
+          cache-to: type=gha,mode=max,scope=features${{ matrix.combination.suffix }}
