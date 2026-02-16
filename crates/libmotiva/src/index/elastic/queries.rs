@@ -305,7 +305,9 @@ async fn build_datasets(catalog: &Arc<RwLock<Catalog>>, filters: &mut Vec<serde_
 
     filters.push(json!({ "terms": { "datasets": datasets } }));
   } else {
-    filters.push(json!({ "terms": { "datasets": scope } }));
+    let datasets: Vec<_> = scope.iter().filter(|dataset| scope.contains(*dataset) && !params.exclude_dataset.iter().contains(*dataset)).collect();
+
+    filters.push(json!({ "terms": { "datasets": datasets } }));
   }
 }
 
