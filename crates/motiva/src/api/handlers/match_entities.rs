@@ -29,6 +29,16 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
   query.scope = scope;
   query.candidate_factor = state.config.match_candidates;
 
+  if let Some(datasets) = body.params.include_datasets {
+    query.include_dataset = datasets;
+  }
+  if let Some(datasets) = body.params.exclude_datasets {
+    query.exclude_dataset = datasets;
+  }
+  if let Some(entity_ids) = body.params.exclude_entity_ids {
+    query.exclude_entity_ids = entity_ids;
+  }
+
   body.queries.iter_mut().for_each(|(_, entity)| {
     entity.precompute();
   });
