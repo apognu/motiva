@@ -1,6 +1,7 @@
 pub(crate) mod builder;
+pub(crate) mod config;
 pub(crate) mod queries;
-pub(crate) mod version;
+pub(crate) mod scoped;
 
 use std::{collections::HashMap, fmt::Debug};
 
@@ -10,16 +11,34 @@ use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-  index::elastic::version::IndexVersion,
+  index::elastic::config::IndexVersion,
+  matching::IndexType,
   model::{Entity, Properties, Schema},
   schemas::SCHEMAS,
 };
+
+const DEFAULT_INDEX_PREFIX: &str = "yente";
+const SCOPED_INDEX_SUFFIX: &str = "motiva-scoped-entities";
 
 /// Main index provider using Elasticsearch
 #[derive(Clone)]
 pub struct ElasticsearchProvider {
   pub es: Elasticsearch,
   pub(crate) index_version: IndexVersion,
+  pub(crate) index_prefix: String,
+  pub(crate) main_index: String,
+  pub(crate) scoped_index: Option<String>,
+}
+
+impl ElasticsearchProvider {
+  #[inline]
+  pub fn index_name(&self, kind: IndexType) -> &str {
+    match (kind, &self.scoped_index) {
+      (IndexType::Main, _) => &self.main_index,
+      (IndexType::Scoped, None) => &self.main_index,
+      (IndexType::Scoped, Some(scoped_index)) => scoped_index,
+    }
+  }
 }
 
 #[derive(Deserialize)]
@@ -130,8 +149,12 @@ pub(crate) struct EsEntitySource {
 mod tests {
   use std::collections::HashMap;
 
+  use elasticsearch::Elasticsearch;
+
   use crate::{
-    index::elastic::{EsEntity, EsEntitySource},
+    ElasticsearchProvider,
+    index::elastic::{EsEntity, EsEntitySource, config::IndexVersion},
+    matching::IndexType,
     model::{Entity, HasProperties, Schema},
   };
 
@@ -155,6 +178,25 @@ mod tests {
         },
       },
     }
+  }
+
+  #[test]
+  fn build_index_name() {
+    let mut p = ElasticsearchProvider {
+      es: Elasticsearch::default(),
+      index_version: IndexVersion::V5,
+      index_prefix: "myprefix".to_string(),
+      main_index: "myprefix-entities".to_string(),
+      scoped_index: None,
+    };
+
+    assert_eq!(p.index_name(IndexType::Main), "myprefix-entities");
+    assert_eq!(p.index_name(IndexType::Scoped), "myprefix-entities");
+
+    p.scoped_index = Some("myprefix-motiva-scoped-entities".to_string());
+
+    assert_eq!(p.index_name(IndexType::Main), "myprefix-entities");
+    assert_eq!(p.index_name(IndexType::Scoped), "myprefix-motiva-scoped-entities");
   }
 
   #[test]

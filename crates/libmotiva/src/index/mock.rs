@@ -7,7 +7,7 @@ use tokio::sync::RwLock;
 use crate::{
   Catalog,
   error::MotivaError,
-  index::{EntityHandle, IndexProvider, elastic::version::IndexVersion},
+  index::{EntityHandle, IndexProvider, elastic::config::IndexVersion},
   matching::MatchParams,
   model::{Entity, SearchEntity},
 };

@@ -1,10 +1,11 @@
 mod api;
+mod oneoff;
 mod trace;
 
 #[cfg(test)]
 mod tests;
 
-use libmotiva::{ElasticsearchProvider, HttpCatalogFetcher, IndexProvider};
+use libmotiva::{ElasticsearchProvider, EsOptions, HttpCatalogFetcher, IndexProvider};
 use rustls::crypto::aws_lc_rs;
 use tokio::signal;
 
@@ -18,7 +19,26 @@ async fn main() -> anyhow::Result<()> {
   aws_lc_rs::default_provider().install_default().expect("could not install default cryptography provider");
 
   let config = Config::from_env().await?;
-  let provider = ElasticsearchProvider::new(&config.index_url, config.index_auth_method.clone(), &config.index_tls_verification, None).await?;
+
+  let options = EsOptions {
+    auth: config.index_auth_method.clone(),
+    tls: &config.index_tls_verification,
+    index_name: config.index_name.clone(),
+    ..Default::default()
+  };
+
+  let provider = ElasticsearchProvider::new(&config.index_url, options).await?;
+
+  if let Some(cmd) = std::env::args().nth(1) {
+    let _guards = trace::init_tracing(&config, std::io::stdout()).await;
+
+    match cmd.as_str() {
+      "create-scoped-index" => oneoff::create_scoped_index(&provider).await?,
+      _ => anyhow::bail!("unsupported command `{cmd}`"),
+    }
+
+    return Ok(());
+  }
 
   run(config, provider).await
 }

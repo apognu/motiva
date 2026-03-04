@@ -35,7 +35,7 @@ pub mod prelude {
   pub use crate::error::MotivaError;
   pub use crate::index::{
     EntityHandle, IndexProvider,
-    elastic::{ElasticsearchProvider, builder::EsAuthMethod, builder::EsTlsVerification},
+    elastic::{ElasticsearchProvider, builder::EsAuthMethod, builder::EsTlsVerification, config::EsOptions, scoped::create_scoped_index},
   };
   pub use crate::matching::{Algorithm, Feature, MatchParams, MatchingAlgorithm, logic_v1::LogicV1, name_based::NameBased, name_qualified::NameQualified};
   pub use crate::model::{Entity, HasProperties, SearchEntity};

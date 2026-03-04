@@ -38,6 +38,7 @@ impl From<MotivaError> for AppError {
   fn from(value: MotivaError) -> Self {
     match value {
       MotivaError::ConfigError(err) => AppError::ConfigError(err),
+      MotivaError::MissingIndex(_) => AppError::ServerError,
       MotivaError::IndexError(err) => AppError::IndexError(err.to_string()),
       MotivaError::InvalidSchema(_) => AppError::BadRequest,
       MotivaError::ResourceNotFound => AppError::ResourceNotFound,

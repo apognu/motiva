@@ -21,6 +21,7 @@ pub struct Config {
   pub index_url: String,
   pub index_auth_method: EsAuthMethod,
   pub index_tls_verification: EsTlsVerification,
+  pub index_name: Option<String>,
 
   // Timeouts
   pub request_timeout: Span,
@@ -53,6 +54,7 @@ impl Config {
       index_url: env::var("INDEX_URL").unwrap_or("http://localhost:9200".into()),
       index_auth_method: env::var("INDEX_AUTH_METHOD").unwrap_or("none".into()).parse::<WrappedEsAuthMethod>()?.0,
       index_tls_verification: parse_index_tls_verification()?,
+      index_name: env::var("INDEX_NAME").ok(),
       enable_prometheus: env::var("ENABLE_PROMETHEUS").unwrap_or_default() == "1",
       enable_tracing: env::var("ENABLE_TRACING").unwrap_or_default() == "1",
       tracing_exporter: env::var("TRACING_EXPORTER").unwrap_or("otlp".into()).parse()?,

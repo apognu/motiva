@@ -137,6 +137,20 @@ pub struct MatchParams {
   /// List of schema to exclude from the search.
   #[serde(default)]
   pub exclude_schema: Vec<String>,
+
+  // Motiva-specific params
+  #[serde(default)]
+  pub index_type: IndexType,
+}
+
+/// Variant of the index to use.
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Default, Deserialize)]
+pub enum IndexType {
+  #[default]
+  #[serde(rename = "main")]
+  Main,
+  #[serde(rename = "scoped")]
+  Scoped,
 }
 
 impl MatchParams {
@@ -153,6 +167,7 @@ impl MatchParams {
 #[cfg(test)]
 mod testing {
   use crate::Algorithm;
+  use crate::matching::{IndexType, MatchParams};
 
   #[test]
   fn default_algorithm() {
@@ -166,5 +181,24 @@ mod testing {
     for (alg, name) in [(NameBased, "name-based"), (NameQualified, "name-qualified"), (LogicV1, "logic-v1"), (Best, "best")] {
       assert_eq!(alg.name(), name);
     }
+  }
+
+  #[test]
+  fn index_type_deserialize() {
+    assert_eq!(serde_json::from_str::<IndexType>(r#""main""#).unwrap(), IndexType::Main);
+    assert_eq!(serde_json::from_str::<IndexType>(r#""scoped""#).unwrap(), IndexType::Scoped);
+    assert!(serde_json::from_str::<IndexType>(r#""unknown""#).is_err());
+  }
+
+  #[test]
+  fn match_params_index_type_defaults_to_main() {
+    let params: MatchParams = serde_json::from_str("{}").unwrap();
+    assert_eq!(params.index_type, IndexType::Main);
+  }
+
+  #[test]
+  fn match_params_index_type_parses_scoped() {
+    let params: MatchParams = serde_json::from_str(r#"{"index_type":"scoped"}"#).unwrap();
+    assert_eq!(params.index_type, IndexType::Scoped);
   }
 }

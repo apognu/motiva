@@ -10,7 +10,7 @@ use crate::{
   catalog::{Catalog, get_merged_catalog},
   error::MotivaError,
   fetcher::CatalogFetcher,
-  index::{EntityHandle, IndexProvider, elastic::version::IndexVersion},
+  index::{EntityHandle, IndexProvider, elastic::config::IndexVersion},
   matching::MatchParams,
   model::{Entity, SearchEntity},
   nested::fetch_nested_entities,
@@ -88,10 +88,10 @@ impl<P: IndexProvider> Motiva<P> {
   pub async fn _new(#[builder(start_fn)] provider: P, #[builder(default)] config: MotivaConfig) -> Result<Motiva<P, HttpCatalogFetcher>, MotivaError> {
     crate::init();
 
+    provider.after_init();
+
     let fetcher = HttpCatalogFetcher::default();
     let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
-
-    tracing::info!(version = ?provider.index_version(), "detected yente version used from index");
 
     Ok(Motiva {
       config,
@@ -105,9 +105,9 @@ impl<P: IndexProvider> Motiva<P> {
   pub async fn custom<F: CatalogFetcher>(#[builder(start_fn)] provider: P, fetcher: F, #[builder(default)] config: MotivaConfig) -> Result<Motiva<P, F>, MotivaError> {
     crate::init();
 
-    let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
+    provider.after_init();
 
-    tracing::info!(version = ?provider.index_version(), "detected yente version used from index");
+    let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
 
     Ok(Motiva {
       config,

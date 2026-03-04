@@ -9,13 +9,15 @@ use tokio::sync::RwLock;
 use crate::{
   Catalog,
   error::MotivaError,
-  index::elastic::version::IndexVersion,
+  index::elastic::config::IndexVersion,
   matching::MatchParams,
   model::{Entity, SearchEntity},
 };
 
 #[allow(async_fn_in_trait)]
 pub trait IndexProvider: Clone + Send + Sync + 'static {
+  fn after_init(&self) {}
+
   fn index_version(&self) -> IndexVersion;
   fn health(&self) -> impl Future<Output = Result<bool, MotivaError>> + Send;
   fn get_entity(&self, id: &str) -> impl Future<Output = Result<EntityHandle, MotivaError>> + Send;
