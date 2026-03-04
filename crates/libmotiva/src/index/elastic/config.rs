@@ -2,9 +2,18 @@ use std::fmt::Display;
 
 use ahash::HashMap;
 use elasticsearch::indices::IndicesGetMappingParts;
+use reqwest::StatusCode;
 use serde::Deserialize;
 
-use crate::{ElasticsearchProvider, MotivaError};
+use crate::{ElasticsearchProvider, EsAuthMethod, EsTlsVerification, MotivaError};
+
+#[derive(Default)]
+pub struct EsOptions<'o> {
+  pub auth: EsAuthMethod,
+  pub tls: &'o EsTlsVerification,
+  pub index_version: Option<IndexVersion>,
+  pub index_name: Option<String>,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IndexVersion {
@@ -43,7 +52,13 @@ pub(crate) struct MappingIndexSource {
 
 impl ElasticsearchProvider {
   pub(crate) async fn detect_index_version(&self) -> Result<IndexVersion, MotivaError> {
-    let mappings: HashMap<String, MappingIndex> = self.es.indices().get_mapping(IndicesGetMappingParts::Index(&["yente-entities"])).send().await?.json().await?;
+    let mappings = self.es.indices().get_mapping(IndicesGetMappingParts::Index(&[&self.main_index])).send().await?;
+
+    if mappings.status_code() != StatusCode::OK {
+      Err(MotivaError::MissingIndex(self.main_index.to_string()))?
+    }
+
+    let mappings: HashMap<String, MappingIndex> = mappings.json().await?;
 
     for (_, index) in mappings {
       if index.mappings.source.excludes.contains(&"name_symbols".to_string()) {

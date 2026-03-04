@@ -21,7 +21,7 @@ use crate::{
   error::MotivaError,
   index::{
     EntityHandle, IndexProvider,
-    elastic::{EsEntity, EsErrorResponse, EsHealth, EsResponse, version::IndexVersion},
+    elastic::{EsEntity, EsErrorResponse, EsHealth, EsResponse, config::IndexVersion},
   },
   matching::{MatchParams, extractors},
   model::{Entity, ResolveSchemaLevel, SearchEntity},
@@ -31,6 +31,10 @@ use crate::{
 };
 
 impl IndexProvider for ElasticsearchProvider {
+  fn after_init(&self) {
+    tracing::info!(version = ?self.index_version, scoped_index = self.scoped_index, main_index = self.main_index, "detected yente version and index name");
+  }
+
   fn index_version(&self) -> IndexVersion {
     self.index_version
   }
@@ -43,7 +47,7 @@ impl IndexProvider for ElasticsearchProvider {
     let Ok(health) = self
       .es
       .cluster()
-      .health(ClusterHealthParts::Index(&["yente-entities"]))
+      .health(ClusterHealthParts::Index(&[&self.main_index]))
       .send()
       .await
       .context("could not get cluster health")
@@ -70,7 +74,7 @@ impl IndexProvider for ElasticsearchProvider {
 
     let response = self
       .es
-      .search(SearchParts::Index(&["yente-entities"]))
+      .search(SearchParts::Index(&[self.index_name(params.index_type)]))
       .from(0)
       .size(params.candidate_limit() as i64)
       .search_type(SearchType::DfsQueryThenFetch)
@@ -126,7 +130,7 @@ impl IndexProvider for ElasticsearchProvider {
       ]
     });
 
-    let response = self.es.search(SearchParts::Index(&["yente-entities"])).from(0).size(1).body(query).send().await?;
+    let response = self.es.search(SearchParts::Index(&[&self.main_index])).from(0).size(1).body(query).send().await?;
 
     if response.status_code() != StatusCode::OK {
       let body: EsErrorResponse = response.json().await?;
@@ -178,7 +182,7 @@ impl IndexProvider for ElasticsearchProvider {
       }
     });
 
-    let response = self.es.search(SearchParts::Index(&["yente-entities"])).from(0).size(RELATED_ENTITIES_LIMIT).body(query).send().await?;
+    let response = self.es.search(SearchParts::Index(&[&self.main_index])).from(0).size(RELATED_ENTITIES_LIMIT).body(query).send().await?;
 
     if response.status_code() != StatusCode::OK {
       let body: EsErrorResponse = response.json().await?;
@@ -207,7 +211,7 @@ impl IndexProvider for ElasticsearchProvider {
   }
 
   async fn list_indices(&self) -> Result<Vec<(String, String)>, MotivaError> {
-    let indices: HashMap<String, serde_json::Value> = self.es.indices().get_alias(IndicesGetAliasParts::Name(&["yente-entities"])).send().await?.json().await?;
+    let indices: HashMap<String, serde_json::Value> = self.es.indices().get_alias(IndicesGetAliasParts::Name(&[&self.main_index])).send().await?.json().await?;
 
     Ok(parse_index_dataset_versions(indices))
   }
@@ -473,7 +477,7 @@ mod tests {
   use serde_json_assert::{assert_json_contains, assert_json_eq, assert_json_include};
   use tokio::sync::RwLock;
 
-  use crate::{Catalog, catalog::CatalogDataset, index::elastic::version::IndexVersion, model::SearchEntity, prelude::MatchParams};
+  use crate::{Catalog, catalog::CatalogDataset, index::elastic::config::IndexVersion, model::SearchEntity, prelude::MatchParams};
 
   fn fake_catalog() -> Arc<RwLock<Catalog>> {
     Arc::new(RwLock::new({

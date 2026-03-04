@@ -51,26 +51,85 @@ Before v0.5.0, motiva is only compatible with data indexer with Yente v4.x. Star
 
 Motiva is configured via environment variables. The following variables are supported:
 
-| Variable                   | Description                                                                            | Default / Example       |
-| -------------------------- | -------------------------------------------------------------------------------------- | ----------------------- |
-| `ENV`                      | Environment (`dev` or `production`)                                                    | `dev`                   |
-| `LISTEN_ADDR`              | Address to bind the API server                                                         | `0.0.0.0:8000`          |
-| `API_KEY`                  | Bearer token used to authenticate requests                                             | _(none)_                |
-| `INDEX_URL`                | Elasticsearch URL                                                                      | `http://localhost:9200` |
-| `INDEX_AUTH_METHOD`        | Elasticsearch authentication (`none`, `basic`, `bearer`, `api_key`, `encoded_api_key`) | `none`                  |
-| `INDEX_CLIENT_ID`          | Elasticsearch client ID (required for `basic` or `api_key`)                            | _(none)_                |
-| `INDEX_CLIENT_SECRET`      | Elasticsearch client secret (required for `basic`, `api_key` or `encoded_api_key`)     | _(none)_                |
-| `INDEX_TLS_CA_CERT`        | Path to a PEM-encoded certificate chain to use for TLS validation                      | _(none)_                |
-| `INDEX_TLS_SKIP_VERIFY`    | If `1`, do not validate the TLS certificate served by the Elasticsearch cluster        | `0`                     |
-| `MANIFEST_URL`             | Optional URL to a custom manifest JSON file                                            | _(none)_                |
-| `CATALOG_REFRESH_INTERVAL` | Interval at which to pull the manifest and catalogs                                    | _1h_                    |
-| `MATCH_CANDIDATES`         | Number of candidates to consider for matching                                          | `10`                    |
-| `ENABLE_PROMETHEUS`        | Enable Prometheus metrics collection and /metrics endpoint                             | `0`                     |
-| `ENABLE_TRACING`           | Set to `1` to enable tracing                                                           | _(none)_                |
-| `TRACING_EXPORTER`         | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)            | `otlp`                  |
-| `REQUEST_TIMEOUT`          | Maximum duration for a match request                                                   | _10s_                   |
+| Variable                   | Description                                                                            | Default / Example          |
+| -------------------------- | -------------------------------------------------------------------------------------- | -------------------------- |
+| `ENV`                      | Environment (`dev` or `production`)                                                    | `dev`                      |
+| `LISTEN_ADDR`              | Address to bind the API server                                                         | `0.0.0.0:8000`             |
+| `API_KEY`                  | Bearer token used to authenticate requests                                             | _(none)_                   |
+| `INDEX_URL`                | Elasticsearch URL                                                                      | `http://localhost:9200`    |
+| `INDEX_AUTH_METHOD`        | Elasticsearch authentication (`none`, `basic`, `bearer`, `api_key`, `encoded_api_key`) | `none`                     |
+| `INDEX_CLIENT_ID`          | Elasticsearch client ID (required for `basic` or `api_key`)                            | _(none)_                   |
+| `INDEX_CLIENT_SECRET`      | Elasticsearch client secret (required for `basic`, `api_key` or `encoded_api_key`)     | _(none)_                   |
+| `INDEX_TLS_CA_CERT`        | Path to a PEM-encoded certificate chain to use for TLS validation                      | _(none)_                   |
+| `INDEX_TLS_SKIP_VERIFY`    | If `1`, do not validate the TLS certificate served by the Elasticsearch cluster        | `0`                        |
+| `INDEX_NAME`               | Index prefix under which data was indexed (suffixed by `-entities`)                    | `yente`                    |
+| `MANIFEST_URL`             | Optional URL to a custom manifest JSON file                                            | _(none)_                   |
+| `CATALOG_REFRESH_INTERVAL` | Interval at which to pull the manifest and catalogs                                    | _1h_                       |
+| `MATCH_CANDIDATES`         | Number of candidates to consider for matching                                          | `10`                       |
+| `ENABLE_PROMETHEUS`        | Enable Prometheus metrics collection and /metrics endpoint                             | `0`                        |
+| `ENABLE_TRACING`           | Set to `1` to enable tracing                                                           | _(none)_                   |
+| `TRACING_EXPORTER`         | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)            | `otlp`                     |
+| `REQUEST_TIMEOUT`          | Maximum duration for a match request                                                   | _10s_                      |
+| `SCOPED_INDEX_QUERY`       | Query used to scope down the index used for match queries                              | [see here](#scoped-index) |
 
 Setting `MANIFEST_FILE` is required if you use a customized dataset list and would like your own manifest to be used for catalog generation. If omitted, the default manifest provided by Yente will be used. It requires either an HTTP URL or a local file path ending in `.json`, `.yml` or `.yaml`.
+
+## Motiva-specific features
+
+### Query options passed in body
+
+Some unbounded-in-size query parameters can be passed in the request body instead of through the URL query. This prevents, for some of them taking in unbounded lists, to overflow the maximum length of URLs. Namely, you can now pass the following parameters in the body:
+
+ * `include_dataset`
+ * `exclude_dataset`
+ * `exclude_entity_ids`
+
+The match endpoint body now takes a `params` object at its root:
+ 
+```json
+{
+  "queries": [...],
+  "params": {
+    "include_datasets": [...],
+    "exclude_datasets": [...],
+    "exclude_entity_ids": [...]
+  }
+}
+```
+
+### Scoped index
+
+Motiva supports generating and using a trimmed down index for match queries, while keeping the full index for entity relation queries. This could allow improving performance of match queries if you are only interested in a subset of it, while keeping the full datasets for queries that are less time-sensitive.
+
+For example, you could have a search index that only contains `Person`'s that have `sanction` in their `topics`, while keeping the full index to retrieve details of an entity, enriched with all its relations. Depending on the query you use for the scoped index, you could see a great reduction in latency and resource consumption.
+
+Motiva can be run with the `create-scoped-index` subcommand, which will take care of creating the scoped index and its aliases. Once it is done, restarting motiva will make it effective.
+
+```bash
+$ motiva create-scoped-index
+2026-03-05T16:56:14.439865Z  INFO libmotiva::index::elastic::scoped: found previous scoped index index="motiva-w4xgo6jh"
+2026-03-05T16:56:14.546981Z  INFO libmotiva::index::elastic::scoped: created new index, starting reindexing data index="motiva-9xtyeclx"
+2026-03-05T16:56:24.030717Z  INFO libmotiva::index::elastic::scoped: reindexed data index="motiva-9xtyeclx"
+2026-03-05T16:56:24.041981Z  INFO libmotiva::index::elastic::scoped: atomically swapped index from="motiva-w4xgo6jh" to="motiva-9xtyeclx"
+2026-03-05T16:56:24.071765Z  INFO libmotiva::index::elastic::scoped: deleted old index index="motiva-w4xgo6jh"
+```
+
+The default scoped query is listed below, but can be customized through `SCOPED_INDEX_QUERY`.
+
+```json
+{
+  "bool": {
+    "must": [
+      { "terms": { "schema": [ "Person", "LegalEntity", "Organization", "Company", "Airplane", "Vessel" ] } },
+      { "term": { "topics": "sanction" } }
+    ]
+  }
+}
+```
+
+The scoped index is not kept automatically in sync with the full index, you would need to run `motiva create-scoped-index` again when you need to update it. We suggest running it after your regular indexing operations.
+
+Once your scoped index is created, you can perform a `/match` request with the Motiva-specific `?index_type=scoped` parameters for the new index to be used.
 
 ## Run
 
