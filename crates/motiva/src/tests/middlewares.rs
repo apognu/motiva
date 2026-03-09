@@ -29,7 +29,7 @@ async fn api_invalid_credentials() {
   };
 
   let app = api::router(state);
-  let server = TestServer::new(app).unwrap();
+  let server = TestServer::new(app);
   let response = server.post("/match/default").await;
 
   assert_eq!(response.status_code(), 401);
@@ -57,7 +57,7 @@ async fn api_valid_credentials() {
   };
 
   let app = api::router(state);
-  let server = TestServer::new(app).unwrap();
+  let server = TestServer::new(app);
   let response = server.post("/match/default").add_header(AUTHORIZATION, "Bearer myapikey").await;
 
   assert_eq!(response.status_code(), 415);
@@ -127,7 +127,7 @@ rusty_fork_test! {
             let _guards = init_tracing(&state.config, writer).await;
 
             let app = api::router(state);
-            let server = TestServer::new(app).unwrap();
+            let server = TestServer::new(app);
             let _ = server.post("/match/default").add_header("traceparent", "01-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01").await;
 
             wait.recv().unwrap();
@@ -135,7 +135,7 @@ rusty_fork_test! {
             let lines = buf.lock().unwrap().clone();
 
             assert_eq!(lines.len(), 1);
-            assert!(lines[0].contains("POST http://localhost/match/default"));
+            assert!(lines[0].contains("POST /match/default"));
             assert!(lines[0].contains("request_id="));
             assert!(lines[0].contains("trace_id=0af7651916cd43dd8448eb211c80319c"));
             assert!(lines[0].contains(r#"remote="-" method=POST path="/match/default" status=415"#));
@@ -159,7 +159,7 @@ rusty_fork_test! {
             };
 
             let app = api::router(state);
-            let server = TestServer::new(app).unwrap();
+            let server = TestServer::new(app);
             let _ = server.post("/match/default").await;
             let resp = server.get("/metrics").await;
 
