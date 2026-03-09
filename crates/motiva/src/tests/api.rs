@@ -15,7 +15,7 @@ use libmotiva::TestFetcher;
 #[tokio::test]
 async fn api_not_found() {
   let app = Router::new().fallback(handlers::not_found);
-  let server = TestServer::new(app).unwrap();
+  let server = TestServer::new(app);
   let response = server.get("/nope").await;
 
   assert_eq!(response.status_code(), 404);
@@ -32,7 +32,7 @@ async fn api_not_version() {
   };
 
   let app = Router::new().route("/-/version", get(handlers::version)).with_state(state);
-  let server = TestServer::new(app).unwrap();
+  let server = TestServer::new(app);
   let response = server.get("/-/version").await;
 
   assert_eq!(response.status_code(), 200);
@@ -40,7 +40,7 @@ async fn api_not_version() {
   response.assert_json_contains(&json!({
       "motiva": env!("VERSION"),
       "index": "v4",
-  }))
+  }));
 }
 
 #[tokio::test]
@@ -54,7 +54,7 @@ async fn api_health_unhealthy() {
   };
 
   let app = Router::new().route("/readyz", post(handlers::readyz)).with_state(state);
-  let server = TestServer::new(app).unwrap();
+  let server = TestServer::new(app);
   let response = server.post("/readyz").await;
 
   assert_eq!(response.status_code(), 503);
@@ -71,7 +71,7 @@ async fn api_health_healthy() {
   };
 
   let app = Router::new().route("/readyz", post(handlers::readyz)).with_state(state);
-  let server = TestServer::new(app).unwrap();
+  let server = TestServer::new(app);
   let response = server.post("/readyz").await;
 
   assert_eq!(response.status_code(), 200);
@@ -88,7 +88,7 @@ async fn api_algorithms() {
   };
 
   let app = Router::new().route("/algorithms", post(handlers::algorithms)).with_state(state);
-  let server = TestServer::new(app).unwrap();
+  let server = TestServer::new(app);
   let response = server.post("/algorithms").await;
 
   assert_eq!(response.status_code(), 200);
@@ -101,7 +101,7 @@ async fn api_algorithms() {
       ],
       "best": "logic-v1",
       "default": "logic-v1"
-  }))
+  }));
 }
 
 #[tokio::test]
@@ -120,7 +120,7 @@ async fn api_match() {
   };
 
   let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
-  let server = TestServer::new(app).unwrap();
+  let server = TestServer::new(app);
 
   let response = server
     .post("/match/default?cutoff=0.0")
@@ -173,7 +173,7 @@ async fn api_invalid_query() {
   };
 
   let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
-  let server = TestServer::new(app).unwrap();
+  let server = TestServer::new(app);
   let response = server.post("/match/default?changed_since=invalid").await;
 
   assert_eq!(response.status_code(), 400);
@@ -192,7 +192,7 @@ async fn api_unparsable_payload() {
   };
 
   let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
-  let server = TestServer::new(app).unwrap();
+  let server = TestServer::new(app);
 
   let payloads = &[r#"{ "queries": { "test": { "schema": } } }"#, r#"{ "queries": { "test": { "schema": 12 } } }"#];
 
@@ -218,7 +218,7 @@ async fn api_invalid_payload() {
   };
 
   let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
-  let server = TestServer::new(app).unwrap();
+  let server = TestServer::new(app);
 
   let response = server
     .post("/match/default")
