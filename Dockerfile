@@ -25,6 +25,7 @@ RUN cargo chef cook --release ${CARGO_ARGS} --recipe-path recipe.json
 
 COPY . /app/
 
+RUN apt update && apt install -y git
 RUN cargo build --release --bin motiva ${CARGO_ARGS}
 
 FROM gcr.io/distroless/cc:latest
