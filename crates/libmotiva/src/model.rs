@@ -1,11 +1,13 @@
 use std::{
   borrow::Cow,
   collections::{HashMap, HashSet},
+  str::FromStr,
   sync::{Arc, Mutex},
 };
 
 use ahash::RandomState;
 use bon::bon;
+use celes::Country;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use validator::Validate;
@@ -101,7 +103,7 @@ impl Schema {
       .matchable_chain
       .iter()
       .filter_map(|s| SCHEMAS.get(s).map(|schema| schema.properties.clone().into_iter().find(|(n, _)| n == name)))
-      .next()?
+      .find(Option::is_some)?
   }
 }
 
@@ -126,6 +128,21 @@ impl SearchEntity {
     self.clean_names = extractors::clean_names(self.prop_group("name").iter()).collect();
     self.name_parts = extractors::name_parts(self.prop_group("name").iter()).collect();
     self.name_parts_flat = extractors::name_parts_flat(self.prop_group("name").iter()).collect();
+
+    for (prop, values) in &mut self.properties {
+      let Some((_, p)) = self.schema.property(prop) else { continue };
+
+      if p._type == "country" {
+        *values = values
+          .iter()
+          .filter_map(|value| {
+            let normalized = unaccent::unaccent(value).chars().filter(|c| c.is_alphabetic()).collect::<String>();
+
+            Country::from_str(&normalized).ok().map(|c| c.alpha2.to_lowercase())
+          })
+          .collect();
+      }
+    }
   }
 }
 
@@ -399,10 +416,10 @@ mod tests {
         ("idNumber", &["ID"]),
         ("passportNumber", &["PN"]),
         ("socialSecurityNumber", &["SSN"]),
-        ("country", &["COUNTRY"]),
-        ("jurisdiction", &["JURIS"]),
-        ("nationality", &["NAT"]),
-        ("citizenship", &["CIT"]),
+        ("country", &["fr"]),
+        ("jurisdiction", &["gb"]),
+        ("nationality", &["ru"]),
+        ("citizenship", &["ci"]),
       ])
       .build();
 
@@ -413,10 +430,10 @@ mod tests {
     assert!(identifiers.as_ref().iter().any(|p| p == "ID"));
     assert!(identifiers.as_ref().iter().any(|p| p == "PN"));
     assert!(identifiers.as_ref().iter().any(|p| p == "SSN"));
-    assert!(countries.as_ref().iter().any(|p| p == "COUNTRY"));
-    assert!(countries.as_ref().iter().any(|p| p == "JURIS"));
-    assert!(countries.as_ref().iter().any(|p| p == "NAT"));
-    assert!(countries.as_ref().iter().any(|p| p == "CIT"));
+    assert!(countries.as_ref().iter().any(|p| p == "fr"));
+    assert!(countries.as_ref().iter().any(|p| p == "gb"));
+    assert!(countries.as_ref().iter().any(|p| p == "ru"));
+    assert!(countries.as_ref().iter().any(|p| p == "ci"));
   }
   #[test]
   fn precompute() {
@@ -428,6 +445,20 @@ mod tests {
       std::collections::HashSet::from_iter(["vladimir", "putin", "barack", "obama", "baraku", "obama"].into_iter().map(String::from))
     );
     assert_eq!(se.clean_names, ["vladimir putin", "barack obama", "baraku obama"]);
+  }
+
+  #[test]
+  fn precompute_countries() {
+    let mut se = SearchEntity::builder("Person")
+      .properties(&[("citizenship", &["Whatever", "The Russian Federation", "fr", "GB", "RUS"])])
+      .build();
+
+    se.precompute();
+
+    assert_eq!(
+      HashSet::from_iter(se.properties.get("citizenship").unwrap().into_iter().cloned()),
+      HashSet::from_iter(["ru", "fr", "gb"].into_iter().map(str::to_string)),
+    );
   }
 
   #[test]

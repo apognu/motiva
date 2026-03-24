@@ -430,25 +430,40 @@ fn build_shoulds(index_version: IndexVersion, entity: &SearchEntity) -> anyhow::
       continue;
     }
 
-    let lhs = match prop._type.as_str() {
-      "address" => "addresses",
-      "date" => "dates",
-      "country" => "countries",
-      "identifier" => "identifiers",
-      "phone" => "phones",
-      "email" => "emails",
-      "language" => "languages",
-      "gender" => "genders",
-      "iban" => "ibans",
-      "ip" => "ips",
-      "url" => "urls",
+    enum MatchOperator {
+      Term,
+      Match,
+    }
+
+    use MatchOperator::*;
+
+    let (op, lhs) = match prop._type.as_str() {
+      "address" => (Match, "addresses"),
+      "country" => (Term, "countries"),
+      "date" => (Term, "dates"),
+      "identifier" => (Term, "identifiers"),
+      "url" => (Term, "urls"),
       _ => continue,
     };
 
     for value in values {
-      should.push(json!({
-          "match": { lhs: value }
-      }));
+      match op {
+        Match => {
+          should.push(json!({
+            "match": { lhs: value }
+          }));
+        }
+        Term => {
+          should.push(json!({
+            "term": {
+                lhs: {
+                    "value": value,
+                    "boost": 1.0
+                }
+            }
+          }));
+        }
+      }
     }
   }
 
@@ -607,9 +622,9 @@ mod tests {
         contained: json!([{ "term": { "name_phonetic": { "boost": 0.8, "value": "PTN" } } }]),
     );
 
-    assert_json_contains!(container: shoulds, contained: json!([{ "match": { "dates": "01-01-1010" } }]));
-    assert_json_contains!(container: shoulds, contained: json!([{ "match": { "countries": "ru" } }]));
-    assert_json_contains!(container: shoulds, contained: json!([{ "match": { "identifiers": "1234" } }]));
+    assert_json_contains!(container: shoulds, contained: json!([{ "term": { "dates": { "value": "01-01-1010", "boost": 1.0 } } }]));
+    assert_json_contains!(container: shoulds, contained: json!([{ "term": { "countries": { "value": "ru", "boost": 1.0 } } }]));
+    assert_json_contains!(container: shoulds, contained: json!([{ "term": { "identifiers": { "value": "1234", "boost": 1.0 } } }]));
   }
 
   #[test]
@@ -683,9 +698,9 @@ mod tests {
         }])
     );
 
-    assert_json_contains!(container: shoulds, contained: json!([{ "match": { "dates": "01-01-1010" } }]));
-    assert_json_contains!(container: shoulds, contained: json!([{ "match": { "countries": "ru" } }]));
-    assert_json_contains!(container: shoulds, contained: json!([{ "match": { "identifiers": "1234" } }]));
+    assert_json_contains!(container: shoulds, contained: json!([{ "term": { "dates": { "value": "01-01-1010", "boost": 1.0 } } }]));
+    assert_json_contains!(container: shoulds, contained: json!([{ "term": { "countries": { "value": "ru", "boost": 1.0 } } }]));
+    assert_json_contains!(container: shoulds, contained: json!([{ "term": { "identifiers": { "value": "1234", "boost": 1.0 } } }]));
   }
 
   #[test]
