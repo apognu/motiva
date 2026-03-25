@@ -43,9 +43,14 @@ async fn main() -> anyhow::Result<()> {
   run(config, provider).await
 }
 
-async fn run<P: IndexProvider>(config: Config, provider: P) -> anyhow::Result<()> {
+async fn run<P: IndexProvider>(mut config: Config, provider: P) -> anyhow::Result<()> {
   let _guards = trace::init_tracing(&config, std::io::stdout()).await;
-  let listener = tokio::net::TcpListener::bind(&config.listen_addr).await.expect("could not create listener");
+
+  let listener = match config.listener {
+    Some(_) => config.listener.take().unwrap(),
+    None => tokio::net::TcpListener::bind(&config.listen_addr).await.expect("could not create listener"),
+  };
+
   let manifest_url = config.manifest_url.clone();
   let app = api::routes(config, HttpCatalogFetcher::from_manifest_url(manifest_url)?, provider).await?;
 

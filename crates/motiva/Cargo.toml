@@ -67,6 +67,9 @@ rustls = "^0.23"
 
 [dev-dependencies]
 axum-test = "19.1.1"
+glob = "0.3.3"
+hurl = "7.1.0"
+hurl_core = "7.1.0"
 nix = { version = "0.31.2", features = ["signal"] }
 rusty-fork = "0.3.1"
 serde-json-assert = "0.4.0"

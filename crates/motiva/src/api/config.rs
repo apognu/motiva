@@ -8,6 +8,7 @@ use std::{
 use anyhow::Context;
 use jiff::Span;
 use libmotiva::{EsTlsVerification, prelude::EsAuthMethod};
+use tokio::net::TcpListener;
 
 use crate::api::errors::AppError;
 
@@ -15,6 +16,7 @@ use crate::api::errors::AppError;
 pub struct Config {
   pub env: Env,
   pub listen_addr: String,
+  pub listener: Option<TcpListener>,
   pub api_key: Option<String>,
 
   // Elasticsearch
@@ -45,6 +47,7 @@ impl Config {
     let config = Config {
       env: Env::from(env::var("ENV").unwrap_or("dev".into())),
       listen_addr: env::var("LISTEN_ADDR").unwrap_or("0.0.0.0:8000".into()),
+      listener: None,
       api_key: env::var("API_KEY").ok(),
       match_candidates: parse_env("MATCH_CANDIDATES", 10)?,
       manifest_url: env::var("MANIFEST_URL").ok(),
