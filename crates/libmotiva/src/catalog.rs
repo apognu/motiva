@@ -209,7 +209,7 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
           }
         }
 
-        catalog.datasets.extend(upstream.datasets.into_iter());
+        catalog.datasets.extend(upstream.datasets);
       }
 
       Err(err) => {
