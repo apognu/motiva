@@ -57,7 +57,7 @@ ahash = { version = "0.8.12", features = ["serde"] }
 opentelemetry-http = "0.31.0"
 serde-inline-default = "1.0.0"
 mimalloc = { version = "0.1.48", features = ["v3"] }
-opentelemetry-gcloud-trace = { version = "0.22.0", optional = true }
+opentelemetry-gcloud-trace = { version = "0.23.0", optional = true }
 gcp_auth = { version = "0.12.3", features = ["aws-lc-rs"], optional = true }
 metrics = "0.24.2"
 metrics-exporter-prometheus = { version = "0.18.1", default-features = false, features = ["http-listener"] }
@@ -67,7 +67,7 @@ rustls = "^0.23"
 shadow-rs = "1.7.1"
 
 [dev-dependencies]
-axum-test = "19.1.1"
+axum-test = "20.0.0"
 glob = "0.3.3"
 hurl = "7.1.0"
 hurl_core = "7.1.0"

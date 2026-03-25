@@ -187,7 +187,7 @@ fn add_org_territories(mapping: &mut HashMap<String, Vec<Symbol>>) {
   for item in dictionary {
     let symbol = Symbol::new(SymbolCategory::Location, item.code);
 
-    for name in item.names_strong.into_iter().chain([item.full_name, item.name].into_iter()) {
+    for name in item.names_strong.into_iter().chain([item.full_name, item.name]) {
       let normalized = tokenize_names([name].iter()).next().unwrap().join("");
 
       mapping.entry(normalized).or_default().push(symbol.clone());

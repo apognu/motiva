@@ -2,10 +2,11 @@ ARG BASE=native
 
 # Distroless image if not building native dependencies
 FROM lukemathwalker/cargo-chef:latest-rust-1.93.0-slim-bookworm AS base-native
+RUN apt update && apt install -y pkg-config libssl-dev
 
 # Install build environment, header files and libraries if building libicu
 FROM lukemathwalker/cargo-chef:latest-rust-1.93.0-slim-bookworm AS base-icu
-RUN apt update && apt install -y pkg-config libclang-dev libicu72 libicu-dev
+RUN apt update && apt install -y pkg-config libssl-dev libclang-dev libicu72 libicu-dev
 
 FROM base-${BASE} AS planner
 
