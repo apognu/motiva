@@ -8,6 +8,7 @@ use std::{
 use ahash::RandomState;
 use bon::bon;
 use celes::Country;
+use itertools::Itertools;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use validator::Validate;
@@ -19,9 +20,14 @@ use crate::{
 
 const EMPTY: [String; 0] = [];
 
+pub enum PropertyFilter {
+  All,
+  Matchable,
+}
+
 pub trait HasProperties {
   fn props(&self, keys: &[&str]) -> Cow<'_, [String]>;
-  fn prop_group(&self, group: &str) -> Cow<'_, [String]>;
+  fn prop_group(&self, group: &str, filter: PropertyFilter) -> Cow<'_, [String]>;
 }
 
 #[derive(Eq, PartialEq)]
@@ -125,9 +131,11 @@ pub struct SearchEntity {
 
 impl SearchEntity {
   pub fn precompute(&mut self) {
-    self.clean_names = extractors::clean_names(self.prop_group("name").iter()).collect();
-    self.name_parts = extractors::name_parts(self.prop_group("name").iter()).collect();
-    self.name_parts_flat = extractors::name_parts_flat(self.prop_group("name").iter()).collect();
+    self.clean_names = extractors::clean_names(self.prop_group("name", PropertyFilter::All).iter()).collect();
+    self.name_parts = extractors::name_parts(self.prop_group("name", PropertyFilter::All).iter()).collect();
+    self.name_parts_flat = extractors::name_parts_flat(self.prop_group("name", PropertyFilter::All).iter()).collect();
+
+    self.combine_names();
 
     for (prop, values) in &mut self.properties {
       let Some((_, p)) = self.schema.property(prop) else { continue };
@@ -143,6 +151,39 @@ impl SearchEntity {
           .collect();
       }
     }
+  }
+
+  pub fn combine_names(&mut self) {
+    let aliases = {
+      let firstnames = self.props(&["firstName"]);
+      let secondnames = self.props(&["secondName"]);
+      let middlenames = self.props(&["middleName"]);
+      let fathernames = self.props(&["fatherName"]);
+      let mothernames = self.props(&["motherName"]);
+      let lastnames = self.props(&["lastName"]);
+
+      let combined = [
+        firstnames.as_ref(),
+        secondnames.as_ref(),
+        middlenames.as_ref(),
+        fathernames.as_ref(),
+        mothernames.as_ref(),
+        lastnames.as_ref(),
+      ]
+      .into_iter()
+      .filter(|iter| !iter.is_empty())
+      .multi_cartesian_product()
+      .map(|names| names.iter().join(" "));
+      let mut names = Vec::new();
+
+      for name in combined {
+        names.push(name);
+      }
+
+      names
+    };
+
+    self.properties.entry("alias".into()).or_default().extend(aliases);
   }
 }
 
@@ -171,12 +212,16 @@ impl HasProperties for SearchEntity {
     }
   }
 
-  fn prop_group(&self, group: &str) -> Cow<'_, [String]> {
+  // TODO: filter matchable only?
+  fn prop_group(&self, group: &str, filter: PropertyFilter) -> Cow<'_, [String]> {
     let schemas = resolve_schemas(&SCHEMAS, self.schema.as_str(), false).unwrap_or_default();
     let mut keys = Vec::new();
 
     for (_, schema) in SCHEMAS.iter().filter(|(s, _)| schemas.contains(s)) {
-      for (prop, _) in schema.properties.iter().filter(|(_, p)| p._type == group) {
+      for (prop, _) in schema.properties.iter().filter(|(_, p)| match filter {
+        PropertyFilter::All => p._type == group,
+        PropertyFilter::Matchable => p._type == group && p.matchable,
+      }) {
         keys.push(prop.to_owned());
       }
     }
@@ -312,12 +357,15 @@ impl HasProperties for Entity {
     }
   }
 
-  fn prop_group(&self, group: &str) -> Cow<'_, [String]> {
+  fn prop_group(&self, group: &str, filter: PropertyFilter) -> Cow<'_, [String]> {
     let schemas = resolve_schemas(&SCHEMAS, self.schema.as_str(), false).unwrap_or_default();
     let mut keys = Vec::new();
 
     for (_, schema) in SCHEMAS.iter().filter(|(s, _)| schemas.contains(s)) {
-      for (prop, _) in schema.properties.iter().filter(|(_, p)| p._type == group) {
+      for (prop, _) in schema.properties.iter().filter(|(_, p)| match filter {
+        PropertyFilter::All => p._type == group,
+        PropertyFilter::Matchable => p._type == group && p.matchable,
+      }) {
         keys.push(prop);
       }
     }
@@ -361,7 +409,7 @@ mod tests {
 
   use crate::{
     HasProperties, SearchEntity,
-    model::{Entity, ResolveSchemaLevel, Schema},
+    model::{Entity, PropertyFilter, ResolveSchemaLevel, Schema},
   };
 
   #[test]
@@ -423,8 +471,8 @@ mod tests {
       ])
       .build();
 
-    let identifiers = se.prop_group("identifier");
-    let countries = se.prop_group("country");
+    let identifiers = se.prop_group("identifier", PropertyFilter::All);
+    let countries = se.prop_group("country", PropertyFilter::All);
 
     assert!(identifiers.as_ref().iter().any(|p| p == "VAT"));
     assert!(identifiers.as_ref().iter().any(|p| p == "ID"));
@@ -445,6 +493,16 @@ mod tests {
       std::collections::HashSet::from_iter(["vladimir", "putin", "barack", "obama", "baraku", "obama"].into_iter().map(String::from))
     );
     assert_eq!(se.clean_names, ["vladimir putin", "barack obama", "baraku obama"]);
+  }
+
+  #[test]
+  fn precompute_name_parts_combinations() {
+    let se = SearchEntity::builder("Person")
+      .properties(&[("name", &["Joe Bob"]), ("firstName", &["Vladimir"]), ("lastName", &["Putin"])])
+      .build();
+
+    assert_eq!(se.props(&["name"]).as_ref(), &["Joe Bob"]);
+    assert_eq!(se.props(&["alias"]).as_ref(), &["Vladimir Putin"]);
   }
 
   #[test]

@@ -273,7 +273,7 @@ where
 mod tests {
   use std::collections::HashSet;
 
-  use crate::{HasProperties, SearchEntity};
+  use crate::{HasProperties, SearchEntity, model::PropertyFilter};
 
   #[test]
   fn name_tokenization() {
@@ -355,7 +355,7 @@ mod tests {
     let lhs = SearchEntity::builder("Person")
       .properties(&[("name", &["Vladimir Vladimorovich Putin"]), ("alias", &["Barack Hussein Obama"])])
       .build();
-    let names = super::name_parts_flat(lhs.prop_group("name").iter()).collect::<Vec<_>>();
+    let names = super::name_parts_flat(lhs.prop_group("name", PropertyFilter::All).iter()).collect::<Vec<_>>();
 
     assert_eq!(
       HashSet::<String>::from_iter(names),

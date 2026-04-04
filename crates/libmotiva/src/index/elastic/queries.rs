@@ -17,14 +17,14 @@ use tracing::instrument;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::{
-  Catalog,
+  Catalog, HasProperties,
   error::MotivaError,
   index::{
     EntityHandle, IndexProvider,
     elastic::{EsEntity, EsErrorResponse, EsHealth, EsResponse, config::IndexVersion},
   },
   matching::{MatchParams, extractors},
-  model::{Entity, ResolveSchemaLevel, SearchEntity},
+  model::{Entity, PropertyFilter, ResolveSchemaLevel, SearchEntity},
   prelude::ElasticsearchProvider,
   schemas::SCHEMAS,
   symbols::tagger::{ORG_TAGGER, PERSON_TAGGER},
@@ -326,94 +326,92 @@ fn build_topics(params: &MatchParams, filters: &mut Vec<serde_json::Value>) {
 fn build_shoulds(index_version: IndexVersion, entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>> {
   let mut should = Vec::<serde_json::Value>::new();
 
-  if let Some(names) = entity.properties.get("name") {
-    let names = names.iter().map(|s| s.nfc().collect::<String>()).collect::<Vec<_>>();
+  let names = entity.prop_group("name", PropertyFilter::Matchable).iter().map(|s| s.nfc().collect::<String>()).collect::<Vec<_>>();
 
-    for name in &names {
-      should.push(json!({
-          "match": {
-              "names": {
-                  "query": name,
-                  "operator": "AND",
-                  "boost": 3.0,
-                  "fuzziness": "AUTO",
-              }
-          }
-      }));
-    }
-
-    if index_version == IndexVersion::V4 {
-      for name in extractors::index_name_keys(names.iter()) {
-        add_term(&mut should, "name_keys", &name, 4.0);
-      }
-      for name in extractors::index_name_parts(names.iter()) {
-        add_term(&mut should, "name_parts", &name, 1.0);
-      }
-      for name in extractors::phonetic_name(names.iter()) {
-        add_term(&mut should, "name_phonetic", &name, 0.8);
-      }
-    }
-
-    if index_version == IndexVersion::V5 {
-      for name in &names {
-        let symbols = match entity.schema.as_str() {
-          "Person" => PERSON_TAGGER.tag(name),
-          "LegalEntity" | "Organization" | "Company" | "PublicBody" => ORG_TAGGER.tag(name),
-          _ => vec![(name.to_string(), None)],
-        };
-
-        let name_symbols = symbols.into_iter().into_group_map();
-
-        for (name_part, symbols) in &name_symbols {
-          let mut boost = if symbols.iter().all(Option::is_none) { 1.0f64 } else { 0.0f64 };
-          let mut dis_max: Vec<serde_json::Value> = vec![];
-
-          for symbol in symbols {
-            let Some(symbol) = symbol else {
-              continue;
-            };
-
-            boost = boost.max(symbol.category.boost().unwrap_or_default());
-          }
-          if boost == 0.0 {
-            boost = 1.0;
-          }
-
-          for name in extractors::index_name_parts([name_part.to_owned()].iter()) {
-            add_term(&mut dis_max, "name_parts", &name, boost);
-          }
-          for name in extractors::phonetic_name([name_part.to_owned()].iter()) {
-            add_term(&mut dis_max, "name_phonetic", &name, boost * 0.5);
-          }
-
-          for symbol in HashSet::<_, ahash::RandomState>::from_iter(symbols.iter()) {
-            let Some(symbol) = symbol else {
-              continue;
-            };
-
-            let key = format!("{}:{}", symbol.category, symbol.id);
-
-            dis_max.push(json!({
-                "term": {
-                    "name_symbols": {
-                        "value": key,
-                        "boost": boost * 0.7,
-                    }
-                }
-            }))
-          }
-
-          if dis_max.is_empty() {
-            continue;
-          }
-
-          should.push(json!({
-              "dis_max": {
-                  "queries": dis_max,
-                  "tie_breaker": 0.2,
-              }
-          }));
+  for name in &names {
+    should.push(json!({
+        "match": {
+            "names": {
+                "query": name,
+                "operator": "AND",
+                "boost": 3.0,
+                "fuzziness": "AUTO",
+            }
         }
+    }));
+  }
+
+  if index_version == IndexVersion::V4 {
+    for name in extractors::index_name_keys(names.iter()) {
+      add_term(&mut should, "name_keys", &name, 4.0);
+    }
+    for name in extractors::index_name_parts(names.iter()) {
+      add_term(&mut should, "name_parts", &name, 1.0);
+    }
+    for name in extractors::phonetic_name(names.iter()) {
+      add_term(&mut should, "name_phonetic", &name, 0.8);
+    }
+  }
+
+  if index_version == IndexVersion::V5 {
+    for name in &names {
+      let symbols = match entity.schema.as_str() {
+        "Person" => PERSON_TAGGER.tag(name),
+        "LegalEntity" | "Organization" | "Company" | "PublicBody" => ORG_TAGGER.tag(name),
+        _ => vec![(name.to_string(), None)],
+      };
+
+      let name_symbols = symbols.into_iter().into_group_map();
+
+      for (name_part, symbols) in &name_symbols {
+        let mut boost = if symbols.iter().all(Option::is_none) { 1.0f64 } else { 0.0f64 };
+        let mut dis_max: Vec<serde_json::Value> = vec![];
+
+        for symbol in symbols {
+          let Some(symbol) = symbol else {
+            continue;
+          };
+
+          boost = boost.max(symbol.category.boost().unwrap_or_default());
+        }
+        if boost == 0.0 {
+          boost = 1.0;
+        }
+
+        for name in extractors::index_name_parts([name_part.to_owned()].iter()) {
+          add_term(&mut dis_max, "name_parts", &name, boost);
+        }
+        for name in extractors::phonetic_name([name_part.to_owned()].iter()) {
+          add_term(&mut dis_max, "name_phonetic", &name, boost * 0.5);
+        }
+
+        for symbol in HashSet::<_, ahash::RandomState>::from_iter(symbols.iter()) {
+          let Some(symbol) = symbol else {
+            continue;
+          };
+
+          let key = format!("{}:{}", symbol.category, symbol.id);
+
+          dis_max.push(json!({
+              "term": {
+                  "name_symbols": {
+                      "value": key,
+                      "boost": boost * 0.7,
+                  }
+              }
+          }))
+        }
+
+        if dis_max.is_empty() {
+          continue;
+        }
+
+        should.push(json!({
+            "dis_max": {
+                "queries": dis_max,
+                "tie_breaker": 0.2,
+            }
+        }));
       }
     }
   }
@@ -632,6 +630,8 @@ mod tests {
     let entity = SearchEntity::builder("Person")
       .properties(&[
         ("name", &["Júki Pustyncev Jr. II"]),
+        ("firstName", &["Vladimir"]),
+        ("lastName", &["Putin"]),
         ("birthDate", &["01-01-1010"]),
         ("nationality", &["ru"]),
         ("registrationNumber", &["1234"]),
@@ -643,6 +643,11 @@ mod tests {
     assert_json_contains!(
         container: shoulds,
         contained: json!([{ "match": { "names": { "boost": 3.0, "fuzziness": "AUTO", "operator": "AND", "query": "Júki Pustyncev Jr. II" } } }]),
+    );
+
+    assert_json_contains!(
+        container: shoulds,
+        contained: json!([{ "match": { "names": { "boost": 3.0, "fuzziness": "AUTO", "operator": "AND", "query": "Vladimir Putin" } } }]),
     );
 
     assert_json_contains!(

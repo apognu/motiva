@@ -7,7 +7,7 @@ use libmotiva_macros::scoring_feature;
 
 use crate::{
   matching::{Feature, comparers::compare_name_phonetic_tuples, extractors},
-  model::{Entity, HasProperties, SearchEntity},
+  model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
 #[scoring_feature(PersonNamePhoneticMatch, name = "person_name_phonetic_match")]
@@ -17,7 +17,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   }
 
   let lhs_names = &lhs.clean_names;
-  let rhs_names = extractors::clean_names(rhs.prop_group("name").iter()).collect_in::<Vec<_>>(bump);
+  let rhs_names = extractors::clean_names(rhs.prop_group("name", PropertyFilter::All).iter()).collect_in::<Vec<_>>(bump);
 
   let lhs_phone = extractors::phonetic_names_tuples(lhs_names.iter());
   let rhs_phone = extractors::phonetic_names_tuples(rhs_names.iter());

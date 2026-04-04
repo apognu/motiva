@@ -10,7 +10,7 @@ use rphonetic::{Encoder, Soundex};
 
 use crate::{
   matching::{Feature, extractors},
-  model::{Entity, HasProperties, SearchEntity},
+  model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
 static SOUNDEX: LazyLock<Soundex> = LazyLock::new(Soundex::default);
@@ -19,7 +19,7 @@ static SOUNDEX: LazyLock<Soundex> = LazyLock::new(Soundex::default);
 fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   let mut similarities = Vec::with_capacity_in(lhs.name_parts_flat.len(), bump);
 
-  let rhs_soundexes = extractors::name_parts_flat(rhs.prop_group("name").iter())
+  let rhs_soundexes = extractors::name_parts_flat(rhs.prop_group("name", PropertyFilter::All).iter())
     .unique()
     .map(|s| SOUNDEX.encode(&s.to_string()))
     .collect_in::<Vec<_>>(bump);

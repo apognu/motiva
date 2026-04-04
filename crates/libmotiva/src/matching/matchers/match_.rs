@@ -8,7 +8,7 @@ use libmotiva_macros::scoring_feature;
 
 use crate::{
   matching::{Feature, comparers::is_disjoint, extractors},
-  model::{Entity, HasProperties, SearchEntity},
+  model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
 pub(crate) type MatchExtractor<'e> = &'e (dyn Fn(&'_ dyn HasProperties) -> Cow<[String]> + Send + Sync);
@@ -52,7 +52,7 @@ impl<'e> Feature for SimpleMatch<'e> {
 
 #[scoring_feature(WeakAliasMatch, name = "weak_alias_match")]
 fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
-  let lhs_names = extractors::clean_names_light(lhs.prop_group("name").iter()).collect_in::<Vec<_>>(bump);
+  let lhs_names = extractors::clean_names_light(lhs.prop_group("name", PropertyFilter::All).iter()).collect_in::<Vec<_>>(bump);
   let rhs_names = extractors::clean_names_light(rhs.props(&["weakAlias", "abbreviation"]).iter()).collect_in::<Vec<_>>(bump);
 
   if lhs_names.is_empty() || rhs_names.is_empty() {
