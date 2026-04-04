@@ -11,13 +11,13 @@ use crate::{
     comparers::is_disjoint,
     extractors::{self},
   },
-  model::{Entity, HasProperties, SearchEntity},
+  model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
 #[scoring_feature(NameLiteralMatch, name = "name_literal_match")]
 fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
-  let lhs_names = extractors::clean_literal_names(lhs.prop_group("name").iter()).unique().collect_in::<Vec<_>>(bump);
-  let rhs_names = extractors::clean_literal_names(rhs.prop_group("name").iter()).unique().collect_in::<Vec<_>>(bump);
+  let lhs_names = extractors::clean_literal_names(lhs.prop_group("name", PropertyFilter::All).iter()).unique().collect_in::<Vec<_>>(bump);
+  let rhs_names = extractors::clean_literal_names(rhs.prop_group("name", PropertyFilter::All).iter()).unique().collect_in::<Vec<_>>(bump);
 
   if is_disjoint(&lhs_names, &rhs_names) { 0.0 } else { 1.0 }
 }

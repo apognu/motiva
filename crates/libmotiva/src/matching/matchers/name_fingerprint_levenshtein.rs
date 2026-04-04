@@ -9,7 +9,7 @@ use crate::{
     extractors::{clean_names, tokenize_clean_names},
     replacers::{self, company_types::ORG_TYPES, stopwords::STOPWORDS},
   },
-  model::{Entity, HasProperties, SearchEntity},
+  model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
 #[scoring_feature(NameFingerprintLevenshtein, name = "name_fingerprint_levenshtein")]
@@ -29,8 +29,8 @@ pub(crate) fn name_fingerprint_levenshtein(lhs: &SearchEntity, rhs: &Entity) -> 
     return 0.0;
   }
 
-  let qiter = lhs.prop_group("name");
-  let riter = rhs.prop_group("name");
+  let qiter = lhs.prop_group("name", PropertyFilter::All);
+  let riter = rhs.prop_group("name", PropertyFilter::All);
 
   let query_names = clean_names(qiter.iter()).filter(|word| word.len() >= 2);
   let result_names = clean_names(riter.iter()).filter(|word| word.len() >= 2);

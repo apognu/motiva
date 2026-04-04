@@ -12,7 +12,7 @@ use crate::{
     comparers::{align_name_parts, is_levenshtein_plausible},
     extractors,
   },
-  model::{Entity, HasProperties, SearchEntity},
+  model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
 #[scoring_feature(JaroNameParts, name = "jaro_name_parts")]
@@ -21,7 +21,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     return 0.0;
   }
 
-  let rhs_parts = extractors::name_parts_flat(rhs.prop_group("name").iter()).collect_in::<Vec<_>>(bump);
+  let rhs_parts = extractors::name_parts_flat(rhs.prop_group("name", PropertyFilter::All).iter()).collect_in::<Vec<_>>(bump);
 
   if rhs_parts.is_empty() {
     return 0.0;
@@ -57,7 +57,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   }
 
   let lhs_names = &lhs.name_parts;
-  let rhs_names = extractors::name_parts(rhs.prop_group("name").iter()).collect_in::<Vec<_>>(bump);
+  let rhs_names = extractors::name_parts(rhs.prop_group("name", PropertyFilter::All).iter()).collect_in::<Vec<_>>(bump);
 
   let mut score = 0.0f64;
 

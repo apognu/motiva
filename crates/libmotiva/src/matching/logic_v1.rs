@@ -3,22 +3,25 @@ use std::{sync::LazyLock, time::Instant};
 use bumpalo::Bump;
 use tracing::instrument;
 
-use crate::matching::{
-  Feature, MatchingAlgorithm,
-  matchers::{
-    address::AddressEntityMatch,
-    crypto_wallet::CryptoWalletMatch,
-    identifier::IdentifierMatch,
-    jaro_winkler::PersonNameJaroWinkler,
-    match_::{SimpleMatch, WeakAliasMatch},
-    mismatch::{NumbersMismatch, SimpleMismatch, dob_day_disjoint, dob_year_disjoint},
-    name_fingerprint_levenshtein::NameFingerprintLevenshtein,
-    name_literal_match::NameLiteralMatch,
-    orgid_mismatch::OrgIdMismatch,
-    phonetic::PersonNamePhoneticMatch,
+use crate::{
+  matching::{
+    Feature, MatchingAlgorithm,
+    matchers::{
+      address::AddressEntityMatch,
+      crypto_wallet::CryptoWalletMatch,
+      identifier::IdentifierMatch,
+      jaro_winkler::PersonNameJaroWinkler,
+      match_::{SimpleMatch, WeakAliasMatch},
+      mismatch::{NumbersMismatch, SimpleMismatch, dob_day_disjoint, dob_year_disjoint},
+      name_fingerprint_levenshtein::NameFingerprintLevenshtein,
+      name_literal_match::NameLiteralMatch,
+      orgid_mismatch::OrgIdMismatch,
+      phonetic::PersonNamePhoneticMatch,
+    },
+    run_features,
+    validators::{validate_bic, validate_imo_mmsi, validate_inn, validate_isin, validate_ogrn},
   },
-  run_features,
-  validators::{validate_bic, validate_imo_mmsi, validate_inn, validate_isin, validate_ogrn},
+  model::PropertyFilter,
 };
 
 /// Default matching algorithm
@@ -44,14 +47,14 @@ static FEATURES: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
     (IdentifierMatch::new("vessel_imo_mmsi_match", &["imoNumber", "mmsi"], Some(validate_imo_mmsi)), 0.95),
     (IdentifierMatch::new("inn_code_match", &["innCode"], Some(validate_inn)), 0.95),
     (IdentifierMatch::new("bic_code_match", &["bicCode"], Some(validate_bic)), 0.95),
-    (SimpleMatch::new("identifier_match", &|e| e.prop_group("identifier"), None), 0.85), // TODO: add cleaning
+    (SimpleMatch::new("identifier_match", &|e| e.prop_group("identifier", PropertyFilter::All), None), 0.85), // TODO: add cleaning
     (&WeakAliasMatch, 0.8),
   ]
 });
 
 static QUALIFIERS: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
   vec![
-    (SimpleMismatch::new("country_mismatch", &|e| e.prop_group("country"), None), -0.2),
+    (SimpleMismatch::new("country_mismatch", &|e| e.prop_group("country", PropertyFilter::All), None), -0.2),
     (SimpleMismatch::new("last_name_mismatch", &|e| e.props(&["lastName"]), None), -0.2),
     (SimpleMismatch::new("dob_year_disjoint", &|e| e.props(&["birthDate"]), Some(dob_year_disjoint)), -0.15),
     (SimpleMismatch::new("dob_day_disjoint", &|e| e.props(&["birthDate"]), Some(dob_day_disjoint)), -0.2),

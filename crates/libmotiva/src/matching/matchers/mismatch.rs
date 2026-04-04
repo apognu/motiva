@@ -15,7 +15,7 @@ use crate::{
     extractors::{self, extract_numbers},
     matchers::match_::MatchExtractor,
   },
-  model::{Entity, HasProperties, SearchEntity},
+  model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
 type MismatchMatcher = Option<fn(bump: &Bump, lhs: &[String], rhs: &[String]) -> f64>;
@@ -70,8 +70,8 @@ fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
       HashSet::<String>::from_iter(extract_numbers(rhs.props(&["full"]).iter()).map(ToOwned::to_owned)),
     ),
     false => (
-      HashSet::<String>::from_iter(extract_numbers(lhs.prop_group("name").iter()).map(ToOwned::to_owned)),
-      HashSet::<String>::from_iter(extract_numbers(rhs.prop_group("name").iter()).map(ToOwned::to_owned)),
+      HashSet::<String>::from_iter(extract_numbers(lhs.prop_group("name", PropertyFilter::All).iter()).map(ToOwned::to_owned)),
+      HashSet::<String>::from_iter(extract_numbers(rhs.prop_group("name", PropertyFilter::All).iter()).map(ToOwned::to_owned)),
     ),
   };
 
