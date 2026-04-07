@@ -50,8 +50,10 @@ pub async fn algorithms() -> Json<Algorithms> {
 }
 
 pub async fn version<F: CatalogFetcher, P: IndexProvider>(State(state): State<AppState<F, P>>) -> Json<Version> {
+  use crate::git_version;
+
   Json(Version {
-    motiva: env!("VERSION").into(),
+    motiva: git_version(),
     index: state.motiva.index_version().to_string(),
   })
 }

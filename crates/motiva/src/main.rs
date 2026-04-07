@@ -7,9 +7,12 @@ mod tests;
 
 use libmotiva::{ElasticsearchProvider, EsOptions, HttpCatalogFetcher, IndexProvider};
 use rustls::crypto::aws_lc_rs;
+use shadow_rs::shadow;
 use tokio::signal;
 
 use crate::api::config::Config;
+
+shadow!(build);
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -33,6 +36,7 @@ async fn main() -> anyhow::Result<()> {
     let _guards = trace::init_tracing(&config, std::io::stdout()).await;
 
     match cmd.as_str() {
+      "version" => oneoff::version()?,
       "create-scoped-index" => oneoff::create_scoped_index(&provider).await?,
       _ => anyhow::bail!("unsupported command `{cmd}`"),
     }
@@ -54,7 +58,7 @@ async fn run<P: IndexProvider>(mut config: Config, provider: P) -> anyhow::Resul
   let manifest_url = config.manifest_url.clone();
   let app = api::routes(config, HttpCatalogFetcher::from_manifest_url(manifest_url)?, provider).await?;
 
-  tracing::info!(motiva = env!("VERSION"), "listening on {}", listener.local_addr()?.to_string());
+  tracing::info!(motiva = git_version(), "listening on {}", listener.local_addr()?.to_string());
 
   axum::serve(listener, app).with_graceful_shutdown(shutdown()).await.expect("could not start app");
 
@@ -76,5 +80,12 @@ async fn shutdown() {
   tokio::select! {
       () = ctrl_c => tracing::info!("received ^C, initiating shutdown"),
       () = terminate => tracing::info!("received terminate signal, initiating shutdown"),
+  }
+}
+
+fn git_version() -> String {
+  match crate::build::TAG {
+    "" => format!("{}-{}-g{}", crate::build::LAST_TAG, crate::build::COMMITS_SINCE_TAG, crate::build::SHORT_COMMIT),
+    tag => tag.to_string(),
   }
 }

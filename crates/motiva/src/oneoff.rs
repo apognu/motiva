@@ -1,7 +1,30 @@
-use std::env;
+use std::{env, io::Write};
 
+use jiff::Timestamp;
 use libmotiva::ElasticsearchProvider;
 use serde_json::json;
+
+pub fn version() -> Result<(), anyhow::Error> {
+  use crate::build::*;
+  use crate::git_version;
+
+  let out = std::io::stdout();
+  let mut out = out.lock();
+
+  let features = match CARGO_FEATURES {
+    "" => "(none)",
+    features => features,
+  };
+
+  let build_time = Timestamp::from_second(BUILD_TIMESTAMP).unwrap().strftime("%Y-%m-%d");
+
+  writeln!(out, "motiva {} ({}) © 2025 {}", git_version(), build_time, env!("CARGO_PKG_AUTHORS"))?;
+  writeln!(out)?;
+  writeln!(out, "Repository: {}", env!("CARGO_PKG_REPOSITORY"))?;
+  writeln!(out, "Compiled features: {features}")?;
+
+  Ok(())
+}
 
 pub async fn create_scoped_index(provider: &ElasticsearchProvider) -> Result<(), anyhow::Error> {
   let mut query = json!({

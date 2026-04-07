@@ -64,6 +64,7 @@ metrics-exporter-prometheus = { version = "0.18.1", default-features = false, fe
 axum-macros = "0.5.0"
 json-subscriber = "0.2.6"
 rustls = "^0.23"
+shadow-rs = "1.7.1"
 
 [dev-dependencies]
 axum-test = "19.1.1"
@@ -79,4 +80,4 @@ serial_test = "3.2.0"
 workspace = true
 
 [build-dependencies]
-git-version = "0.3.9"
+shadow-rs = "1.7.1"

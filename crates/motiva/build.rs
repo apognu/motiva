@@ -1,5 +1,5 @@
-fn main() {
-  let version = git_version::git_version!(args = ["--tags"], fallback = "dev");
+use shadow_rs::ShadowBuilder;
 
-  println!("cargo:rustc-env=VERSION={version}");
+fn main() {
+  ShadowBuilder::builder().build().unwrap();
 }

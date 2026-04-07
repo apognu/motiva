@@ -38,7 +38,7 @@ async fn api_not_version() {
   assert_eq!(response.status_code(), 200);
 
   response.assert_json_contains(&json!({
-      "motiva": env!("VERSION"),
+      "motiva": crate::git_version(),
       "index": "v4",
   }));
 }
