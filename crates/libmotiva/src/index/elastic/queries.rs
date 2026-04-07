@@ -17,14 +17,14 @@ use tracing::instrument;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::{
-  Catalog, HasProperties,
+  Catalog,
   error::MotivaError,
   index::{
     EntityHandle, IndexProvider,
     elastic::{EsEntity, EsErrorResponse, EsHealth, EsResponse, config::IndexVersion},
   },
   matching::{MatchParams, extractors},
-  model::{Entity, PropertyFilter, ResolveSchemaLevel, SearchEntity},
+  model::{Entity, ResolveSchemaLevel, SearchEntity},
   prelude::ElasticsearchProvider,
   schemas::SCHEMAS,
   symbols::tagger::{ORG_TAGGER, PERSON_TAGGER},
@@ -326,7 +326,7 @@ fn build_topics(params: &MatchParams, filters: &mut Vec<serde_json::Value>) {
 fn build_shoulds(index_version: IndexVersion, entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>> {
   let mut should = Vec::<serde_json::Value>::new();
 
-  let names = entity.prop_group("name", PropertyFilter::Matchable).iter().map(|s| s.nfc().collect::<String>()).collect::<Vec<_>>();
+  let names = entity.pick_names(5).iter().map(|s| s.nfc().collect::<String>()).collect::<Vec<_>>();
 
   for name in &names {
     should.push(json!({

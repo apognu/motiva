@@ -11,10 +11,11 @@ use celes::Country;
 use itertools::Itertools;
 use jiff::civil::DateTime;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
+use strsim::levenshtein;
 use validator::Validate;
 
 use crate::{
-  matching::extractors,
+  matching::extractors::{self, clean_names},
   schemas::{FtmProperty, SCHEMAS, resolve_schemas},
 };
 
@@ -174,16 +175,60 @@ impl SearchEntity {
       .filter(|iter| !iter.is_empty())
       .multi_cartesian_product()
       .map(|names| names.iter().join(" "));
+
       let mut names = Vec::new();
 
       for name in combined {
-        names.push(name);
+        if !name.is_empty() {
+          names.push(name);
+        }
       }
 
       names
     };
 
     self.properties.entry("alias".into()).or_default().extend(aliases);
+  }
+
+  pub fn pick_names(&self, count: usize) -> Cow<'_, [String]> {
+    let names = self.prop_group("name", PropertyFilter::Matchable);
+
+    if names.len() < count {
+      return names;
+    }
+
+    let mut picked = Vec::with_capacity(count);
+    let processed = clean_names(names.iter()).collect::<Vec<_>>();
+
+    // TODO: Centroid is **not** the longest name in the original Yente implementation
+    if let Some(centroid) = names.iter().max_by_key(|name| name.len()) {
+      picked.push(centroid.to_owned());
+    }
+
+    while picked.len() < count {
+      let mut best: Option<String> = None;
+      let mut max_distance = -1isize;
+
+      for (index, candidate) in processed.iter().enumerate() {
+        if picked.contains(names.get(index).unwrap()) {
+          continue;
+        }
+
+        let total: usize = picked.iter().map(|name| levenshtein(candidate, name)).sum();
+
+        if total as isize > max_distance {
+          max_distance = total as isize;
+          best = Some(names.get(index).unwrap().clone());
+        }
+      }
+
+      match best {
+        Some(best) => picked.push(best),
+        None => break,
+      }
+    }
+
+    Cow::Owned(picked)
   }
 }
 
@@ -212,7 +257,6 @@ impl HasProperties for SearchEntity {
     }
   }
 
-  // TODO: filter matchable only?
   fn prop_group(&self, group: &str, filter: PropertyFilter) -> Cow<'_, [String]> {
     let schemas = resolve_schemas(&SCHEMAS, self.schema.as_str(), false).unwrap_or_default();
     let mut keys = Vec::new();
@@ -517,6 +561,17 @@ mod tests {
       HashSet::from_iter(se.properties.get("citizenship").unwrap().into_iter().cloned()),
       HashSet::from_iter(["ru", "fr", "gb"].into_iter().map(str::to_string)),
     );
+  }
+
+  #[test]
+  fn pick_names() {
+    let aliases = SearchEntity::builder("Person")
+      .properties(&[("name", &["Vladimir Putin"]), ("alias", &["John Doe", "John  Doe", "J. Doe", "Jonathan Doe", "JD", "Mr. John Doe"])])
+      .build();
+
+    let names = aliases.pick_names(4);
+
+    assert_eq!(names.as_ref(), &["Vladimir Putin", "John Doe", "JD", "Jonathan Doe"]);
   }
 
   #[test]

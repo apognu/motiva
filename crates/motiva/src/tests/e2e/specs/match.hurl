@@ -62,3 +62,26 @@ HTTP 200
 jsonpath "$.responses.test.status" == 200
 jsonpath "$.responses.test.results[?(@.id == 'Q7747')].caption" contains "Vladimir Vladimirovich Putin"
 jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" first == 0.8
+
+# Match query with name parts
+
+POST http://{{baseUrl}}/match/default
+{
+    "queries": {
+        "test": {
+            "schema": "Person",
+            "properties": {
+                "name": ["Cannot Be Found"],
+                "firstName": ["Vladimir"],
+                "lastName": ["Putin"]
+            }
+        }
+    }
+}
+
+HTTP 200
+
+[Asserts]
+jsonpath "$.responses.test.status" == 200
+jsonpath "$.responses.test.results[?(@.id == 'Q7747')].caption" contains "Vladimir Vladimirovich Putin"
+jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" first == 1.0
