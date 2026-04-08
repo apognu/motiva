@@ -19,6 +19,10 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+  if let Some("version") = std::env::args().nth(1).as_deref() {
+    return oneoff::version();
+  }
+
   aws_lc_rs::default_provider().install_default().expect("could not install default cryptography provider");
 
   let config = Config::from_env().await?;
@@ -36,7 +40,6 @@ async fn main() -> anyhow::Result<()> {
     let _guards = trace::init_tracing(&config, std::io::stdout()).await;
 
     match cmd.as_str() {
-      "version" => oneoff::version()?,
       "create-scoped-index" => oneoff::create_scoped_index(&provider).await?,
       _ => anyhow::bail!("unsupported command `{cmd}`"),
     }
