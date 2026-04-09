@@ -132,11 +132,11 @@ pub struct SearchEntity {
 
 impl SearchEntity {
   pub fn precompute(&mut self) {
+    self.combine_names();
+
     self.clean_names = extractors::clean_names(self.prop_group("name", PropertyFilter::All).iter()).collect();
     self.name_parts = extractors::name_parts(self.prop_group("name", PropertyFilter::All).iter()).collect();
     self.name_parts_flat = extractors::name_parts_flat(self.prop_group("name", PropertyFilter::All).iter()).collect();
-
-    self.combine_names();
 
     for (prop, values) in &mut self.properties {
       let Some((_, p)) = self.schema.property(prop) else { continue };
