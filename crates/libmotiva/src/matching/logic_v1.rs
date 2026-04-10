@@ -1,7 +1,7 @@
 use std::{sync::LazyLock, time::Instant};
 
 use bumpalo::Bump;
-use tracing::instrument;
+use tracing::{debug_span, instrument};
 
 use crate::{
   matching::{
@@ -79,6 +79,9 @@ impl MatchingAlgorithm for LogicV1 {
     let mut score = 0.0f64;
 
     for (func, weight) in FEATURES.iter() {
+      let span = debug_span!("scoring_feature", feature = func.name());
+      let _span = span.enter();
+
       let then = Instant::now();
       let feature_score = func.score_feature(bump, lhs, rhs);
 
@@ -88,7 +91,7 @@ impl MatchingAlgorithm for LogicV1 {
         score = feature_score * weight;
       }
 
-      tracing::debug!(feature = func.name(), score = feature_score, latency = ?then.elapsed(), "computed feature score");
+      tracing::debug!(score = feature_score, latency = ?then.elapsed(), "computed feature score");
     }
 
     let score = run_features(bump, lhs, rhs, cutoff, score, QUALIFIERS.iter(), &mut results);
