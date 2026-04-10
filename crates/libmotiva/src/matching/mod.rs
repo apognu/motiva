@@ -9,6 +9,7 @@ use bumpalo::Bump;
 use jiff::Timestamp;
 use serde::Deserialize;
 use serde_inline_default::serde_inline_default;
+use tracing::info_span;
 
 use crate::model::{Entity, SearchEntity};
 
@@ -77,6 +78,9 @@ where
   F: IntoIterator<Item = &'f (&'f dyn Feature, f64)>,
 {
   features.into_iter().fold(init, move |score, (func, weight)| {
+    let span = info_span!("scoring_feature", feature = func.name());
+    let _span = span.enter();
+
     // We assume all modifiers (with negative weights) tail the models, so if we
     // are already below the cutoff, there is no way the score could go up
     // again, so we skip the rest.
@@ -89,7 +93,7 @@ where
 
     results.push((func.name(), feature_score));
 
-    tracing::debug!(feature = func.name(), score = feature_score, latency = ?then.elapsed(), "computed feature score");
+    tracing::debug!(score = feature_score, latency = ?then.elapsed(), "computed feature score");
 
     score + (feature_score * weight)
   })
