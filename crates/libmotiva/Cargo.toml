@@ -60,7 +60,7 @@ rust_icu_utrans = { version = "5.1.0", optional = true }
 unicode-general-category = "1.1.0"
 unaccent = "0.1.1"
 serde-jsonlines = "0.7.0"
-rand = "0.10.0"
+rand = "0.10.1"
 celes = "2.8.2"
 
 [dev-dependencies]
