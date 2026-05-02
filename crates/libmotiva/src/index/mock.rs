@@ -1,4 +1,7 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+  collections::{HashMap, HashSet},
+  sync::Arc,
+};
 
 use ahash::RandomState;
 use bon::Builder;
@@ -59,5 +62,9 @@ impl IndexProvider for MockedElasticsearch {
 
   async fn list_indices(&self) -> Result<Vec<(String, String)>, MotivaError> {
     Ok(self.indices.clone())
+  }
+
+  async fn list_field_values(&self, _fields: &[&str], _query: Option<serde_json::Value>) -> Result<HashMap<String, Vec<String>>, MotivaError> {
+    todo!()
   }
 }

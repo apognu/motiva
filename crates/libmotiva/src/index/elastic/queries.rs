@@ -76,7 +76,7 @@ impl IndexProvider for ElasticsearchProvider {
       .es
       .search(SearchParts::Index(&[self.index_name(params.index_type)]))
       .from(0)
-      .size(params.candidate_limit() as i64)
+      .size(params.candidate_limit(params.match_candidates) as i64)
       .search_type(SearchType::DfsQueryThenFetch)
       .body(query)
       .send()
@@ -215,6 +215,41 @@ impl IndexProvider for ElasticsearchProvider {
 
     Ok(parse_index_dataset_versions(indices))
   }
+
+  async fn list_field_values(&self, fields: &[&str], query: Option<serde_json::Value>) -> Result<HashMap<String, Vec<String>>, MotivaError> {
+    let mut aggs = HashMap::<String, serde_json::Value>::default();
+
+    for field in fields {
+      aggs.insert(
+        field.to_string(),
+        json!({
+            "terms": {
+                "field": field,
+                "size": 10000
+            }
+        }),
+      );
+    }
+
+    let mut body = json!({
+      "size": 0,
+      "aggs": aggs,
+    });
+
+    if let Some(query) = query {
+      body.as_object_mut().unwrap().insert("query".to_string(), query);
+    }
+
+    let response: EsResponse = self.es.search(SearchParts::Index(&[&self.main_index])).body(&body).send().await?.json().await?;
+
+    Ok(
+      response
+        .aggregations
+        .into_iter()
+        .map(|(field, values)| (field, values.buckets.iter().map(|bucket| bucket.key.to_string()).collect()))
+        .collect(),
+    )
+  }
 }
 
 fn parse_index_dataset_versions(indices: HashMap<String, serde_json::Value>) -> Vec<(String, String)> {
@@ -255,6 +290,7 @@ async fn build_filters(catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, pa
   build_schemas(entity, &mut filters)?;
   build_datasets(catalog, &mut filters, params).await;
   build_topics(params, &mut filters);
+  build_arbitrary_terms(params, &mut filters);
 
   if let Some(since) = params.changed_since {
     filters.push(json!({"range": { "last_change": { "gt": since } } }));
@@ -316,10 +352,25 @@ async fn build_datasets(catalog: &Arc<RwLock<Catalog>>, filters: &mut Vec<serde_
 }
 
 fn build_topics(params: &MatchParams, filters: &mut Vec<serde_json::Value>) {
-  if let Some(topics) = &params.topics
+  if !params.filters.contains_key("topics")
+    && let Some(topics) = &params.topics
     && !topics.is_empty()
   {
     filters.push(json!({ "terms": { "topics": topics } }));
+  }
+}
+
+fn build_arbitrary_terms(params: &MatchParams, filters: &mut Vec<serde_json::Value>) {
+  for (keyword, predicates) in &params.filters {
+    for predicate in predicates {
+      filters.push(json!({
+          "bool": {
+              "must": [
+                  { "terms": { keyword: predicate } }
+              ]
+          }
+      }))
+    }
   }
 }
 
@@ -336,6 +387,7 @@ fn build_shoulds(index_version: IndexVersion, entity: &SearchEntity) -> anyhow::
                 "operator": "AND",
                 "boost": 3.0,
                 "fuzziness": "AUTO",
+                "max_expansions": 200,
             }
         }
     }));

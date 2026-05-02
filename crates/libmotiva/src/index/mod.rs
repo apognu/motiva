@@ -1,7 +1,10 @@
 pub mod elastic;
 pub mod mock;
 
-use std::{collections::HashSet, sync::Arc};
+use std::{
+  collections::{HashMap, HashSet},
+  sync::Arc,
+};
 
 use ahash::RandomState;
 use tokio::sync::RwLock;
@@ -24,6 +27,8 @@ pub trait IndexProvider: Clone + Send + Sync + 'static {
   fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> impl Future<Output = Result<Vec<Entity>, MotivaError>> + Send;
   fn search(&self, catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, params: &MatchParams) -> impl Future<Output = Result<Vec<Entity>, MotivaError>> + Send;
   fn list_indices(&self) -> impl Future<Output = Result<Vec<(String, String)>, MotivaError>> + Send;
+
+  fn list_field_values(&self, fields: &[&str], query: Option<serde_json::Value>) -> impl Future<Output = Result<HashMap<String, Vec<String>>, MotivaError>> + Send;
 }
 
 /// Reference to an entity

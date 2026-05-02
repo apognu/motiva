@@ -3,7 +3,7 @@ mod matchers;
 #[cfg(test)]
 mod tests;
 
-use std::time::Instant;
+use std::{collections::HashMap, time::Instant};
 
 use bumpalo::Bump;
 use jiff::Timestamp;
@@ -141,6 +141,10 @@ pub struct MatchParams {
   // Motiva-specific params
   #[serde(default)]
   pub index_type: IndexType,
+  #[serde(default)]
+  pub match_candidates: usize,
+  #[serde(default, skip)]
+  pub filters: HashMap<String, Vec<Vec<String>>>,
 }
 
 /// Variant of the index to use.
@@ -159,8 +163,8 @@ impl MatchParams {
   /// It is computed by multiplying `limit` and `candidate_factor` and clamped
   /// between sensible values. The more input entities there are, the more
   /// accurate the results will be.
-  pub fn candidate_limit(&self) -> usize {
-    (self.limit * self.candidate_factor).clamp(20, 9999)
+  pub fn candidate_limit(&self, query: usize) -> usize {
+    (self.limit * self.candidate_factor).max(query).clamp(20, 9999)
   }
 }
 
