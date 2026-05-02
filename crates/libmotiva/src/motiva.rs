@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Context;
 use bon::bon;
@@ -212,6 +212,15 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
     }
 
     Ok(self.catalog.read().await.clone())
+  }
+
+  /// Get all index values for the specified fields.
+  ///
+  /// For all fields requested, will display the full cardinality of values for
+  /// those fields. Can be used to elaborate specific filters on subsequent
+  /// queries.
+  pub async fn get_field_values(&self, fields: &[&str], query: Option<serde_json::Value>) -> anyhow::Result<HashMap<String, Vec<String>>> {
+    Ok(self.index.list_field_values(fields, query).await?)
   }
 }
 #[cfg(test)]

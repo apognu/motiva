@@ -67,6 +67,7 @@ pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: Config, fetcher
 pub(crate) fn router<F: CatalogFetcher, P: IndexProvider>(state: AppState<F, P>) -> Router {
   Router::new()
     .route("/catalog", get(handlers::get_catalog))
+    .route("/catalog/fields", post(handlers::get_field_values))
     .route("/match/{scope}", post(handlers::match_entities))
     .route("/entities/{id}", get(handlers::get_entity))
     .fallback(handlers::not_found)

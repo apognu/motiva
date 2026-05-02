@@ -12,7 +12,7 @@ use crate::api::AppState;
 use crate::api::dto::{AlgorithmDescription, Algorithms, Version};
 use crate::api::errors::AppError;
 
-pub use self::catalog::get_catalog;
+pub use self::catalog::{get_catalog, get_field_values};
 pub use self::get_entity::get_entity;
 pub use self::match_entities::match_entities;
 

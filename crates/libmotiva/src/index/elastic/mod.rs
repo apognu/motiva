@@ -53,7 +53,11 @@ struct EsErrorResponse {
 
 #[derive(Deserialize)]
 struct EsResponse {
+  #[serde(default)]
   hits: EsResults,
+  #[serde(default)]
+  aggregations: HashMap<String, Aggregation>,
+  #[serde(default)]
   took: u64,
 }
 
@@ -65,15 +69,25 @@ struct EsError {
   reason: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 struct EsResults {
   hits: Option<Vec<EsEntity>>,
   total: EsCounts,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 struct EsCounts {
   value: u64,
+}
+
+#[derive(Deserialize)]
+struct Aggregation {
+  buckets: Vec<AggregationBucket>,
+}
+
+#[derive(Deserialize)]
+struct AggregationBucket {
+  key: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
