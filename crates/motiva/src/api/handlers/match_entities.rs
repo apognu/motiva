@@ -38,9 +38,6 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
   if let Some(entity_ids) = body.params.exclude_entity_ids {
     query.exclude_entity_ids = entity_ids;
   }
-  if let Some(filters) = body.params.filters {
-    query.filters = filters;
-  }
 
   body.queries.iter_mut().for_each(|(_, entity)| {
     entity.precompute();

@@ -31,8 +31,6 @@ pub(crate) struct PayloadParams {
   pub exclude_datasets: Option<Vec<String>>,
   #[serde(default)]
   pub exclude_entity_ids: Option<Vec<String>>,
-  #[serde(default)]
-  pub filters: Option<HashMap<String, Vec<Vec<String>>>>,
 }
 
 #[derive(Default, Serialize)]

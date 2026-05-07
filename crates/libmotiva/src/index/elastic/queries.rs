@@ -289,8 +289,8 @@ async fn build_filters(catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, pa
 
   build_schemas(entity, &mut filters)?;
   build_datasets(catalog, &mut filters, params).await;
-  build_topics(params, &mut filters);
-  build_arbitrary_terms(params, &mut filters);
+  build_topics(entity, params, &mut filters);
+  build_arbitrary_terms(entity, &mut filters);
 
   if let Some(since) = params.changed_since {
     filters.push(json!({"range": { "last_change": { "gt": since } } }));
@@ -351,17 +351,24 @@ async fn build_datasets(catalog: &Arc<RwLock<Catalog>>, filters: &mut Vec<serde_
   }
 }
 
-fn build_topics(params: &MatchParams, filters: &mut Vec<serde_json::Value>) {
-  if !params.filters.contains_key("topics")
-    && let Some(topics) = &params.topics
+fn build_topics(lhs: &SearchEntity, params: &MatchParams, filters: &mut Vec<serde_json::Value>) {
+  if lhs.filters.as_ref().map(|f| f.contains_key("topics")).unwrap_or_default() {
+    return;
+  }
+
+  if let Some(topics) = &params.topics
     && !topics.is_empty()
   {
     filters.push(json!({ "terms": { "topics": topics } }));
   }
 }
 
-fn build_arbitrary_terms(params: &MatchParams, filters: &mut Vec<serde_json::Value>) {
-  for (keyword, predicates) in &params.filters {
+fn build_arbitrary_terms(lhs: &SearchEntity, filters: &mut Vec<serde_json::Value>) {
+  let Some(ref spec) = lhs.filters else {
+    return;
+  };
+
+  for (keyword, predicates) in spec {
     for predicate in predicates {
       filters.push(json!({
           "bool": {
@@ -837,13 +844,14 @@ mod tests {
 
   #[test]
   fn build_topics() {
+    let lhs = SearchEntity::builder("Person").properties(&[]).build();
     let mut filters = Vec::new();
     let params = MatchParams {
       topics: Some(vec!["topic1".to_string(), "topic2".to_string()]),
       ..Default::default()
     };
 
-    super::build_topics(&params, &mut filters);
+    super::build_topics(&lhs, &params, &mut filters);
 
     assert_eq!(filters.len(), 1);
     assert_json_eq!(filters[0], json!({ "terms": { "topics": ["topic1", "topic2"] } }));
