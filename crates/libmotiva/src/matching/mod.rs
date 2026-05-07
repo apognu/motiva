@@ -3,7 +3,7 @@ mod matchers;
 #[cfg(test)]
 mod tests;
 
-use std::{collections::HashMap, time::Instant};
+use std::time::Instant;
 
 use bumpalo::Bump;
 use jiff::Timestamp;
@@ -143,8 +143,6 @@ pub struct MatchParams {
   pub index_type: IndexType,
   #[serde(default)]
   pub match_candidates: usize,
-  #[serde(default, skip)]
-  pub filters: HashMap<String, Vec<Vec<String>>>,
 }
 
 /// Variant of the index to use.

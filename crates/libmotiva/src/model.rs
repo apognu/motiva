@@ -121,6 +121,9 @@ pub struct SearchEntity {
   #[validate(length(min = 1, message = "at least one property must be given"))]
   pub properties: HashMap<String, Vec<String>, RandomState>,
 
+  #[serde(default)]
+  pub filters: Option<HashMap<String, Vec<Vec<String>>>>,
+
   // Those attributes will be precomputed when receiving the request to skip the computation for every matching entity.
   #[serde(skip)]
   pub(crate) clean_names: Vec<String>,
@@ -296,6 +299,7 @@ impl SearchEntity {
     let mut entity = SearchEntity {
       schema: Schema::from(schema),
       properties: props,
+      filters: None,
       clean_names: Default::default(),
       name_parts: Default::default(),
       name_parts_flat: Default::default(),
