@@ -13,7 +13,7 @@ const MAX_ITERATIONS: usize = 3;
 pub(crate) async fn fetch_nested_entities<P: IndexProvider>(index: &P, root_entity: &mut Entity, root_id: &str) -> Result<(), MotivaError> {
   let mut all_entities: HashMap<String, Arc<Mutex<Entity>>> = HashMap::default();
   let mut seen = HashSet::<_, RandomState>::from_iter([root_id.to_string()]);
-  let mut queue: Vec<(String, String)> = Vec::new();
+  let mut queue: HashSet<(String, String, String), RandomState> = HashSet::default();
 
   if let Some(properties) = root_entity.schema.properties() {
     for (name, property) in properties {
@@ -22,7 +22,7 @@ pub(crate) async fn fetch_nested_entities<P: IndexProvider>(index: &P, root_enti
       }
 
       for entity_id in root_entity.props(&[&name]).iter() {
-        queue.push((entity_id.to_string(), name.clone()));
+        queue.insert((root_id.to_string(), entity_id.to_string(), name.clone()));
       }
     }
   }
@@ -32,13 +32,13 @@ pub(crate) async fn fetch_nested_entities<P: IndexProvider>(index: &P, root_enti
       break;
     }
 
-    let to_fetch_ids: Vec<String> = queue.iter().map(|(id, _)| id.clone()).unique().collect();
+    let to_fetch_ids: Vec<String> = queue.iter().map(|(_, id, _)| id.clone()).unique().sorted().collect();
     let root_id_string = root_id.to_string();
     let root = if iteration == 0 { Some(&root_id_string) } else { None };
 
     let associations = index.get_related_entities(root, &to_fetch_ids, &seen).await?;
 
-    let mut next: Vec<(String, String)> = Vec::new();
+    let mut next: HashSet<(String, String, String), RandomState> = HashSet::default();
 
     for association in associations {
       let Some(schema) = SCHEMAS.get(association.schema.as_str()) else {
@@ -49,7 +49,7 @@ pub(crate) async fn fetch_nested_entities<P: IndexProvider>(index: &P, root_enti
       all_entities.insert(association.id.clone(), Arc::clone(&node));
       seen.insert(association.id.clone());
 
-      link_entity_to_parents(root_entity, &all_entities, &queue, &association, &node);
+      link_entity_to_parents(root_entity, &all_entities, &queue, root_id, &association, &node);
       link_reverse_properties(root_entity, &all_entities, &association, schema, &node);
 
       if iteration == 0 || association.schema.is_edge() {
@@ -63,35 +63,30 @@ pub(crate) async fn fetch_nested_entities<P: IndexProvider>(index: &P, root_enti
   Ok(())
 }
 
-fn link_entity_to_parents(root: &mut Entity, all_entities: &HashMap<String, Arc<Mutex<Entity>>>, queue: &[(String, String)], association: &Entity, node: &Arc<Mutex<Entity>>) {
-  for (fetch_id, prop) in queue {
-    if fetch_id != &association.id {
+fn link_entity_to_parents(
+  root: &mut Entity,
+  all_entities: &HashMap<String, Arc<Mutex<Entity>>>,
+  queue: &HashSet<(String, String, String), RandomState>,
+  root_id: &str,
+  association: &Entity,
+  node: &Arc<Mutex<Entity>>,
+) {
+  for (parent_id, child_id, prop) in queue {
+    if child_id != &association.id {
       continue;
     }
 
-    let mut linked = false;
-
-    if root.props(&[prop]).contains(&association.id) {
-      root.properties.entities.entry(prop.clone()).or_default().push(Arc::clone(node));
-      linked = true;
-    }
-
-    if !linked {
-      for (parent_id, parent) in all_entities {
-        if parent_id == &association.id {
-          continue;
-        }
-
-        if let Ok(entity) = parent.lock()
-          && entity.props(&[prop]).contains(&association.id)
-        {
-          drop(entity);
-
-          if let Ok(mut parent_entity) = parent.lock() {
-            parent_entity.properties.entities.entry(prop.clone()).or_default().push(Arc::clone(node));
-          }
-          break;
-        }
+    if parent_id == root_id {
+      let bucket = root.properties.entities.entry(prop.clone()).or_default();
+      if !bucket.iter().any(|e| Arc::ptr_eq(e, node)) {
+        bucket.push(Arc::clone(node));
+      }
+    } else if let Some(parent) = all_entities.get(parent_id)
+      && let Ok(mut parent_entity) = parent.lock()
+    {
+      let bucket = parent_entity.properties.entities.entry(prop.clone()).or_default();
+      if !bucket.iter().any(|e| Arc::ptr_eq(e, node)) {
+        bucket.push(Arc::clone(node));
       }
     }
   }
@@ -110,7 +105,11 @@ fn link_reverse_properties(root: &mut Entity, all_entities: &HashMap<String, Arc
     if values.contains(&root.id)
       && let Some(reverse) = property.reverse.as_ref()
     {
-      root.properties.entities.entry(reverse.name.clone()).or_default().push(Arc::clone(node));
+      let bucket = root.properties.entities.entry(reverse.name.clone()).or_default();
+
+      if !bucket.iter().any(|e| Arc::ptr_eq(e, node)) {
+        bucket.push(Arc::clone(node));
+      }
     }
 
     for value in values {
@@ -118,13 +117,17 @@ fn link_reverse_properties(root: &mut Entity, all_entities: &HashMap<String, Arc
         && let Some(reverse) = property.reverse.as_ref()
         && let Ok(mut entity) = target.lock()
       {
-        entity.properties.entities.entry(reverse.name.clone()).or_default().push(Arc::clone(node));
+        let bucket = entity.properties.entities.entry(reverse.name.clone()).or_default();
+
+        if !bucket.iter().any(|e| Arc::ptr_eq(e, node)) {
+          bucket.push(Arc::clone(node));
+        }
       }
     }
   }
 }
 
-fn queue_entity_references(association: &Entity, schema: &crate::schemas::FtmSchema, seen: &HashSet<String, RandomState>, next: &mut Vec<(String, String)>) {
+fn queue_entity_references(association: &Entity, schema: &crate::schemas::FtmSchema, seen: &HashSet<String, RandomState>, next: &mut HashSet<(String, String, String), RandomState>) {
   for (prop, values) in &association.properties.strings {
     let Some(property) = schema.properties.get(prop) else {
       continue;
@@ -136,7 +139,7 @@ fn queue_entity_references(association: &Entity, schema: &crate::schemas::FtmSch
 
     for value in values {
       if !seen.contains(value) {
-        next.push((value.clone(), prop.clone()));
+        next.insert((association.id.clone(), value.clone(), prop.clone()));
       }
     }
   }
@@ -342,6 +345,42 @@ mod tests {
     super::fetch_nested_entities(&index, &mut root, "company-1").await.unwrap();
 
     assert!(!root.properties.entities.contains_key("parent"));
+  }
+
+  #[tokio::test]
+  async fn shared_child_across_siblings() {
+    let mut root = Entity::builder("Person").id("person-1").build();
+    let relative1 = Entity::builder("Family").id("relative-1").properties(&[("relative", &["person-1"]), ("person", &["person-3"])]).build();
+    let relative2 = Entity::builder("Family").id("relative-2").properties(&[("relative", &["person-1"]), ("person", &["person-3"])]).build();
+    let person3 = Entity::builder("Person").id("person-3").build();
+
+    let index = MockedElasticsearch::builder()
+      .related_entitites(vec![
+        ((Some(string!("person-1")), vec![], hash_set!(string!("person-1"))), vec![relative1.clone(), relative2.clone()]),
+        (
+          (None, vec![string!("person-3")], hash_set!(string!("person-1"), string!("relative-1"), string!("relative-2"))),
+          vec![person3.clone()],
+        ),
+      ])
+      .build();
+
+    super::fetch_nested_entities(&index, &mut root, "person-1").await.unwrap();
+
+    let relatives = root.properties.entities.get("familyRelative").expect("root should have familyRelative entities");
+
+    assert_eq!(relatives.len(), 2);
+
+    for relative_arc in relatives {
+      let relative = relative_arc.lock().unwrap();
+      let people = relative
+        .properties
+        .entities
+        .get("person")
+        .unwrap_or_else(|| panic!("relative {} should have resolved person entity, got only string IDs", relative.id));
+
+      assert_eq!(people.len(), 1, "relative {} should have exactly one person, got {}", relative.id, people.len());
+      assert_eq!(people[0].lock().unwrap().id, "person-3");
+    }
   }
 
   #[tokio::test]
