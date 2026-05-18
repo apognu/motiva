@@ -123,6 +123,10 @@ pub struct CatalogDataset {
   pub last_change: Option<DateTime>,
   pub last_export: Option<DateTime>,
   pub updated_at: Option<DateTime>,
+
+  // Motiva-specific metadata object
+  #[serde(default)]
+  pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
