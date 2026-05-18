@@ -1,6 +1,5 @@
 use std::{borrow::Borrow, sync::LazyLock};
 
-use any_ascii::any_ascii;
 use itertools::Itertools;
 use regex::Regex;
 use rphonetic::{Encoder, Metaphone};
@@ -167,7 +166,7 @@ where
   I: Iterator<Item = &'s S> + 's,
 {
   tokenize_names(names)
-    .flat_map(|s| s.into_iter().filter(|s| is_modern_alphabet(s) && s.chars().count() >= 3).map(|s| METAPHONE.encode(&any_ascii(&s))))
+    .flat_map(|s| s.into_iter().filter(|s| is_modern_alphabet(s) && s.chars().count() >= 3).map(|s| METAPHONE.encode(&latinize(&s))))
     .filter(|phoneme| phoneme.len() > 2)
 }
 
@@ -181,7 +180,7 @@ where
       s.into_iter()
         .filter(|name| name.len() >= 2)
         .map(|s| {
-          let phoneme = METAPHONE.encode(&s);
+          let phoneme = METAPHONE.encode(&latinize(&s));
 
           (s, { if phoneme.len() < 3 { None } else { Some(phoneme) } })
         })

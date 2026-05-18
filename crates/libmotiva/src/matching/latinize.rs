@@ -22,7 +22,11 @@ pub(crate) fn latinize(value: &str) -> String {
     return value.to_string();
   }
 
-  TRANSLITERATOR.with(|t| t.transliterate(value).unwrap_or_else(|_| value.to_string()))
+  TRANSLITERATOR.with(|t| {
+    t.transliterate(value)
+      .map(|s| s.chars().filter(|c| c.is_whitespace() || c.is_ascii_alphabetic()).collect::<String>())
+      .unwrap_or_else(|_| value.chars().filter(|c| c.is_whitespace() || c.is_ascii_alphabetic()).collect::<String>())
+  })
 }
 
 #[cfg(not(feature = "icu"))]
