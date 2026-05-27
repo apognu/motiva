@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use itertools::Itertools;
 use jiff::{
   Span, Timestamp,
   civil::{Date, DateTime},
@@ -172,6 +173,13 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
           spec.scopes.push(scope);
         }
 
+        tracing::trace!(
+          url = spec.url,
+          sample = upstream.datasets.iter().take(5).cloned().map(|ds| ds.name).join(","),
+          "catalog contains {} datasets",
+          upstream.datasets.len()
+        );
+
         for ds in &mut upstream.datasets {
           if spec.scopes.contains(&ds.name) {
             ds.load = true;
@@ -221,6 +229,14 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
         continue;
       }
     }
+  }
+
+  if !manifest.datasets.is_empty() {
+    tracing::trace!(
+      sample = manifest.datasets.iter().take(5).cloned().map(|ds| ds.name).join(","),
+      "manifest contains {} simple datasets",
+      manifest.datasets.len()
+    );
   }
 
   for ds in manifest.datasets {
