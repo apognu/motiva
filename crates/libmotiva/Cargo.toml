@@ -62,6 +62,7 @@ unaccent = "0.1.1"
 serde-jsonlines = "0.7.0"
 rand = "0.10.1"
 celes = "2.8.2"
+shellexpand = "3.1.2"
 
 [dev-dependencies]
 criterion = { version = "0.8.1", features = ["async_tokio"] }

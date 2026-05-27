@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, fs::File};
+use std::{collections::HashMap, fs::File};
 
 use anyhow::Context;
 use reqwest::header;
@@ -75,11 +75,12 @@ impl CatalogFetcher for HttpCatalogFetcher {
   }
 
   async fn fetch_catalog(&self, url: &str, auth_token: Option<&str>) -> anyhow::Result<Catalog> {
+    tracing::debug!(url, "fetching catalog");
+
     let client = reqwest::Client::default();
 
     let token = match auth_token {
-      Some(token) if token.starts_with('$') => env::var(token.trim_start_matches('$')).ok(),
-      Some(token) => Some(token.to_string()),
+      Some(token) => Some(shellexpand::env(token)?),
       None => None,
     };
 
@@ -92,6 +93,8 @@ impl CatalogFetcher for HttpCatalogFetcher {
 
 impl HttpCatalogFetcher {
   async fn fetch_http(&self, url: &str) -> anyhow::Result<Manifest> {
+    tracing::debug!(url, "fetching http manifest");
+
     let response = reqwest::get(url).await.context("could not reach manifest location")?;
 
     match self.format {
@@ -105,6 +108,8 @@ impl HttpCatalogFetcher {
   }
 
   async fn fetch_local_file(&self, url: &str) -> anyhow::Result<Manifest> {
+    tracing::debug!(path = url, "fetching local manifest");
+
     let file = File::open(url)?;
 
     match self.format {
