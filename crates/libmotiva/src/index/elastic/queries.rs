@@ -162,7 +162,7 @@ impl IndexProvider for ElasticsearchProvider {
   /// Get entities related to an entity.
   #[instrument(skip_all)]
   async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> Result<Vec<Entity>, MotivaError> {
-    const RELATED_ENTITIES_LIMIT: i64 = 100;
+    const RELATED_ENTITIES_LIMIT: i64 = 9999;
 
     let mut shoulds = vec![json!({ "ids": { "values": values } })];
 
