@@ -17,7 +17,7 @@ HTTP 200
 [Asserts]
 jsonpath "$.responses.test.status" == 200
 jsonpath "$.responses.test.results[?(@.id == 'Q7747')].caption" contains "Vladimir Vladimirovich Putin"
-jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" first == 1.0
+jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" == 1.0
 
 # Match query with normalized country
 
@@ -39,7 +39,7 @@ HTTP 200
 [Asserts]
 jsonpath "$.responses.test.status" == 200
 jsonpath "$.responses.test.results[?(@.id == 'Q7747')].caption" contains "Vladimir Vladimirovich Putin"
-jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" first == 1.0
+jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" == 1.0
 
 # Match query with wrong normalized country
 
@@ -61,7 +61,7 @@ HTTP 200
 [Asserts]
 jsonpath "$.responses.test.status" == 200
 jsonpath "$.responses.test.results[?(@.id == 'Q7747')].caption" contains "Vladimir Vladimirovich Putin"
-jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" first == 0.8
+jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" == 0.8
 
 # Match query with name parts
 
@@ -84,4 +84,4 @@ HTTP 200
 [Asserts]
 jsonpath "$.responses.test.status" == 200
 jsonpath "$.responses.test.results[?(@.id == 'Q7747')].caption" contains "Vladimir Vladimirovich Putin"
-jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" first == 1.0
+jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" == 1.0
