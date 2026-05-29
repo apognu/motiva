@@ -141,7 +141,7 @@ pub struct CatalogDatasetResource {
 pub struct CatalogDatasetPublisher {
   pub name: String,
   pub acronym: Option<String>,
-  pub url: String,
+  pub url: Option<String>,
   pub country: Option<String>,
   pub description: Option<String>,
   pub official: bool,
