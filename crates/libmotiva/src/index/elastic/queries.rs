@@ -161,9 +161,7 @@ impl IndexProvider for ElasticsearchProvider {
 
   /// Get entities related to an entity.
   #[instrument(skip_all)]
-  async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> Result<Vec<Entity>, MotivaError> {
-    const RELATED_ENTITIES_LIMIT: i64 = 9999;
-
+  async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>, limit: usize) -> Result<Vec<Entity>, MotivaError> {
     let mut shoulds = vec![json!({ "ids": { "values": values } })];
 
     if let Some(root) = root {
@@ -174,15 +172,24 @@ impl IndexProvider for ElasticsearchProvider {
 
     let query = json!({
       "query": {
-          "bool": {
-              "should": shoulds,
-              "must_not": { "ids": { "values": negatives } },
-              "minimum_should_match": 1
-          },
+        "bool": {
+          "must": [
+            {
+              "bool": {
+                "should": shoulds,
+                "must_not": { "ids": { "values": negatives } },
+                "minimum_should_match": 1
+              },
+            }
+          ],
+          "should": [
+            { "term": { "schema": { "value": "Sanction", "boost": 1000 } } }
+          ]
+        }
       }
     });
 
-    let response = self.es.search(SearchParts::Index(&[&self.main_index])).from(0).size(RELATED_ENTITIES_LIMIT).body(query).send().await?;
+    let response = self.es.search(SearchParts::Index(&[&self.main_index])).from(0).size(limit as i64).body(query).send().await?;
 
     if response.status_code() != StatusCode::OK {
       let body: EsErrorResponse = response.json().await?;

@@ -18,8 +18,9 @@ pub async fn get_entity<F: CatalogFetcher, P: IndexProvider>(
   Query(params): Query<GetEntityParams>,
 ) -> Result<impl IntoResponse, AppError> {
   let behavior = if params.nested { GetEntityBehavior::FetchNestedEntity } else { GetEntityBehavior::RootOnly };
+  let limit = GetEntityLimits::new(state.config.enrichment_max_recursion, state.config.enrichment_query_limit);
 
-  match state.motiva.get_entity(&id, behavior).await.map_err(Into::<AppError>::into)? {
+  match state.motiva.get_entity(&id, behavior, limit).await.map_err(Into::<AppError>::into)? {
     EntityHandle::Referent(id) => Ok(Redirect::permanent(&format!("/entities/{id}")).into_response()),
     EntityHandle::Nominal(entity) => Ok((StatusCode::OK, Json(entity)).into_response()),
   }

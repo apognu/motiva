@@ -25,6 +25,8 @@ async fn e2e() {
   let mut config = Config::default();
   config.listener = Some(listener);
   config.request_timeout = Span::from_str("10s").unwrap();
+  config.enrichment_max_recursion = 2;
+  config.enrichment_query_limit = 200;
 
   tokio::spawn(async move {
     run(config, provider).await.unwrap();

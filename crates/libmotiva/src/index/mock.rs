@@ -48,7 +48,7 @@ impl IndexProvider for MockedElasticsearch {
     unimplemented!();
   }
 
-  async fn get_related_entities(&self, root: Option<&String>, ids: &[String], negatives: &HashSet<String, RandomState>) -> Result<Vec<Entity>, MotivaError> {
+  async fn get_related_entities(&self, root: Option<&String>, ids: &[String], negatives: &HashSet<String, RandomState>, _limit: usize) -> Result<Vec<Entity>, MotivaError> {
     let negatives = HashSet::from_iter(negatives.iter().map(|id| id.to_owned()));
 
     for (args, entities) in &self.related_entitites {

@@ -24,7 +24,7 @@ pub trait IndexProvider: Clone + Send + Sync + 'static {
   fn index_version(&self) -> IndexVersion;
   fn health(&self) -> impl Future<Output = Result<bool, MotivaError>> + Send;
   fn get_entity(&self, id: &str) -> impl Future<Output = Result<EntityHandle, MotivaError>> + Send;
-  fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>) -> impl Future<Output = Result<Vec<Entity>, MotivaError>> + Send;
+  fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>, limit: usize) -> impl Future<Output = Result<Vec<Entity>, MotivaError>> + Send;
   fn search(&self, catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, params: &MatchParams) -> impl Future<Output = Result<Vec<Entity>, MotivaError>> + Send;
   fn list_indices(&self) -> impl Future<Output = Result<Vec<(String, String)>, MotivaError>> + Send;
 
