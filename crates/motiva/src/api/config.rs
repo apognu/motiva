@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::Context;
 use jiff::Span;
-use libmotiva::{EsTlsVerification, prelude::EsAuthMethod};
+use libmotiva::{EsTlsVerification, GetEntityLimits, prelude::EsAuthMethod};
 use tokio::net::TcpListener;
 
 use crate::api::errors::AppError;
@@ -34,6 +34,10 @@ pub struct Config {
   pub outdated_grace: Span,
   pub match_candidates: usize,
 
+  // Enrichment settings
+  pub enrichment_max_recursion: usize,
+  pub enrichment_query_limit: usize,
+
   // Observability
   pub enable_prometheus: bool,
   pub enable_tracing: bool,
@@ -58,6 +62,8 @@ impl Config {
       index_auth_method: env::var("INDEX_AUTH_METHOD").unwrap_or("none".into()).parse::<WrappedEsAuthMethod>()?.0,
       index_tls_verification: parse_index_tls_verification()?,
       index_name: env::var("INDEX_NAME").ok(),
+      enrichment_max_recursion: parse_env("ENRICHMENT_MAX_RECURSION", GetEntityLimits::default().max_recursion)?,
+      enrichment_query_limit: parse_env("ENRICHMENT_QUERY_LIMIT", GetEntityLimits::default().query_limit)?,
       enable_prometheus: env::var("ENABLE_PROMETHEUS").unwrap_or_default() == "1",
       enable_tracing: env::var("ENABLE_TRACING").unwrap_or_default() == "1",
       tracing_exporter: env::var("TRACING_EXPORTER").unwrap_or("otlp".into()).parse()?,

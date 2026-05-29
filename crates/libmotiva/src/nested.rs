@@ -6,11 +6,9 @@ use std::{
 use ahash::{HashMap, RandomState};
 use itertools::Itertools;
 
-use crate::{Entity, IndexProvider, MotivaError, model::HasProperties, schemas::SCHEMAS};
+use crate::{Entity, IndexProvider, MotivaError, model::HasProperties, motiva::GetEntityLimits, schemas::SCHEMAS};
 
-const MAX_ITERATIONS: usize = 3;
-
-pub(crate) async fn fetch_nested_entities<P: IndexProvider>(index: &P, root_entity: &mut Entity, root_id: &str) -> Result<(), MotivaError> {
+pub(crate) async fn fetch_nested_entities<P: IndexProvider>(index: &P, limits: GetEntityLimits, root_entity: &mut Entity, root_id: &str) -> Result<(), MotivaError> {
   let mut all_entities: HashMap<String, Arc<Mutex<Entity>>> = HashMap::default();
   let mut seen = HashSet::<_, RandomState>::from_iter([root_id.to_string()]);
   let mut queue: HashSet<(String, String, String), RandomState> = HashSet::default();
@@ -27,7 +25,7 @@ pub(crate) async fn fetch_nested_entities<P: IndexProvider>(index: &P, root_enti
     }
   }
 
-  for iteration in 0..MAX_ITERATIONS {
+  for iteration in 0..limits.max_recursion {
     if queue.is_empty() && iteration > 0 {
       break;
     }
@@ -36,7 +34,7 @@ pub(crate) async fn fetch_nested_entities<P: IndexProvider>(index: &P, root_enti
     let root_id_string = root_id.to_string();
     let root = if iteration == 0 { Some(&root_id_string) } else { None };
 
-    let associations = index.get_related_entities(root, &to_fetch_ids, &seen).await?;
+    let associations = index.get_related_entities(root, &to_fetch_ids, &seen, limits.query_limit).await?;
 
     let mut next: HashSet<(String, String, String), RandomState> = HashSet::default();
 
@@ -149,14 +147,14 @@ fn queue_entity_references(association: &Entity, schema: &crate::schemas::FtmSch
 mod tests {
   use std_macro_extensions::{hash_set, string};
 
-  use crate::{Entity, MockedElasticsearch};
+  use crate::{Entity, MockedElasticsearch, motiva::GetEntityLimits};
 
   #[tokio::test]
   async fn no_references() {
     let mut root = Entity::builder("Person").id("person-1").build();
     let index = MockedElasticsearch::builder().build();
 
-    super::fetch_nested_entities(&index, &mut root, "person-1").await.unwrap();
+    super::fetch_nested_entities(&index, GetEntityLimits::default(), &mut root, "person-1").await.unwrap();
 
     assert!(root.properties.entities.is_empty());
   }
@@ -170,7 +168,7 @@ mod tests {
       .related_entitites(vec![((Some(string!("person-1")), vec![string!("wizard-1")], hash_set!(string!("person-1"))), vec![wizard.clone()])])
       .build();
 
-    super::fetch_nested_entities(&index, &mut root, "person-1").await.unwrap();
+    super::fetch_nested_entities(&index, GetEntityLimits::default(), &mut root, "person-1").await.unwrap();
 
     assert!(!root.properties.entities.contains_key("addressEntity"));
   }
@@ -184,7 +182,7 @@ mod tests {
       .related_entitites(vec![((Some(string!("person-1")), vec![string!("addr-1")], hash_set!(string!("person-1"))), vec![address.clone()])])
       .build();
 
-    super::fetch_nested_entities(&index, &mut root, "person-1").await.unwrap();
+    super::fetch_nested_entities(&index, GetEntityLimits::default(), &mut root, "person-1").await.unwrap();
 
     assert!(root.properties.entities.contains_key("addressEntity"));
 
@@ -206,7 +204,7 @@ mod tests {
       )])
       .build();
 
-    super::fetch_nested_entities(&index, &mut root, "person-1").await.unwrap();
+    super::fetch_nested_entities(&index, GetEntityLimits::default(), &mut root, "person-1").await.unwrap();
 
     assert!(root.properties.entities.contains_key("addressEntity"));
     let addresses = &root.properties.entities["addressEntity"];
@@ -230,7 +228,7 @@ mod tests {
       ])
       .build();
 
-    super::fetch_nested_entities(&index, &mut root, "person-1").await.unwrap();
+    super::fetch_nested_entities(&index, GetEntityLimits::default(), &mut root, "person-1").await.unwrap();
 
     assert!(root.properties.entities.contains_key("familyRelative"));
     let relatives = &root.properties.entities["familyRelative"];
@@ -260,7 +258,7 @@ mod tests {
       ])
       .build();
 
-    super::fetch_nested_entities(&index, &mut root, "person-1").await.unwrap();
+    super::fetch_nested_entities(&index, GetEntityLimits::default(), &mut root, "person-1").await.unwrap();
 
     assert!(root.properties.entities.contains_key("familyRelative"));
     let relatives = &root.properties.entities["familyRelative"];
@@ -285,7 +283,7 @@ mod tests {
       )])
       .build();
 
-    super::fetch_nested_entities(&index, &mut root, "company-1").await.unwrap();
+    super::fetch_nested_entities(&index, GetEntityLimits::default(), &mut root, "company-1").await.unwrap();
 
     assert!(root.properties.entities.contains_key("parent"));
     let parents = &root.properties.entities["parent"];
@@ -309,7 +307,7 @@ mod tests {
       ])
       .build();
 
-    super::fetch_nested_entities(&index, &mut root, "person-1").await.unwrap();
+    super::fetch_nested_entities(&index, GetEntityLimits::default(), &mut root, "person-1").await.unwrap();
 
     assert!(root.properties.entities.contains_key("proof"));
     let proof = &root.properties.entities["proof"];
@@ -329,7 +327,7 @@ mod tests {
       .related_entitites(vec![((Some(string!("person-1")), vec![string!("company-missing")], hash_set!(string!("person-1"))), vec![])])
       .build();
 
-    super::fetch_nested_entities(&index, &mut root, "person-1").await.unwrap();
+    super::fetch_nested_entities(&index, GetEntityLimits::default(), &mut root, "person-1").await.unwrap();
 
     assert!(root.properties.entities.is_empty());
   }
@@ -342,7 +340,7 @@ mod tests {
       .related_entitites(vec![((Some(string!("company-1")), vec![string!("company-1")], hash_set!(string!("company-1"))), vec![])])
       .build();
 
-    super::fetch_nested_entities(&index, &mut root, "company-1").await.unwrap();
+    super::fetch_nested_entities(&index, GetEntityLimits::default(), &mut root, "company-1").await.unwrap();
 
     assert!(!root.properties.entities.contains_key("parent"));
   }
@@ -364,7 +362,7 @@ mod tests {
       ])
       .build();
 
-    super::fetch_nested_entities(&index, &mut root, "person-1").await.unwrap();
+    super::fetch_nested_entities(&index, GetEntityLimits::default(), &mut root, "person-1").await.unwrap();
 
     let relatives = root.properties.entities.get("familyRelative").expect("root should have familyRelative entities");
 
@@ -392,7 +390,7 @@ mod tests {
       .related_entitites(vec![((Some(string!("person-1")), vec![string!("addr-1")], hash_set!(string!("person-1"))), vec![address.clone()])])
       .build();
 
-    super::fetch_nested_entities(&index, &mut root, "person-1").await.unwrap();
+    super::fetch_nested_entities(&index, GetEntityLimits::default(), &mut root, "person-1").await.unwrap();
 
     assert!(root.properties.entities.contains_key("addressEntity"));
     let addresses = &root.properties.entities["addressEntity"];

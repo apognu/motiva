@@ -26,6 +26,30 @@ pub enum GetEntityBehavior {
   FetchNestedEntity,
 }
 
+/// Entity graph resolution effort settings
+#[derive(Clone, Copy)]
+pub struct GetEntityLimits {
+  /// How many levels of relations to walk when resolving nested entities
+  pub max_recursion: usize,
+  /// How many documents to fetch from Elasticsearch for each recursion level
+  pub query_limit: usize,
+}
+
+impl Default for GetEntityLimits {
+  fn default() -> Self {
+    Self { max_recursion: 2, query_limit: 200 }
+  }
+}
+
+impl GetEntityLimits {
+  pub fn new(recursion: usize, limit: usize) -> Self {
+    Self {
+      max_recursion: recursion,
+      query_limit: limit,
+    }
+  }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct MotivaConfig {
   pub outdated_grace: Span,
@@ -166,7 +190,17 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
   /// The `behavior` parameter defines whether to recurse into related entities
   /// to fetch their details. It returns an [`EntityHandle`], that can either be
   /// the entity, or the ID of another entity.
-  pub async fn get_entity(&self, id: &str, behavior: GetEntityBehavior) -> Result<EntityHandle, MotivaError> {
+  ///
+  /// When fetching nested entities, the level of "effort" put into resolving the
+  /// entity graph can be controlled through two knobs:
+  ///
+  ///  - The maximum recursion level to use when walking the graph
+  ///  - How many documents each recursion level will fetch from Elasticsearch
+  ///
+  /// `Sanction` related entities are prioritized to others and will be returned at
+  /// the top the results. The lower a relation comes up, the more likely it is to
+  /// be excluded from the results because it fell behind the query limit.
+  pub async fn get_entity(&self, id: &str, behavior: GetEntityBehavior, limits: GetEntityLimits) -> Result<EntityHandle, MotivaError> {
     match self.index.get_entity(id).await? {
       EntityHandle::Referent(id) => Ok(EntityHandle::Referent(id)),
 
@@ -175,7 +209,7 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
           return Ok(EntityHandle::Nominal(entity));
         }
 
-        fetch_nested_entities(&self.index, &mut entity, id).await?;
+        fetch_nested_entities(&self.index, limits, &mut entity, id).await?;
 
         Ok(EntityHandle::Nominal(entity))
       }
