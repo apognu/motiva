@@ -155,6 +155,15 @@ async fn api_match() {
                         "person_name_phonetic_match": 1.0,
                         "weak_alias_match": 1.0
                     }
+                },
+                {
+                    "id": "A1234",
+                    "schema": "Person",
+                    "match": false,
+                    "properties": {
+                        "name": ["Bob the Builder"]
+                    },
+                    "score": 0.0,
                 }
             ]
         }
