@@ -143,6 +143,9 @@ pub struct MatchParams {
   pub index_type: IndexType,
   #[serde(default)]
   pub match_candidates: usize,
+  /// How many names to sample from the list of names and aliases
+  #[serde_inline_default(10)]
+  pub name_sample_size: usize,
 }
 
 /// Variant of the index to use.

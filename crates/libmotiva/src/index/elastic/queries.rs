@@ -283,7 +283,7 @@ async fn build_query(catalog: &Arc<RwLock<Catalog>>, index_version: IndexVersion
       "query": {
           "bool": {
               "filter": build_filters(catalog, entity, params).await?,
-              "should": build_shoulds(index_version, entity)?,
+              "should": build_shoulds(index_version, entity, params.name_sample_size)?,
               "must_not": build_must_nots(params),
               "minimum_should_match": 1,
           }
@@ -388,10 +388,10 @@ fn build_arbitrary_terms(lhs: &SearchEntity, filters: &mut Vec<serde_json::Value
   }
 }
 
-fn build_shoulds(index_version: IndexVersion, entity: &SearchEntity) -> anyhow::Result<Vec<serde_json::Value>> {
+fn build_shoulds(index_version: IndexVersion, entity: &SearchEntity, sample: usize) -> anyhow::Result<Vec<serde_json::Value>> {
   let mut should = Vec::<serde_json::Value>::new();
 
-  let names = entity.pick_names(5).iter().map(|s| s.nfc().collect::<String>()).collect::<Vec<_>>();
+  let names = entity.pick_names(sample).iter().map(|s| s.nfc().collect::<String>()).collect::<Vec<_>>();
 
   for name in &names {
     should.push(json!({
@@ -654,7 +654,7 @@ mod tests {
       ])
       .build();
 
-    let shoulds = super::build_shoulds(IndexVersion::V4, &entity).unwrap();
+    let shoulds = super::build_shoulds(IndexVersion::V4, &entity, 5).unwrap();
 
     assert_json_contains!(
         container: shoulds,
@@ -704,7 +704,7 @@ mod tests {
       ])
       .build();
 
-    let shoulds = super::build_shoulds(IndexVersion::V5, &entity).unwrap();
+    let shoulds = super::build_shoulds(IndexVersion::V5, &entity, 5).unwrap();
 
     assert_json_contains!(
         container: shoulds,
@@ -777,7 +777,7 @@ mod tests {
   #[test]
   fn build_should_v5_org() {
     let entity = SearchEntity::builder("Company").properties(&[("name", &["Coca-Cola France Inc."])]).build();
-    let shoulds = super::build_shoulds(IndexVersion::V5, &entity).unwrap();
+    let shoulds = super::build_shoulds(IndexVersion::V5, &entity, 5).unwrap();
 
     assert_json_contains!(
         container: shoulds,
