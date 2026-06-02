@@ -64,6 +64,44 @@ static QUALIFIERS: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(||
   ]
 });
 
+pub(crate) fn logic_v1(
+  bump: &Bump,
+  lhs: &crate::model::SearchEntity,
+  rhs: &crate::model::Entity,
+  cutoff: f64,
+  features: &[(&'static dyn Feature, f64)],
+  qualifiers: &[(&'static dyn Feature, f64)],
+  disqualifiers: &[(&'static dyn Feature, f64)],
+) -> (f64, Vec<(&'static str, f64)>) {
+  if !rhs.schema.can_match(lhs.schema.as_str()) {
+    return (0.0, vec![]);
+  }
+
+  let mut results = Vec::with_capacity(features.len() + qualifiers.len() + disqualifiers.len());
+  let mut score = 0.0f64;
+
+  for (func, weight) in features.iter() {
+    let span = info_span!("scoring_feature", feature = func.name());
+    let _span = span.enter();
+
+    let then = Instant::now();
+    let feature_score = func.score_feature(bump, lhs, rhs);
+
+    results.push((func.name(), feature_score));
+
+    if (feature_score * weight) > score {
+      score = feature_score * weight;
+    }
+
+    tracing::debug!(feature = func.name(), score = feature_score, latency = ?then.elapsed(), "computed feature score");
+  }
+
+  let score = run_features(bump, lhs, rhs, cutoff, score, qualifiers.iter(), &mut results);
+  let score = run_features(bump, lhs, rhs, cutoff, score, disqualifiers.iter(), &mut results);
+
+  (score.clamp(0.0, 1.0), results)
+}
+
 impl MatchingAlgorithm for LogicV1 {
   fn name() -> &'static str {
     "logic-v1"
@@ -71,32 +109,7 @@ impl MatchingAlgorithm for LogicV1 {
 
   #[instrument(name = "score_hit", skip_all, fields(entity_id = rhs.id))]
   fn score(bump: &Bump, lhs: &crate::model::SearchEntity, rhs: &crate::model::Entity, cutoff: f64) -> (f64, Vec<(&'static str, f64)>) {
-    if !rhs.schema.can_match(lhs.schema.as_str()) {
-      return (0.0, vec![]);
-    }
-
-    let mut results = Vec::with_capacity(FEATURES.len() + QUALIFIERS.len());
-    let mut score = 0.0f64;
-
-    for (func, weight) in FEATURES.iter() {
-      let span = info_span!("scoring_feature", feature = func.name());
-      let _span = span.enter();
-
-      let then = Instant::now();
-      let feature_score = func.score_feature(bump, lhs, rhs);
-
-      results.push((func.name(), feature_score));
-
-      if (feature_score * weight) > score {
-        score = feature_score * weight;
-      }
-
-      tracing::debug!(score = feature_score, latency = ?then.elapsed(), "computed feature score");
-    }
-
-    let score = run_features(bump, lhs, rhs, cutoff, score, QUALIFIERS.iter(), &mut results);
-
-    (score.clamp(0.0, 1.0), results)
+    logic_v1(bump, lhs, rhs, cutoff, &FEATURES, &[], &QUALIFIERS)
   }
 }
 
