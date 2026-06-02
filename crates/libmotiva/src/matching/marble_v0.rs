@@ -1,4 +1,4 @@
-use std::{sync::LazyLock, time::Instant};
+use std::sync::LazyLock;
 
 use bumpalo::Bump;
 use tracing::instrument;
@@ -6,19 +6,20 @@ use tracing::instrument;
 use crate::{
   matching::{
     Feature, MatchingAlgorithm,
+    logic_v1::logic_v1,
     matchers::{
       address::AddressEntityMatch,
       crypto_wallet::CryptoWalletMatch,
       identifier::IdentifierMatch,
       jaro_winkler::PersonNameJaroWinkler,
+      marble::LongestCommonSubsequence,
       match_::{SimpleMatch, WeakAliasMatch},
-      mismatch::{NumbersMismatch, SimpleMismatch, dob_day_disjoint, dob_year_disjoint},
+      mismatch::{NumbersMismatch, SimpleMismatch, dob_day_disjoint, dob_progressive_match, dob_year_disjoint},
       name_fingerprint_levenshtein::NameFingerprintLevenshtein,
       name_literal_match::NameLiteralMatch,
       orgid_mismatch::OrgIdMismatch,
       phonetic::PersonNamePhoneticMatch,
     },
-    run_features,
     validators::{validate_bic, validate_imo_mmsi, validate_inn, validate_isin, validate_ogrn},
   },
   model::PropertyFilter,
@@ -33,6 +34,7 @@ static FEATURES: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
     (&PersonNameJaroWinkler, 0.8),
     (&PersonNamePhoneticMatch, 0.9),
     (&NameFingerprintLevenshtein, 0.9),
+    (&LongestCommonSubsequence, 0.8),
     // TODO: The weight of those two features are 0.0 by default, so until we
     // implement a way to customize weights, there is no use implementing
     // them:
@@ -54,6 +56,13 @@ static FEATURES: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
 
 static QUALIFIERS: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
   vec![
+    (SimpleMatch::new("country_match", &|e| e.prop_group("country", PropertyFilter::All), None), 0.1),
+    (SimpleMatch::new("dob_progressive_match", &|e| e.props(&["birthDate"]), Some(dob_progressive_match)), 0.15),
+  ]
+});
+
+static DISQUALIFIERS: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
+  vec![
     (SimpleMismatch::new("country_mismatch", &|e| e.prop_group("country", PropertyFilter::All), None), -0.2),
     (SimpleMismatch::new("last_name_mismatch", &|e| e.props(&["lastName"]), None), -0.2),
     (SimpleMismatch::new("dob_year_disjoint", &|e| e.props(&["birthDate"]), Some(dob_year_disjoint)), -0.15),
@@ -67,34 +76,12 @@ static QUALIFIERS: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(||
 
 impl MatchingAlgorithm for MarbleV0 {
   fn name() -> &'static str {
-    "logic-v1"
+    "marble-v0"
   }
 
   #[instrument(name = "score_hit", skip_all, fields(entity_id = rhs.id))]
   fn score(bump: &Bump, lhs: &crate::model::SearchEntity, rhs: &crate::model::Entity, cutoff: f64) -> (f64, Vec<(&'static str, f64)>) {
-    if !rhs.schema.can_match(lhs.schema.as_str()) {
-      return (0.0, vec![]);
-    }
-
-    let mut results = Vec::with_capacity(FEATURES.len() + QUALIFIERS.len());
-    let mut score = 0.0f64;
-
-    for (func, weight) in FEATURES.iter() {
-      let then = Instant::now();
-      let feature_score = func.score_feature(bump, lhs, rhs);
-
-      results.push((func.name(), feature_score));
-
-      if (feature_score * weight) > score {
-        score = feature_score * weight;
-      }
-
-      tracing::debug!(feature = func.name(), score = feature_score, latency = ?then.elapsed(), "computed feature score");
-    }
-
-    let score = run_features(bump, lhs, rhs, cutoff, score, QUALIFIERS.iter(), &mut results);
-
-    (score.clamp(0.0, 1.0), results)
+    logic_v1(bump, lhs, rhs, cutoff, &FEATURES, &QUALIFIERS, &DISQUALIFIERS)
   }
 }
 
@@ -103,16 +90,14 @@ mod tests {
   use bumpalo::Bump;
   use float_cmp::approx_eq;
   use itertools::Itertools;
-  use pyo3::Python;
 
   use crate::{
-    matching::{Algorithm, Feature, MatchingAlgorithm, logic_v1::LogicV1},
+    matching::{Feature, MatchingAlgorithm},
     model::{Entity, SearchEntity},
-    tests::python::nomenklatura_score,
   };
 
   #[test]
-  fn logic_v1_person() {
+  fn marble_v0_person() {
     let lhs = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Bob Putain"])]).build();
     let rhs = Entity::builder("Person")
       .properties(&[("name", &["PUTIN vladimir vladimirovich", "PUTIN, Vladimir Vladimirovich", "Владимир Путин", "Vladimyr Bob Phutain"])])
@@ -131,7 +116,7 @@ mod tests {
   }
 
   #[test]
-  fn logic_v1_company() {
+  fn marble_v0_company() {
     let lhs = SearchEntity::builder("Company")
       .properties(&[("name", &["Google LLC"]), ("leiCode", &["529900T8BM49AURSDO55"]), ("ogrnCode", &["2022200525818"])])
       .build();
@@ -152,7 +137,7 @@ mod tests {
   }
 
   #[test]
-  fn logic_v1_vessel() {
+  fn marble_v0_vessel() {
     let lhs = SearchEntity::builder("Vessel").properties(&[("mmsi", &["366123456"])]).build();
     let rhs = Entity::builder("Vessel").properties(&[("imoNumber", &["366123456"])]).build();
 
@@ -183,42 +168,20 @@ mod tests {
   }
 
   #[test]
-  #[serial_test::serial]
-  fn against_nomenklatura() {
-    Python::initialize();
+  fn marble_v0_features() {
+    let lhs = SearchEntity::builder("Person")
+      .properties(&[("name", &["Samir Kamil AlAssad"]), ("country", &["sy"]), ("birthDate", &["1980-06-15"]), ("passportNumber", &["X111"])])
+      .build();
+    let rhs = Entity::builder("Person")
+      .properties(&[("name", &["Samer Kamel Al Asad"]), ("country", &["sy"]), ("birthDate", &["1980-06-15"]), ("passportNumber", &["Y999"])])
+      .build();
 
-    let queries = vec![
-      SearchEntity::builder("Person").properties(&[("name", &["Fladimir Poutine"]), ("gender", &["female"])]).build(),
-      SearchEntity::builder("Person")
-        .properties(&[("name", &["Fladimir Poutine"]), ("gender", &["female"]), ("country", &["cn"])])
-        .build(),
-      SearchEntity::builder("Company").properties(&[("name", &["Google"]), ("leiCode", &["529900T8BM49AURSDO55"])]).build(),
-      SearchEntity::builder("Vessel").properties(&[("name", &["Titanic"]), ("imoNumber", &["IMO8712345"])]).build(),
-      SearchEntity::builder("Address").properties(&[("full", &["No.3, Chabanais avenue, 103-222, Los Angeles"])]).build(),
-    ];
+    let (_, features) = super::MarbleV0::score(&Bump::new(), &lhs, &rhs, 0.0);
+    let feature_score = |name: &str| features.iter().find(|(n, _)| *n == name).map(|(_, score)| *score);
 
-    let results = vec![
-      Entity::builder("Person")
-        .id("Q7747")
-        .properties(&[("name", &["Vladimir Putin"]), ("gender", &["male"]), ("country", &["ru"])])
-        .build(),
-      Entity::builder("Person")
-        .id("Q7748")
-        .properties(&[("name", &["Barack Hussein Obama"]), ("gender", &["female"]), ("country", &["us"])])
-        .build(),
-      Entity::builder("Company").properties(&[("name", &["Gooogle"]), ("innCode", &["529900T8BM49AURSDO55"])]).build(),
-      Entity::builder("Vessel").properties(&[("name", &["Titanic"]), ("mssi", &["IMO8712345"])]).build(),
-      Entity::builder("Address").properties(&[("full", &["3 Chabanais ave, 103222, Los Angeles"])]).build(),
-    ];
-
-    for query in queries {
-      let nscores = nomenklatura_score(Algorithm::LogicV1, &query, results.clone()).unwrap();
-
-      for (index, (_, nscore)) in nscores.into_iter().enumerate() {
-        let (score, _) = LogicV1::score(&Bump::new(), &query, results.get(index).unwrap(), 0.0);
-
-        assert!(approx_eq!(f64, score, nscore, epsilon = 0.01));
-      }
-    }
+    assert!(feature_score("longest_common_subsequence").is_some_and(|score| score > 0.8));
+    assert_eq!(feature_score("country_match"), Some(1.0));
+    assert_eq!(feature_score("dob_progressive_match"), Some(1.0));
+    assert_eq!(feature_score("identifier_mismatch"), Some(1.0));
   }
 }

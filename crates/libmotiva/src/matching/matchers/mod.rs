@@ -2,6 +2,7 @@ pub(crate) mod address;
 pub(crate) mod crypto_wallet;
 pub(crate) mod identifier;
 pub(crate) mod jaro_winkler;
+pub(crate) mod marble;
 pub(crate) mod match_;
 pub(crate) mod mismatch;
 pub(crate) mod name_fingerprint_levenshtein;
