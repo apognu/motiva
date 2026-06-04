@@ -114,6 +114,12 @@ impl Schema {
   }
 }
 
+#[derive(Clone, Debug)]
+pub struct PayloadParams {
+  pub include_datasets: Option<Vec<String>>,
+  pub exclude_datasets: Option<Vec<String>>,
+}
+
 /// Search terms
 #[derive(Clone, Debug, Deserialize, Serialize, Validate)]
 pub struct SearchEntity {
@@ -123,6 +129,8 @@ pub struct SearchEntity {
 
   #[serde(default)]
   pub filters: Option<HashMap<String, Vec<Vec<String>>>>,
+  #[serde(skip)]
+  pub params: Option<PayloadParams>,
 
   // Those attributes will be precomputed when receiving the request to skip the computation for every matching entity.
   #[serde(skip)]
@@ -300,6 +308,7 @@ impl SearchEntity {
       schema: Schema::from(schema),
       properties: props,
       filters: None,
+      params: None,
       clean_names: Default::default(),
       name_parts: Default::default(),
       name_parts_flat: Default::default(),
