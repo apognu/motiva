@@ -337,7 +337,7 @@ async fn build_datasets(catalog: &Arc<RwLock<Catalog>>, filters: &mut Vec<serde_
       .loaded_datasets
       .get(&params.scope)
       .map(|dataset| match dataset._type.as_deref() {
-        Some("collection") => dataset.children.clone(),
+        Some("collection") => dataset.datasets.clone(),
         _ => vec![dataset.name.clone()],
       })
       .unwrap_or_default()

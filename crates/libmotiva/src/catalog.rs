@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
 use jiff::{
@@ -89,6 +89,48 @@ pub struct Catalog {
   pub loaded_datasets: LoadedDatasets,
 }
 
+impl Catalog {
+  fn resolve_relationships(&mut self, loaded: Vec<CatalogDataset>) -> anyhow::Result<()> {
+    for dataset in loaded {
+      if dataset.children.is_empty() {
+        continue;
+      }
+
+      let mut acc = Vec::new();
+      let mut seen = HashSet::new();
+
+      self.recurse_resolve_relationship(&dataset.name, &mut acc, &mut seen)?;
+
+      if let Some(reference) = self.loaded_datasets.get_mut(&dataset.name) {
+        reference.datasets = acc;
+      }
+    }
+
+    Ok(())
+  }
+
+  fn recurse_resolve_relationship(&self, name: &str, acc: &mut Vec<String>, seen: &mut HashSet<String>) -> anyhow::Result<()> {
+    if !seen.insert(name.to_string()) {
+      return Ok(());
+    }
+
+    let Some(dataset) = self.loaded_datasets.get(name) else {
+      return Ok(());
+    };
+
+    match dataset.children.is_empty() {
+      true => acc.push(dataset.name.clone()),
+      false => {
+        for child in &dataset.children {
+          self.recurse_resolve_relationship(child, acc, seen)?;
+        }
+      }
+    }
+
+    Ok(())
+  }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct CatalogDataset {
   pub name: String,
@@ -124,6 +166,9 @@ pub struct CatalogDataset {
   pub last_change: Option<DateTime>,
   pub last_export: Option<DateTime>,
   pub updated_at: Option<DateTime>,
+
+  #[serde(skip)]
+  pub datasets: Vec<String>,
 
   // Motiva-specific metadata object
   #[serde(default)]
@@ -241,6 +286,11 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
 
   for ds in manifest.datasets {
     let mut dataset = CatalogDataset {
+      _type: if ds.datasets.as_ref().map(|d| !d.is_empty()).unwrap_or_default() {
+        Some("collection".into())
+      } else {
+        None
+      },
       name: ds.name.clone(),
       title: ds.title,
       load: true,
@@ -261,6 +311,7 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
 
   catalog.index_stale = !catalog.outdated.is_empty();
   catalog.loaded_datasets = catalog.datasets.iter().map(|dataset| (dataset.name.clone(), dataset.clone())).collect::<HashMap<_, _>>();
+  catalog.resolve_relationships(catalog.datasets.clone())?;
 
   tracing::info!(datasets = catalog.datasets.len(), "fetched catalog");
 
@@ -338,5 +389,53 @@ mod tests {
     assert!(!datasets_by_name["dataset3"].load);
     assert!(datasets_by_name["dataset3"].index_version.is_none());
     assert!(!datasets_by_name["dataset3"].index_current);
+  }
+
+  #[test]
+  fn resolve_dataset_relationships() {
+    fn dataset(name: &str, children: &[&str]) -> CatalogDataset {
+      CatalogDataset {
+        name: name.to_string(),
+        children: children.iter().map(|c| c.to_string()).collect(),
+        ..Default::default()
+      }
+    }
+
+    fn resolve(datasets: Vec<CatalogDataset>) -> Catalog {
+      let mut catalog = Catalog {
+        loaded_datasets: datasets.iter().map(|d| (d.name.clone(), d.clone())).collect(),
+        ..Default::default()
+      };
+
+      catalog.resolve_relationships(datasets).unwrap();
+      catalog
+    }
+
+    // Regular run
+    let catalog = resolve(vec![dataset("a", &["b", "c"]), dataset("c", &["d"]), dataset("b", &[]), dataset("d", &[])]);
+
+    assert_eq!(catalog.loaded_datasets["a"].datasets, vec!["b".to_string(), "d".to_string()]);
+
+    // Diamond relationships
+    let catalog = resolve(vec![dataset("a", &["b", "c"]), dataset("b", &["d"]), dataset("c", &["d"]), dataset("d", &[])]);
+
+    assert_eq!(catalog.loaded_datasets["a"].datasets, vec!["d".to_string()]);
+
+    // Missing children
+    let catalog = resolve(vec![dataset("a", &["b", "missing"]), dataset("b", &[])]);
+
+    assert_eq!(catalog.loaded_datasets["a"].datasets, vec!["b".to_string()]);
+
+    // Cycle-free
+    let catalog = resolve(vec![dataset("a", &["b"]), dataset("b", &["a"])]);
+
+    assert!(catalog.loaded_datasets["a"].datasets.is_empty());
+    assert!(catalog.loaded_datasets["b"].datasets.is_empty());
+
+    // Partial cycle is all good
+    let catalog = resolve(vec![dataset("a", &["b", "c"]), dataset("b", &["a"]), dataset("c", &[])]);
+
+    assert_eq!(catalog.loaded_datasets["a"].datasets, vec!["c".to_string()]);
+    assert_eq!(catalog.loaded_datasets["b"].datasets, vec!["c".to_string()]);
   }
 }

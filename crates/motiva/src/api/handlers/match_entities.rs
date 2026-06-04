@@ -44,12 +44,21 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
   });
 
   let state = Arc::new(state);
-  let query = Arc::new(query);
 
   let tasks = body.queries.into_iter().map(|(id, entity)| {
+    let mut query = query.clone();
+
+    if let Some(ref params) = entity.params {
+      if let Some(ref datasets) = params.include_datasets {
+        query.include_dataset = datasets.clone();
+      }
+      if let Some(ref datasets) = params.exclude_datasets {
+        query.exclude_dataset = datasets.clone();
+      }
+    }
+
     tokio::spawn({
       let state = Arc::clone(&state);
-      let query = Arc::clone(&query);
 
       async move {
         let hits = match state.motiva.search(&entity, &query).await {

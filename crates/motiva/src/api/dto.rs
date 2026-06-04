@@ -13,17 +13,17 @@ pub struct GetEntityParams {
   pub nested: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Validate)]
+#[derive(Clone, Debug, Deserialize, Serialize, Validate)]
 pub(crate) struct Payload {
   #[validate(nested, length(min = 1, message = "at least one query must be provided"))]
   pub queries: HashMap<String, SearchEntity, RandomState>,
 
   // Some query parameters are duplicated in the request body to overcome URL size limitations
-  #[serde(default)]
+  #[serde(skip)]
   pub params: PayloadParams,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Validate)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, Validate)]
 pub(crate) struct PayloadParams {
   #[serde(default)]
   pub include_datasets: Option<Vec<String>>,
