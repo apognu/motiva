@@ -36,7 +36,7 @@ async fn health() {
 
   let motiva = Motiva::test(MockedElasticsearch::default()).build().await.unwrap();
 
-  assert!(matches!(motiva.health().await, Err(_)));
+  assert!(motiva.health().await.is_err());
 }
 
 #[tokio::test]

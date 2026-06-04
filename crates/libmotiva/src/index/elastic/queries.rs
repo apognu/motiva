@@ -562,34 +562,35 @@ mod tests {
     Arc::new(RwLock::new({
       let mut catalog = Catalog::default();
 
-      catalog.loaded_datasets.insert(
-        "myscope".to_string(),
+      catalog.datasets = vec![
         CatalogDataset {
-          name: "Real Dataset".to_string(),
+          name: "myscope".to_string(),
           children: vec!["realdataset".to_string()],
           _type: Some("collection".to_string()),
           ..Default::default()
         },
-      );
-
-      catalog.loaded_datasets.insert(
-        "otherscope".to_string(),
         CatalogDataset {
-          name: "Other Dataset".to_string(),
+          name: "realdataset".to_string(),
+          ..Default::default()
+        },
+        CatalogDataset {
+          name: "otherscope".to_string(),
           children: vec!["otherdataset".to_string()],
           _type: Some("collection".to_string()),
           ..Default::default()
         },
-      );
-
-      catalog.loaded_datasets.insert(
-        "baredataset".to_string(),
+        CatalogDataset {
+          name: "otherdataset".to_string(),
+          ..Default::default()
+        },
         CatalogDataset {
           name: "baredataset".to_string(),
           ..Default::default()
         },
-      );
+      ];
 
+      catalog.loaded_datasets = catalog.datasets.iter().map(|dataset| (dataset.name.clone(), dataset.clone())).collect::<HashMap<_, _>>();
+      catalog.resolve_relationships(catalog.datasets.clone()).unwrap();
       catalog
     }))
   }

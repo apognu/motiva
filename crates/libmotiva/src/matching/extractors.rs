@@ -280,7 +280,7 @@ mod tests {
     let inputs: Vec<(&str, Vec<&str>)> = vec![("ben'laden,ossama", vec!["benladen", "ossama"]), ("Ser. Bobby O'Brian", vec!["Ser", "Bobby", "OBrian"])];
 
     for (input, expected) in inputs {
-      let names = super::tokenize_names(vec![input].iter()).flatten().collect::<Vec<_>>();
+      let names = super::tokenize_names([input].iter()).flatten().collect::<Vec<_>>();
 
       assert_eq!(&names, &expected);
     }
@@ -304,22 +304,22 @@ mod tests {
 
   #[test]
   fn clean_names() {
-    assert_eq!(super::clean_names(vec!["Bob-a O'Brien#2nd"].iter()).collect::<Vec<_>>(), vec!["bob a obrien 2nd"]);
-    assert_eq!(super::clean_names(vec!["Владимир Владимирович Путин"].iter()).collect::<Vec<_>>(), vec!["vladimir vladimirovich putin"]);
+    assert_eq!(super::clean_names(["Bob-a O'Brien#2nd"].iter()).collect::<Vec<_>>(), vec!["bob a obrien 2nd"]);
+    assert_eq!(super::clean_names(["Владимир Владимирович Путин"].iter()).collect::<Vec<_>>(), vec!["vladimir vladimirovich putin"]);
   }
 
   #[test]
   fn clean_names_light() {
-    assert_eq!(super::clean_names_light(vec!["Vladimir Putin Jr."].iter()).collect::<Vec<_>>(), vec!["vladimir putin jr"]);
+    assert_eq!(super::clean_names_light(["Vladimir Putin Jr."].iter()).collect::<Vec<_>>(), vec!["vladimir putin jr"]);
     assert_eq!(
-      super::clean_names_light(vec!["Владимир Владимирович Путин"].iter()).collect::<Vec<_>>(),
+      super::clean_names_light(["Владимир Владимирович Путин"].iter()).collect::<Vec<_>>(),
       vec!["владимир владимирович путин"]
     );
   }
 
   #[test]
   fn normalize_identifiers() {
-    assert_eq!(super::normalize_identifiers(vec!["FR12-34/uc12.3 (d)"].iter()).collect::<Vec<_>>(), vec!["FR1234UC123D"]);
+    assert_eq!(super::normalize_identifiers(["FR12-34/uc12.3 (d)"].iter()).collect::<Vec<_>>(), vec!["FR1234UC123D"]);
   }
 
   #[test]

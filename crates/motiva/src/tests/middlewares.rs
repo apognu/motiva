@@ -102,7 +102,7 @@ rusty_fork_test! {
 
             signal::kill(Pid::from_raw(std::process::id() as i32), Some(signal::Signal::SIGINT)).unwrap();
 
-            assert!(matches!(reqwest::get("http://localhost:8080/healthz").await, Err(_)));
+            assert!(reqwest::get("http://localhost:8080/healthz").await.is_err());
         });
     }
 
