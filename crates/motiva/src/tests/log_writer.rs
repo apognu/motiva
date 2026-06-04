@@ -26,6 +26,7 @@ impl VecLogWriter {
 }
 
 impl io::Write for VecLogWriter {
+  #[allow(clippy::print_stdout)]
   fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
     let mut buffer = self.buffer.lock().unwrap();
 

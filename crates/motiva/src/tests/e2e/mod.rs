@@ -15,18 +15,20 @@ use crate::{api::config::Config, run};
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "end-to-end tests can only be run manually"]
 async fn e2e() {
-  let provider = ElasticsearchProvider::new(option_env!("INDEX_URL").unwrap_or_else(|| "http://localhost:9200".into()), EsOptions::default())
+  let provider = ElasticsearchProvider::new(option_env!("INDEX_URL").unwrap_or_else(|| "http://localhost:9200"), EsOptions::default())
     .await
     .unwrap();
 
   let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
   let addr = listener.local_addr().unwrap();
 
-  let mut config = Config::default();
-  config.listener = Some(listener);
-  config.request_timeout = Span::from_str("10s").unwrap();
-  config.enrichment_max_recursion = 2;
-  config.enrichment_query_limit = 200;
+  let config = Config {
+    listener: Some(listener),
+    request_timeout: Span::from_str("10s").unwrap(),
+    enrichment_max_recursion: 2,
+    enrichment_query_limit: 200,
+    ..Default::default()
+  };
 
   tokio::spawn(async move {
     run(config, provider).await.unwrap();

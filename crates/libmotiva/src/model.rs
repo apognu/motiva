@@ -571,7 +571,7 @@ mod tests {
     se.precompute();
 
     assert_eq!(
-      HashSet::from_iter(se.properties.get("citizenship").unwrap().into_iter().cloned()),
+      HashSet::from_iter(se.properties.get("citizenship").unwrap().iter().cloned()),
       HashSet::from_iter(["ru", "fr", "gb"].into_iter().map(str::to_string)),
     );
   }

@@ -213,7 +213,7 @@ mod tests {
     assert_eq!(config.match_candidates, 3);
     assert_eq!(config.index_url, "http://index");
     assert_eq!(config.index_auth_method, EsAuthMethod::EncodedApiKey("secret".to_string()));
-    assert_eq!(config.enable_tracing, true);
+    assert!(config.enable_tracing);
 
     unsafe {
       env::remove_var("ENV");
@@ -235,14 +235,14 @@ mod tests {
       env::set_var("INDEX_CLIENT_SECRET", "secret");
     }
 
-    assert!(matches!(Config::from_env().await, Err(_)));
+    assert!(Config::from_env().await.is_err());
 
     unsafe {
       env::set_var("INDEX_AUTH_METHOD", "api_key");
       env::set_var("INDEX_CLIENT_SECRET", "secret");
     }
 
-    assert!(matches!(Config::from_env().await, Err(_)));
+    assert!(Config::from_env().await.is_err());
 
     unsafe {
       env::set_var("INDEX_AUTH_METHOD", "basic");
@@ -281,10 +281,10 @@ mod tests {
     }
 
     assert_eq!(super::parse_env::<u32>("INT", 0).unwrap(), 42);
-    assert_eq!(super::parse_env::<bool>("BOOL", true).unwrap(), true);
+    assert!(super::parse_env::<bool>("BOOL", true).unwrap());
     assert_eq!(super::parse_env::<IpAddr>("IP", IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4))).unwrap(), IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)));
 
-    assert!(matches!(super::parse_env::<u32>("BOOL", 0), Err(_)));
+    assert!(super::parse_env::<u32>("BOOL", 0).is_err());
 
     unsafe {
       env::remove_var("INT");
@@ -296,7 +296,7 @@ mod tests {
   #[test]
   fn es_auth_method_from_str() {
     assert!(matches!("otlp".parse(), Ok(TracingExporter::Otlp)));
-    assert!(matches!("other".parse::<TracingExporter>(), Err(_)));
+    assert!("other".parse::<TracingExporter>().is_err());
   }
 
   #[test]
@@ -313,7 +313,7 @@ mod tests {
     assert!(matches!("api_key".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::ApiKey(_, _)))));
     assert!(matches!("encoded_api_key".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::EncodedApiKey(_)))));
 
-    assert!(matches!("other".parse::<WrappedEsAuthMethod>(), Err(_)));
+    assert!("other".parse::<WrappedEsAuthMethod>().is_err());
 
     unsafe {
       env::remove_var("INDEX_CLIENT_ID");

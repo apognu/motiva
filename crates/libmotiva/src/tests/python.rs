@@ -95,7 +95,7 @@ pub(crate) fn nomenklatura_comparer(path: &str, function: &str, query: &SearchEn
     };
 
     let inspect = py.import("inspect")?.getattr("signature")?;
-    let matcher = py.import(&format!("nomenklatura.matching.{path}"))?.getattr(function)?;
+    let matcher = py.import(format!("nomenklatura.matching.{path}"))?.getattr(function)?;
 
     let score: f64 = match inspect.call1((matcher.clone(),))?.getattr("parameters")?.len()? {
       2 => matcher.call1((&query, entity))?.extract()?,
@@ -116,7 +116,7 @@ pub(crate) fn nomenklatura_comparer(path: &str, function: &str, query: &SearchEn
 
 pub(crate) fn nomenklatura_str_list(path: &str, function: &str, query: &[&str], entity: &[&str]) -> anyhow::Result<f64> {
   let result = Python::attach::<_, PyResult<f64>>(|py| {
-    let matcher = py.import(&format!("nomenklatura.matching.{path}"))?.getattr(function)?;
+    let matcher = py.import(format!("nomenklatura.matching.{path}"))?.getattr(function)?;
     let score = matcher.call1((query, entity))?.extract()?;
 
     Ok(score)

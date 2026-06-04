@@ -90,7 +90,7 @@ pub struct Catalog {
 }
 
 impl Catalog {
-  fn resolve_relationships(&mut self, loaded: Vec<CatalogDataset>) -> anyhow::Result<()> {
+  pub(crate) fn resolve_relationships(&mut self, loaded: Vec<CatalogDataset>) -> anyhow::Result<()> {
     for dataset in loaded {
       if dataset.children.is_empty() {
         continue;

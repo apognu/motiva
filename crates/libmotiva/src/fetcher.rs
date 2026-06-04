@@ -220,7 +220,7 @@ mod tests {
   async fn valid_local_file_yaml() {
     for ext in ["yml", "yaml"] {
       std::fs::write(
-        &format!("/tmp/motiva-manifest.{ext}"),
+        format!("/tmp/motiva-manifest.{ext}"),
         r#"
       catalogs:
         - url: http://myurl.tld
