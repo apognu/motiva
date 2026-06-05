@@ -114,7 +114,7 @@ impl Schema {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct PayloadParams {
   pub include_datasets: Option<Vec<String>>,
   pub exclude_datasets: Option<Vec<String>>,
@@ -129,7 +129,7 @@ pub struct SearchEntity {
 
   #[serde(default)]
   pub filters: Option<HashMap<String, Vec<Vec<String>>>>,
-  #[serde(skip)]
+  #[serde(skip_serializing)]
   pub params: Option<PayloadParams>,
 
   // Those attributes will be precomputed when receiving the request to skip the computation for every matching entity.
