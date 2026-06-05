@@ -99,6 +99,56 @@ The match endpoint body now takes a `params` object at its root:
 }
 ```
 
+Also, the `include_datasets` and `exclude_datasets` parameters can be overriden per-query with a nested `params` field, alongside the other search entity fields:
+
+```json
+{
+  "queries": {
+    "first": {
+      "schema": "Person",
+      "properties": {...},
+      "params": {
+        "include_datasets": ["one", "two"]
+      }
+    }
+  }
+}
+```
+
+### Advanced boolean filters
+
+If you need to add advanced boolean logic to your search on `keyword` fields, you can add a `filters` field to your queries. Those take, for each attribute, an array of arrays of strings.
+
+The inner arrays are merged with a boolean `OR`, whereas the outer one and `AND`ed.
+
+```json
+{
+  "queries": {
+    "first": {
+      "schema": "Person",
+      "properties": {
+        "name": ["..."]
+      },
+      "filters": {
+        "topics": [
+          ["wanted", "crime"],
+          ["role.pol"]
+        ],
+        "properties.citizenship": [
+          ["ru"]
+        ]
+      }
+    }
+  }
+}
+```
+
+This query will perform the usual matching in Elasticsearch, but only return those entities which:
+
+ - Have either the `wanted` **OR** `crime` topic
+ - **AND** have the `role.pol` topic
+ - **AND** have the `ru` citizenship
+
 ### Scoped index
 
 Motiva supports generating and using a trimmed down index for match queries, while keeping the full index for entity relation queries. This could allow improving performance of match queries if you are only interested in a subset of it, while keeping the full datasets for queries that are less time-sensitive.
