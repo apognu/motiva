@@ -4,6 +4,7 @@ use std::{
 };
 
 use ahash::RandomState;
+use itertools::Either;
 use rust_embed::Embed;
 use serde::Deserialize;
 
@@ -14,15 +15,35 @@ struct Schemas;
 pub static SCHEMAS: LazyLock<HashMap<String, FtmSchema, RandomState>> = LazyLock::new(|| {
   tracing::debug!("building schemas");
 
-  let mut schemas = Schemas::iter()
-    .map(|filename| {
-      let file = Schemas::get(filename.as_ref()).expect("invalid schema");
-      let content = std::str::from_utf8(&file.data).expect("invalid schema");
-      let schema = serde_yaml::from_str::<HashMap<String, FtmSchema>>(content).expect("invalid schema");
+  let schemas = Schemas::iter().filter(|filename| filename.ends_with(".yaml") || filename.ends_with(".yml")).map(|filename| {
+    let file = Schemas::get(filename.as_ref()).expect("invalid schema");
+    let content = std::str::from_utf8(&file.data).expect("invalid schema");
+    let schema = serde_yaml::from_str::<HashMap<String, FtmSchema>>(content).expect("invalid schema");
 
-      schema.into_iter().next().expect("schema does not contain schema")
-    })
-    .collect::<HashMap<String, FtmSchema, RandomState>>();
+    schema.into_iter().next().expect("schema does not contain schema")
+  });
+
+  let custom = match std::env::var("FTM_MODEL_PATH").ok() {
+    None => Either::Left(std::iter::empty()),
+
+    Some(path) => Either::Right(
+      std::fs::read_dir(path)
+        .expect("could not read custom FTM schema directory")
+        .flatten()
+        .filter(|filename| filename.path().extension().map(|ext| ext == "yaml" || ext == "yml").unwrap_or_default())
+        .map(|filename| {
+          let content = std::fs::read_to_string(filename.path()).unwrap();
+          let schema = serde_yaml::from_str::<HashMap<String, FtmSchema>>(&content).expect("invalid schema");
+          let schema = schema.into_iter().next().expect("schema does not contain schema");
+
+          tracing::debug!(schema = schema.0, file = ?filename.path(), "loaded custom schema");
+
+          schema
+        }),
+    ),
+  };
+
+  let mut schemas = schemas.chain(custom).collect::<HashMap<String, FtmSchema, RandomState>>();
 
   let schemas_clone = schemas.clone();
   let mut children_map: HashMap<&str, Vec<&str>> = HashMap::default();
