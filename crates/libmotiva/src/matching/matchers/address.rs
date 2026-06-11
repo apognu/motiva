@@ -26,7 +26,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 
   let lhs_props = lhs.props(&["full"]);
   let lhs_addresses = extractors::clean_address_parts(lhs_props.iter()).map(|address| {
-    replacers::replace(&ORDINALS.0, &ORDINALS.1, &replacers::replace(&ADDRESS_FORMS.0, &ADDRESS_FORMS.1, &address))
+    replacers::replace(&ORDINALS.0, &ORDINALS.1, &replacers::remove(&ADDRESS_FORMS.0, &address))
       .split_whitespace()
       .map(str::to_string)
       .unique()
@@ -35,7 +35,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
 
   let rhs_props = rhs.props(&["full"]);
   let rhs_addresses = extractors::clean_address_parts(rhs_props.iter()).map(|address| {
-    replacers::replace(&ORDINALS.0, &ORDINALS.1, &replacers::replace(&ADDRESS_FORMS.0, &ADDRESS_FORMS.1, &address))
+    replacers::replace(&ORDINALS.0, &ORDINALS.1, &replacers::remove(&ADDRESS_FORMS.0, &address))
       .split_whitespace()
       .map(str::to_string)
       .unique()
@@ -89,9 +89,9 @@ mod tests {
 
   #[test]
   fn address_entity_match() {
-    let lhs = SearchEntity::builder("Address").properties(&[("full", &["No.3, New York avenue, 103-222, New York City"])]).build();
-    let rhs = Entity::builder("Address").properties(&[("full", &["3 New York ave, 103222, New York City"])]).build();
+    let lhs = SearchEntity::builder("Address").properties(&[("full", &["No.3, Chabanais avenue, 103-222, Los Angeles"])]).build();
+    let rhs = Entity::builder("Address").properties(&[("full", &["3 Chabanais ave, 103222, Los Angeles"])]).build();
 
-    assert!(approx_eq!(f64, super::AddressEntityMatch.score_feature(&Bump::new(), &lhs, &rhs), 0.9, epsilon = 0.01));
+    assert!(approx_eq!(f64, super::AddressEntityMatch.score_feature(&Bump::new(), &lhs, &rhs), 0.95, epsilon = 0.01));
   }
 }

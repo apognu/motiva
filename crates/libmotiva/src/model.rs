@@ -595,7 +595,13 @@ mod tests {
   fn resolve_schema_chain() {
     assert_eq!(Schema::from("Person").matchable_schemas(ResolveSchemaLevel::Root), &["Person", "LegalEntity"]);
     assert_eq!(Schema::from("Company").matchable_schemas(ResolveSchemaLevel::Root), &["Company", "Organization", "LegalEntity"]);
-    assert_eq!(Schema::from("Airplane").matchable_schemas(ResolveSchemaLevel::Root), &["Airplane"]);
+    assert_eq!(Schema::from("Airplane").matchable_schemas(ResolveSchemaLevel::Root), &["Airplane", "Vehicle"]);
+
+    assert_eq!(
+      HashSet::from_iter(Schema::from("Vehicle").matchable_schemas(ResolveSchemaLevel::Root).iter()),
+      HashSet::from_iter(["Vessel".to_string(), "Airplane".to_string(), "Vehicle".to_string()].iter())
+    );
+
     assert_eq!(
       HashSet::from_iter(Schema::from("Thing").matchable_schemas(ResolveSchemaLevel::Root).iter()),
       HashSet::from_iter(
