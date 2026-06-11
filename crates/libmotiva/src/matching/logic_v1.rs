@@ -193,7 +193,7 @@ mod tests {
         .build(),
       SearchEntity::builder("Company").properties(&[("name", &["Google"]), ("leiCode", &["529900T8BM49AURSDO55"])]).build(),
       SearchEntity::builder("Vessel").properties(&[("name", &["Titanic"]), ("imoNumber", &["IMO8712345"])]).build(),
-      SearchEntity::builder("Address").properties(&[("full", &["No.3, New York avenue, 103-222, New York City"])]).build(),
+      SearchEntity::builder("Address").properties(&[("full", &["No.3, Chabanais avenue, 103-222, Los Angeles"])]).build(),
     ];
 
     let results = vec![
@@ -207,7 +207,7 @@ mod tests {
         .build(),
       Entity::builder("Company").properties(&[("name", &["Gooogle"]), ("innCode", &["529900T8BM49AURSDO55"])]).build(),
       Entity::builder("Vessel").properties(&[("name", &["Titanic"]), ("mssi", &["IMO8712345"])]).build(),
-      Entity::builder("Address").properties(&[("full", &["3 New York ave, 103222, New York City"])]).build(),
+      Entity::builder("Address").properties(&[("full", &["3 Chabanais ave, 103222, Los Angeles"])]).build(),
     ];
 
     for query in queries {
