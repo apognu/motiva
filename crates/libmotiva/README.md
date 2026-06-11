@@ -78,6 +78,12 @@ Setting `MANIFEST_FILE` is required if you use a customized dataset list and wou
 
 ## Motiva-specific features
 
+### Scope-partitioned queries
+
+In those cases where the requested scope exactly matches an indexed scope, you can pass `?partition=true` to your query to add a filter on that particular index prefix instead of only using a post-scan datasets filter. This has the potential to greatly increase performance when the data distribution between your indexes is highly imbalanced.
+
+**Note:** this would not work if your query scope does not match your indexed scope. For example, if you index part of the data (with `"scope": "us_sanctions"` for example), but still query it with `/match/default`, no results would ever be returned where it would have without partitioning.
+
 ### Query options passed in body
 
 Some unbounded-in-size query parameters can be passed in the request body instead of through the URL query. This prevents, for some of them taking in unbounded lists, to overflow the maximum length of URLs. Namely, you can now pass the following parameters in the body:

@@ -68,7 +68,7 @@ impl IndexProvider for ElasticsearchProvider {
   /// Search for candidate entities matching input parameters.
   #[instrument(skip_all)]
   async fn search(&self, catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, MotivaError> {
-    let query = build_query(catalog, self.index_version, entity, params).await?;
+    let query = build_query(catalog, self.index_version, self.index_name(params.index_type), entity, params).await?;
 
     tracing::trace!(%query, "running query");
 
@@ -220,7 +220,7 @@ impl IndexProvider for ElasticsearchProvider {
   async fn list_indices(&self) -> Result<Vec<(String, String)>, MotivaError> {
     let indices: HashMap<String, serde_json::Value> = self.es.indices().get_alias(IndicesGetAliasParts::Name(&[&self.main_index])).send().await?.json().await?;
 
-    Ok(parse_index_dataset_versions(indices))
+    Ok(parse_index_dataset_versions(&self.main_index, indices))
   }
 
   async fn list_field_values(&self, fields: &[&str], query: Option<serde_json::Value>) -> Result<HashMap<String, Vec<String>>, MotivaError> {
@@ -259,12 +259,12 @@ impl IndexProvider for ElasticsearchProvider {
   }
 }
 
-fn parse_index_dataset_versions(indices: HashMap<String, serde_json::Value>) -> Vec<(String, String)> {
+fn parse_index_dataset_versions(index_name: &str, indices: HashMap<String, serde_json::Value>) -> Vec<(String, String)> {
   indices
     .keys()
     .cloned()
     .filter_map(|name| {
-      if let Some(stripped) = name.strip_prefix("yente-entities-") {
+      if let Some(stripped) = name.strip_prefix(&format!("{index_name}-")) {
         let mut stripped = stripped.split("-");
 
         match (stripped.next(), stripped.skip(1).join("-")) {
@@ -278,17 +278,26 @@ fn parse_index_dataset_versions(indices: HashMap<String, serde_json::Value>) -> 
     .collect::<Vec<_>>()
 }
 
-async fn build_query(catalog: &Arc<RwLock<Catalog>>, index_version: IndexVersion, entity: &SearchEntity, params: &MatchParams) -> Result<serde_json::Value, MotivaError> {
+async fn build_query(catalog: &Arc<RwLock<Catalog>>, index_version: IndexVersion, index_name: &str, entity: &SearchEntity, params: &MatchParams) -> Result<serde_json::Value, MotivaError> {
   Ok(json!({
       "query": {
           "bool": {
               "filter": build_filters(catalog, entity, params).await?,
+              "must": build_musts(index_name, params),
               "should": build_shoulds(index_version, entity, params.name_sample_size)?,
               "must_not": build_must_nots(params),
               "minimum_should_match": 1,
           }
       }
   }))
+}
+
+fn build_musts(index_name: &str, params: &MatchParams) -> Vec<serde_json::Value> {
+  if params.partition {
+    vec![json!({ "prefix": { "_index": format!("{}-{}-", index_name, params.scope) } })]
+  } else {
+    Default::default()
+  }
 }
 
 async fn build_filters(catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<serde_json::Value>, MotivaError> {
@@ -641,7 +650,7 @@ mod tests {
       ])
       .build();
 
-    super::build_query(&fake_catalog(), IndexVersion::V4, &entity, &MatchParams::default()).await.unwrap();
+    super::build_query(&fake_catalog(), IndexVersion::V4, "yente-entities", &entity, &MatchParams::default()).await.unwrap();
   }
 
   #[test]
@@ -899,7 +908,7 @@ mod tests {
       .map(|(n, v)| (format!("yente-entities-{n}-any-{v}"), json!({})))
       .collect::<HashMap<String, _>>();
 
-    let versions = super::parse_index_dataset_versions(input);
+    let versions = super::parse_index_dataset_versions("yente-entities", input);
 
     assert_eq!(versions.len(), 2);
     assert_eq!(

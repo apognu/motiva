@@ -31,6 +31,10 @@ RUN cargo build --release --bin motiva ${CARGO_ARGS}
 
 FROM gcr.io/distroless/cc:latest
 
+LABEL org.opencontainers.image.source="https://github.com/apognu/motiva"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.description="Sanctions screening tool"
+
 COPY --from=builder /app/target/release/motiva /motiva
 # Fallible step, will only copy libicu files if they exist
 COPY --from=builder /usr/lib/x86_64-linux-gnu/libicu* /usr/lib/x86_64-linux-gnu/

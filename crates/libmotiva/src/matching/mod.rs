@@ -140,6 +140,8 @@ pub struct MatchParams {
 
   // Motiva-specific params
   #[serde(default)]
+  pub partition: bool,
+  #[serde(default)]
   pub index_type: IndexType,
   #[serde(default)]
   pub match_candidates: usize,
