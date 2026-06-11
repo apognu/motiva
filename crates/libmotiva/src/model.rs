@@ -166,6 +166,10 @@ impl SearchEntity {
   }
 
   pub fn combine_names(&mut self) {
+    if self.prop_group("name", PropertyFilter::Matchable).len() > 20 {
+      return;
+    }
+
     let aliases = {
       let firstnames = self.props(&["firstName"]);
       let secondnames = self.props(&["secondName"]);

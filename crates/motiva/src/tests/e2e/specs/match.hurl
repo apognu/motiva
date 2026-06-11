@@ -85,3 +85,45 @@ HTTP 200
 jsonpath "$.responses.test.status" == 200
 jsonpath "$.responses.test.results[?(@.id == 'Q7747')].caption" contains "Vladimir Vladimirovich Putin"
 jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" == 1.0
+
+# Match query with scope partition and wrong scope
+
+POST http://{{baseUrl}}/match/default?partition=true
+{
+    "queries": {
+        "test": {
+            "schema": "Person",
+            "properties": {
+                "name": ["Vladimir Putin"]
+            }
+        }
+    }
+}
+
+HTTP 200
+
+[Asserts]
+jsonpath "$.responses.test.status" == 200
+jsonpath "$.responses.test.results" count == 0
+
+# Match query with scope partition and right scope
+
+POST http://{{baseUrl}}/match/us_sanctions?partition=true
+{
+    "queries": {
+        "test": {
+            "schema": "Person",
+            "properties": {
+                "name": ["Vladimir Putin"]
+            }
+        }
+    }
+}
+
+HTTP 200
+
+[Asserts]
+jsonpath "$.responses.test.status" == 200
+jsonpath "$.responses.test.results" count == 1
+jsonpath "$.responses.test.results[?(@.id == 'Q7747')].caption" contains "Vladimir Vladimirovich Putin"
+jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" == 1.0
