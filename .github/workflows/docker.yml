@@ -41,6 +41,17 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+        with:
+          annotations: |
+            org.opencontainers.image.description=Sanctions, PEP and adverse media screening API
+          labels: |
+            org.opencontainers.image.description=Sanctions, PEP and adverse media screening API
+
       - name: Authenticate to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -60,6 +71,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           tags: |
             apognu/motiva:${{ inputs.tag }}${{ matrix.combination.suffix }}
             ghcr.io/apognu/motiva:${{ inputs.tag }}${{ matrix.combination.suffix }}
