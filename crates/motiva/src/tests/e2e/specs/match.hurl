@@ -86,6 +86,53 @@ jsonpath "$.responses.test.status" == 200
 jsonpath "$.responses.test.results[?(@.id == 'Q7747')].caption" contains "Vladimir Vladimirovich Putin"
 jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" == 1.0
 
+# Match with matching datasets filter
+
+POST http://{{baseUrl}}/match/default
+{
+    "queries": {
+        "test": {
+            "schema": "Person",
+            "properties": {
+                "name": ["Vladimir Putin"]
+            }
+        }
+    },
+    "params": {
+        "include_datasets": ["us_ofac_sdn"]
+    }
+}
+
+HTTP 200
+
+[Asserts]
+jsonpath "$.responses.test.status" == 200
+jsonpath "$.responses.test.results[?(@.id == 'Q7747')].caption" contains "Vladimir Vladimirovich Putin"
+jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" == 1.0
+
+# Match with non-matching datasets filter
+
+POST http://{{baseUrl}}/match/default
+{
+    "queries": {
+        "test": {
+            "schema": "Person",
+            "properties": {
+                "name": ["Vladimir Putin"]
+            }
+        }
+    },
+    "params": {
+        "include_datasets": ["us_state_terrorist_exclusion"]
+    }
+}
+
+HTTP 200
+
+[Asserts]
+jsonpath "$.responses.test.status" == 200
+jsonpath "$.responses.test.results" count == 0
+
 # Match query with scope partition and wrong scope
 
 POST http://{{baseUrl}}/match/default?partition=true

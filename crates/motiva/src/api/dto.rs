@@ -19,7 +19,7 @@ pub(crate) struct Payload {
   pub queries: HashMap<String, SearchEntity, RandomState>,
 
   // Some query parameters are duplicated in the request body to overcome URL size limitations
-  #[serde(skip)]
+  #[serde(default, skip_serializing)]
   pub params: PayloadParams,
 }
 
