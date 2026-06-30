@@ -17,8 +17,8 @@ jobs:
     outputs:
       matrix: ${{ steps.generate.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
       - name: Generate feature combinations
         id: generate
         run: |
@@ -35,7 +35,7 @@ jobs:
     name: docker/features/${{ matrix.combination.features || 'base' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: true
           fetch-depth: 0
@@ -53,22 +53,22 @@ jobs:
             org.opencontainers.image.description=Sanctions, PEP and adverse media screening API
 
       - name: Authenticate to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
       - name: "Login to GitHub Container Registry"
-        uses: docker/login-action@v1
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           labels: ${{ steps.meta.outputs.labels }}

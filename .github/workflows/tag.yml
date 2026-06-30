@@ -11,10 +11,14 @@ permissions:
 jobs:
   test:
     uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
     secrets: inherit
 
   release:
     uses: ./.github/workflows/release.yml
+    permissions:
+      contents: write
     needs: [test]
     secrets: inherit
     with:
@@ -22,6 +26,9 @@ jobs:
 
   docker:
     uses: ./.github/workflows/docker.yml
+    permissions:
+      contents: read
+      packages: write
     needs: [test]
     secrets: inherit
     with:

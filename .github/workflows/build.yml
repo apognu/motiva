@@ -11,15 +11,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: true
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.2
+
       - name: Cache build artifacts
         id: build-artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .venv/
@@ -32,6 +40,9 @@ jobs:
             check-${{ github.job }}-
             check-
 
+      - name: Install the Python dependencies
+        run: uv sync
+
       - name: Check
         run: cargo check --locked --all-features --all-targets
 
@@ -39,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: true
 
@@ -49,7 +60,7 @@ jobs:
 
       - name: Cache build artifacts
         id: build-artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .venv/
@@ -75,12 +86,12 @@ jobs:
     needs: [check, lint]
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: true
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
@@ -94,11 +105,11 @@ jobs:
           tool: cargo-llvm-cov
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v8.3.2
 
       - name: Cache build artifacts
         id: build-artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .venv/
@@ -146,18 +157,18 @@ jobs:
       yente-version: 5.2.0
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: true
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Cache build artifacts
         id: build-artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             target/
@@ -191,7 +202,7 @@ jobs:
     needs: [check, lint]
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: true
           fetch-depth: 0
@@ -201,7 +212,7 @@ jobs:
 
       - name: Cache build artifacts
         id: build-artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .venv/
@@ -223,7 +234,7 @@ jobs:
         run: cargo run --release --all-features -- version
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: motiva
           path: target/release/motiva

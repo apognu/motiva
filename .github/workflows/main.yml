@@ -11,11 +11,16 @@ permissions:
 jobs:
   test:
     uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
     secrets: inherit
 
   docker:
     uses: ./.github/workflows/docker.yml
     needs: [test]
+    permissions:
+      contents: read
+      packages: write
     secrets: inherit
     with:
       tag: latest
