@@ -74,6 +74,7 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
         let scores = match query.algorithm {
           Algorithm::NameBased => state.motiva.score::<NameBased>(&entity, hits, query.cutoff),
           Algorithm::NameQualified => state.motiva.score::<NameQualified>(&entity, hits, query.cutoff),
+          Algorithm::MarbleV0 => state.motiva.score::<MarbleV0>(&entity, hits, query.cutoff),
           Algorithm::LogicV1 | Algorithm::Best => state.motiva.score::<LogicV1>(&entity, hits, query.cutoff),
         };
 

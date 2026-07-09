@@ -27,6 +27,7 @@ impl Algorithm {
     match self {
       Algorithm::NameBased => "NameMatcher",
       Algorithm::NameQualified => "NameQualifiedMatcher",
+      Algorithm::MarbleV0 => "MarbleV0",
       Algorithm::LogicV1 | Algorithm::Best => "LogicV1",
     }
   }
