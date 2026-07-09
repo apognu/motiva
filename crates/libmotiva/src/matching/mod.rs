@@ -17,6 +17,7 @@ pub(crate) mod comparers;
 pub(crate) mod extractors;
 pub(crate) mod latinize;
 pub(crate) mod logic_v1;
+pub(crate) mod marble_v0;
 pub(crate) mod name_based;
 pub(crate) mod name_qualified;
 pub(crate) mod replacers;
@@ -32,6 +33,8 @@ pub enum Algorithm {
   #[default]
   #[serde(rename = "logic-v1")]
   LogicV1,
+  #[serde(rename = "marble-v0")]
+  MarbleV0,
   #[serde(rename = "best")]
   Best,
 }
@@ -46,6 +49,7 @@ impl Algorithm {
       Algorithm::NameBased => "name-based",
       Algorithm::NameQualified => "name-qualified",
       Algorithm::LogicV1 => "logic-v1",
+      Algorithm::MarbleV0 => "marble-v0",
       Algorithm::Best => "best",
     }
   }
