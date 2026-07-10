@@ -22,6 +22,7 @@ pub struct MockedElasticsearch {
   healthy: Option<bool>,
   #[builder(default)]
   entities: Vec<Entity>,
+  entity: Option<EntityHandle>,
   #[builder(default)]
   indices: Vec<(String, String)>,
   #[builder(default)]
@@ -45,7 +46,10 @@ impl IndexProvider for MockedElasticsearch {
   }
 
   async fn get_entity(&self, _: &str) -> Result<EntityHandle, MotivaError> {
-    unimplemented!();
+    match &self.entity {
+      Some(entity) => Ok(entity.clone()),
+      None => Err(MotivaError::ResourceNotFound),
+    }
   }
 
   async fn get_related_entities(&self, root: Option<&String>, ids: &[String], negatives: &HashSet<String, RandomState>, _limit: usize) -> Result<Vec<Entity>, MotivaError> {
@@ -65,6 +69,6 @@ impl IndexProvider for MockedElasticsearch {
   }
 
   async fn list_field_values(&self, _fields: &[&str], _query: Option<serde_json::Value>) -> Result<HashMap<String, Vec<String>>, MotivaError> {
-    todo!()
+    unimplemented!()
   }
 }

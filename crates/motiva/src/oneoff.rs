@@ -4,12 +4,9 @@ use jiff::Timestamp;
 use libmotiva::ElasticsearchProvider;
 use serde_json::json;
 
-pub fn version() -> Result<(), anyhow::Error> {
+pub fn version(mut out: impl Write) -> Result<(), anyhow::Error> {
   use crate::build::*;
   use crate::git_version;
-
-  let out = std::io::stdout();
-  let mut out = out.lock();
 
   let features = match CARGO_FEATURES {
     "" => "(none)",
@@ -47,4 +44,26 @@ pub async fn create_scoped_index(provider: &ElasticsearchProvider) -> Result<(),
   }
 
   result
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn version_outputs_build_info() {
+    let mut out = Vec::new();
+
+    super::version(&mut out).unwrap();
+
+    let output = String::from_utf8(out).unwrap();
+
+    let expected_features = match crate::build::CARGO_FEATURES {
+      "" => "(none)",
+      features => features,
+    };
+
+    assert!(output.contains(&format!("motiva {} ", crate::git_version())));
+    assert!(output.contains(env!("CARGO_PKG_AUTHORS")));
+    assert!(output.contains(&format!("Repository: {}", env!("CARGO_PKG_REPOSITORY"))));
+    assert!(output.contains(&format!("Compiled features: {expected_features}")));
+  }
 }

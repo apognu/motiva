@@ -30,3 +30,20 @@ pub(crate) static ORG_SYMBOLS: LazyLock<(AhoCorasick, Vec<String>)> = LazyLock::
 struct OrgSymbolDictionary {
   org_symbols: HashMap<String, Vec<String>>,
 }
+
+#[cfg(test)]
+mod tests {
+  use super::ORG_SYMBOLS;
+  use crate::matching::replacers::replace;
+
+  #[test]
+  fn org_symbols_dictionary_builds() {
+    assert!(!ORG_SYMBOLS.1.is_empty());
+    assert_eq!(ORG_SYMBOLS.0.patterns_len(), ORG_SYMBOLS.1.len());
+  }
+
+  #[test]
+  fn org_symbols_replaces_variants() {
+    assert_eq!(replace(&ORG_SYMBOLS.0, &ORG_SYMBOLS.1, "company"), "co");
+  }
+}
