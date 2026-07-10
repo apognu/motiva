@@ -39,6 +39,7 @@ pub mod prelude {
   };
   pub use crate::matching::{Algorithm, Feature, MatchParams, MatchingAlgorithm, logic_v1::LogicV1, marble_v0::MarbleV0, name_based::NameBased, name_qualified::NameQualified};
   pub use crate::model::{Entity, HasProperties, SearchEntity};
+  pub use crate::scoring::ScoringOptions;
 }
 
 #[doc(inline)]

@@ -8,6 +8,7 @@ use crate::{
     run_features,
   },
   model::{Entity, SearchEntity},
+  scoring::ScoringOptions,
 };
 
 /// Simple matching algorithm using name similarity
@@ -21,13 +22,13 @@ impl MatchingAlgorithm for NameBased {
   }
 
   #[instrument(name = "score_hit", skip_all)]
-  fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, _cutoff: f64) -> (f64, Vec<(&'static str, f64)>) {
+  fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, options: &ScoringOptions) -> (f64, Vec<(&'static str, f64)>) {
     if !rhs.schema.is_a(lhs.schema.as_str()) {
       return (0.0, vec![]);
     }
 
     let mut results = Vec::with_capacity(FEATURES.len());
-    let score = run_features(bump, lhs, rhs, 0.0, FeaturesConfig::summed_features(FEATURES), &mut results);
+    let score = run_features(bump, lhs, rhs, 0.0, FeaturesConfig::summed_features(&options.weights, FEATURES), &mut results);
 
     (score.clamp(0.0, 1.0), results)
   }
@@ -40,6 +41,7 @@ mod tests {
   use pyo3::Python;
 
   use crate::{
+    ScoringOptions,
     matching::{Algorithm, MatchingAlgorithm, name_based::NameBased},
     model::{Entity, SearchEntity},
     tests::python::nomenklatura_score,
@@ -55,7 +57,7 @@ mod tests {
     let e1 = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
     let e2 = Entity::builder("Company").properties(&[("name", &["Vladimir Putin"])]).build();
 
-    let (score, _) = NameBased::score(&Bump::new(), &e1, &e2, 0.0);
+    let (score, _) = NameBased::score(&Bump::new(), &e1, &e2, &Default::default());
 
     assert_eq!(score, 0.0);
   }
@@ -65,7 +67,7 @@ mod tests {
     let e1 = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
     let e2 = Entity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
 
-    let (score, _) = NameBased::score(&Bump::new(), &e1, &e2, 0.0);
+    let (score, _) = NameBased::score(&Bump::new(), &e1, &e2, &Default::default());
 
     assert_eq!(score, 1.0);
   }
@@ -99,7 +101,7 @@ mod tests {
     let nscores = nomenklatura_score(Algorithm::NameBased, &query, results.clone()).unwrap();
 
     for (index, (_, nscore)) in nscores.into_iter().enumerate() {
-      let (score, _) = NameBased::score(&Bump::new(), &query, results.get(index).unwrap(), 0.0);
+      let (score, _) = NameBased::score(&Bump::new(), &query, results.get(index).unwrap(), &ScoringOptions::new(0.0));
 
       assert!(approx_eq!(f64, score, nscore, epsilon = 0.05));
     }

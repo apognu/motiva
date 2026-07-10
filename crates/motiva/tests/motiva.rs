@@ -11,7 +11,8 @@ async fn scoring() {
 
   let motiva = Motiva::test(MockedElasticsearch::builder().entities(rhs).build()).build().await.unwrap();
   let rhs = motiva.search(&lhs, &MatchParams::default()).await.unwrap();
-  let scores = motiva.score::<LogicV1>(&lhs, rhs, 0.5).unwrap();
+  let options = ScoringOptions { cutoff: 0.5, ..Default::default() };
+  let scores = motiva.score::<LogicV1>(&lhs, rhs, &options).unwrap();
 
   assert_eq!(scores.len(), 2);
 

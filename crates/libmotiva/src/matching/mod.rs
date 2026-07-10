@@ -3,7 +3,7 @@ mod matchers;
 #[cfg(test)]
 mod tests;
 
-use std::time::Instant;
+use std::{collections::HashMap, time::Instant};
 
 use bumpalo::Bump;
 use jiff::Timestamp;
@@ -11,7 +11,10 @@ use serde::Deserialize;
 use serde_inline_default::serde_inline_default;
 use tracing::info_span;
 
-use crate::model::{Entity, SearchEntity};
+use crate::{
+  model::{Entity, SearchEntity},
+  scoring::ScoringOptions,
+};
 
 pub(crate) mod comparers;
 pub(crate) mod extractors;
@@ -66,7 +69,7 @@ pub trait MatchingAlgorithm {
   ///
   /// It returns a tuple of the resulting score and a vector of features and
   /// their resulting score.
-  fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, cutoff: f64) -> (f64, Vec<(&'static str, f64)>);
+  fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, options: &ScoringOptions) -> (f64, Vec<(&'static str, f64)>);
 }
 
 /// A scoring facet composed into a [`MatchingAlgorithm`]
@@ -81,6 +84,7 @@ pub struct FeaturesConfig<'f, F>
 where
   F: IntoIterator<Item = &'f (&'f dyn Feature, f64)>,
 {
+  weights: &'f HashMap<String, f64>,
   features: F,
   behavior: FeaturesBehavior,
   skip: FeaturesSkip,
@@ -90,24 +94,27 @@ impl<'f, F> FeaturesConfig<'f, F>
 where
   F: IntoIterator<Item = &'f (&'f dyn Feature, f64)>,
 {
-  pub fn summed_features(features: F) -> Self {
+  pub fn summed_features(weights: &'f HashMap<String, f64>, features: F) -> Self {
     Self {
+      weights,
       features,
       behavior: FeaturesBehavior::Sum,
       skip: FeaturesSkip::Never,
     }
   }
 
-  pub fn highest_features(features: F) -> Self {
+  pub fn highest_features(weights: &'f HashMap<String, f64>, features: F) -> Self {
     Self {
+      weights,
       features,
       behavior: FeaturesBehavior::Highest,
       skip: FeaturesSkip::Never,
     }
   }
 
-  pub fn disqualifiers(features: F, cutoff: f64) -> Self {
+  pub fn disqualifiers(weights: &'f HashMap<String, f64>, features: F, cutoff: f64) -> Self {
     Self {
+      weights,
       features,
       behavior: FeaturesBehavior::Sum,
       skip: FeaturesSkip::ScoreBelow(cutoff),
@@ -133,6 +140,8 @@ where
   F: IntoIterator<Item = &'f (&'f dyn Feature, f64)>,
 {
   config.features.into_iter().fold(init, move |score, (func, weight)| {
+    let weight = config.weights.get(func.name()).unwrap_or(weight);
+
     if weight == &0.0 {
       return score;
     }

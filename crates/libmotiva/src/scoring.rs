@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bumpalo::Bump;
 
 use metrics::histogram;
@@ -11,8 +13,20 @@ use crate::{
   model::{Entity, SearchEntity},
 };
 
+#[derive(Debug, Default)]
+pub struct ScoringOptions {
+  pub cutoff: f64,
+  pub weights: HashMap<String, f64>,
+}
+
+impl ScoringOptions {
+  pub fn new(cutoff: f64) -> Self {
+    ScoringOptions { cutoff, weights: Default::default() }
+  }
+}
+
 #[instrument(name = "compute_scores", skip_all, fields(algorithm = A::name()))]
-pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, cutoff: f64) -> anyhow::Result<Vec<(Entity, f64)>> {
+pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, options: &ScoringOptions) -> anyhow::Result<Vec<(Entity, f64)>> {
   let span = Span::current();
 
   let mut bump = Bump::with_capacity(1024);
@@ -29,7 +43,7 @@ pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, cut
       return (hit, 0.0);
     }
 
-    let (score, features) = A::score(&bump, entity, &hit, cutoff);
+    let (score, features) = A::score(&bump, entity, &hit, options);
 
     hit.features = features;
     hit.features.retain(|(_, score)| *score != 0.0);
@@ -62,7 +76,7 @@ mod tests {
   fn incomparable_schemas() {
     let lhs = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
     let rhs = Entity::builder("Company").properties(&[("name", &["Vladimir Putin"])]).build();
-    let result = super::score::<LogicV1>(&lhs, vec![rhs], 0.0).unwrap();
+    let result = super::score::<LogicV1>(&lhs, vec![rhs], &Default::default()).unwrap();
 
     assert_eq!(result.len(), 1);
     assert!(approx_eq!(f64, result[0].1, 0.0));

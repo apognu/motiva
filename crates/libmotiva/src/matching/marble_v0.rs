@@ -24,6 +24,7 @@ use crate::{
     validators::{validate_bic, validate_imo_mmsi, validate_inn, validate_isin, validate_ogrn},
   },
   model::PropertyFilter,
+  scoring::ScoringOptions,
 };
 
 /// Default matching algorithm
@@ -79,8 +80,8 @@ impl MatchingAlgorithm for MarbleV0 {
   }
 
   #[instrument(name = "score_hit", skip_all, fields(entity_id = rhs.id))]
-  fn score(bump: &Bump, lhs: &crate::model::SearchEntity, rhs: &crate::model::Entity, cutoff: f64) -> (f64, Vec<(&'static str, f64)>) {
-    logic_v1(bump, lhs, rhs, cutoff, &FEATURES, &QUALIFIERS, &DISQUALIFIERS)
+  fn score(bump: &Bump, lhs: &crate::model::SearchEntity, rhs: &crate::model::Entity, options: &ScoringOptions) -> (f64, Vec<(&'static str, f64)>) {
+    logic_v1(bump, lhs, rhs, options, &FEATURES, &QUALIFIERS, &DISQUALIFIERS)
   }
 }
 
@@ -102,7 +103,7 @@ mod tests {
       .properties(&[("name", &["PUTIN vladimir vladimirovich", "PUTIN, Vladimir Vladimirovich", "Владимир Путин", "Vladimyr Bob Phutain"])])
       .build();
 
-    let (score, features) = super::MarbleV0::score(&Bump::new(), &lhs, &rhs, 0.0);
+    let (score, features) = super::MarbleV0::score(&Bump::new(), &lhs, &rhs, &Default::default());
 
     assert!(approx_eq!(f64, score, 0.72, epsilon = 0.01));
     assert!(approx_eq!(
@@ -127,7 +128,7 @@ mod tests {
       ])
       .build();
 
-    let (score, features) = super::MarbleV0::score(&Bump::new(), &lhs, &rhs, 0.0);
+    let (score, features) = super::MarbleV0::score(&Bump::new(), &lhs, &rhs, &Default::default());
 
     assert_eq!(score, 0.95);
     assert!(features.iter().contains(&("name_fingerprint_levenshtein", 7.0 / 9.0)));
@@ -140,7 +141,7 @@ mod tests {
     let lhs = SearchEntity::builder("Vessel").properties(&[("mmsi", &["366123456"])]).build();
     let rhs = Entity::builder("Vessel").properties(&[("imoNumber", &["366123456"])]).build();
 
-    let (score, features) = super::MarbleV0::score(&Bump::new(), &lhs, &rhs, 0.0);
+    let (score, features) = super::MarbleV0::score(&Bump::new(), &lhs, &rhs, &Default::default());
 
     assert_eq!(score, 0.95);
     assert!(features.iter().contains(&("vessel_imo_mmsi_match", 1.0)));
@@ -175,7 +176,7 @@ mod tests {
       .properties(&[("name", &["Samer Kamel Al Asad"]), ("country", &["sy"]), ("birthDate", &["1980-06-15"]), ("passportNumber", &["Y999"])])
       .build();
 
-    let (_, features) = super::MarbleV0::score(&Bump::new(), &lhs, &rhs, 0.0);
+    let (_, features) = super::MarbleV0::score(&Bump::new(), &lhs, &rhs, &Default::default());
     let feature_score = |name: &str| features.iter().find(|(n, _)| *n == name).map(|(_, score)| *score);
 
     assert!(feature_score("longest_common_subsequence").is_some_and(|score| score > 0.8));

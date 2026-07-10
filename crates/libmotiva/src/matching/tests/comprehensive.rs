@@ -268,7 +268,7 @@ mod tests {
 
       for (index, (_, nscore)) in nscores.into_iter().enumerate() {
         let candidate = candidates.get(index).unwrap();
-        let (score, _) = LogicV1::score(&Bump::new(), &query, candidate, 0.0);
+        let (score, _) = LogicV1::score(&Bump::new(), &query, candidate, &Default::default());
 
         assert!(
           approx_eq!(f64, score, nscore, epsilon = 0.01),

@@ -15,7 +15,7 @@ fn name_based(c: &mut Criterion) {
     .flatten()
     .collect::<Vec<_>>();
 
-  c.bench_function("name_based", |b| b.iter(async || black_box(motiva.score::<NameBased>(&lhs, rhs.clone(), 0.5))));
+  c.bench_function("name_based", |b| b.iter(|| black_box(motiva.score::<NameBased>(&lhs, rhs.clone(), &Default::default()))));
 }
 
 fn name_qualified(c: &mut Criterion) {
@@ -28,7 +28,7 @@ fn name_qualified(c: &mut Criterion) {
     .flatten()
     .collect::<Vec<_>>();
 
-  c.bench_function("name_qualified", |b| b.iter(|| black_box(motiva.score::<NameQualified>(&lhs, rhs.clone(), 0.5))));
+  c.bench_function("name_qualified", |b| b.iter(|| black_box(motiva.score::<NameQualified>(&lhs, rhs.clone(), &Default::default()))));
 }
 
 fn logic_v1(c: &mut Criterion) {
@@ -41,7 +41,7 @@ fn logic_v1(c: &mut Criterion) {
     .flatten()
     .collect::<Vec<_>>();
 
-  c.bench_function("logic_v1", |b| b.iter(|| black_box(motiva.score::<LogicV1>(&lhs, rhs.clone(), 0.5))));
+  c.bench_function("logic_v1", |b| b.iter(|| black_box(motiva.score::<LogicV1>(&lhs, rhs.clone(), &Default::default()))));
 }
 
 criterion_group!(benches, name_based, name_qualified, logic_v1);

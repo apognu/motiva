@@ -132,6 +132,10 @@ async fn api_match() {
                     "name": ["Vladimir Putin", "that guy"],
                 }
             }
+        },
+        "params": {
+            "include_datasets": ["included"],
+            "exclude_datasets": ["excluded"],
         }
     }))
     .await;

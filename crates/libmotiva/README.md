@@ -66,6 +66,7 @@ Motiva is configured via environment variables. The following variables are supp
 | `MANIFEST_URL`             | Optional URL to a custom manifest JSON file                                            | _(none)_                  |
 | `CATALOG_REFRESH_INTERVAL` | Interval at which to pull the manifest and catalogs                                    | _1h_                      |
 | `MATCH_CANDIDATES`         | Number of candidates to consider for matching                                          | `10`                      |
+| `WEIGHT_<FEATURE_NAME>`    | Custom weight for a given feature (e.g. `WEIGHT_PERSON_NAME_JARO_WINKLER`)             | _(none)_                  |
 | `ENRICHMENT_MAX_RECURSION` | Maximum recursion levels when enriching entities with relations                        | `2`                       |
 | `ENRICHMENT_QUERY_LIMIT`   | Maximum relation documents to fetch from Elasticsearch when building relation graphs   | `200`                     |
 | `ENABLE_PROMETHEUS`        | Enable Prometheus metrics collection and /metrics endpoint                             | `0`                       |

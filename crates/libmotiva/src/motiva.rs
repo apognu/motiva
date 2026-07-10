@@ -15,7 +15,7 @@ use crate::{
   model::{Entity, SearchEntity},
   nested::fetch_nested_entities,
   prelude::MatchingAlgorithm,
-  scoring,
+  scoring::{self, ScoringOptions},
 };
 
 /// Whether to fetch related entities.
@@ -73,7 +73,7 @@ pub struct MotivaConfig {
 ///
 ///   let search = SearchEntity::builder("Person").properties(&[("name", &["John Doe"])]).build();
 ///   let results = motiva.search(&search, &MatchParams::default()).await.unwrap();
-///   let scores = motiva.score::<NameBased>(&search, results, 0.5).unwrap();
+///   let scores = motiva.score::<NameBased>(&search, results, &Default::default()).unwrap();
 ///
 ///   for (entity, score) in scores {
 ///       if let Some(name) = entity.props(&["name"]).iter().next() {
@@ -217,8 +217,8 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
   }
 
   /// Perform the scoring of all candidates against the search parameters.
-  pub fn score<A: MatchingAlgorithm>(&self, entity: &SearchEntity, hits: Vec<Entity>, cutoff: f64) -> anyhow::Result<Vec<(Entity, f64)>> {
-    scoring::score::<A>(entity, hits, cutoff)
+  pub fn score<A: MatchingAlgorithm>(&self, entity: &SearchEntity, hits: Vec<Entity>, options: &ScoringOptions) -> anyhow::Result<Vec<(Entity, f64)>> {
+    scoring::score::<A>(entity, hits, options)
   }
 
   /// Refresh the local catalog from upstream.

@@ -15,6 +15,7 @@ use crate::{
     run_features,
   },
   model::{Entity, SearchEntity},
+  scoring::ScoringOptions,
 };
 
 /// Simple matching algorithm using name similarity, and penalty for disjoint attributes
@@ -38,13 +39,13 @@ impl MatchingAlgorithm for NameQualified {
   }
 
   #[instrument(name = "score_hit", skip_all, fields(algorithm = Self::name(), entity_id = rhs.id))]
-  fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, _cutoff: f64) -> (f64, Vec<(&'static str, f64)>) {
+  fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, options: &ScoringOptions) -> (f64, Vec<(&'static str, f64)>) {
     if !rhs.schema.is_a(lhs.schema.as_str()) {
       return (0.0, vec![]);
     }
 
     let mut results = Vec::with_capacity(FEATURES.len());
-    let score = run_features(bump, lhs, rhs, 0.0, FeaturesConfig::summed_features(FEATURES.iter()), &mut results);
+    let score = run_features(bump, lhs, rhs, 0.0, FeaturesConfig::summed_features(&options.weights, FEATURES.iter()), &mut results);
 
     (score.clamp(0.0, 1.0), results)
   }
@@ -57,6 +58,7 @@ mod tests {
   use pyo3::Python;
 
   use crate::{
+    ScoringOptions,
     matching::{Algorithm, MatchingAlgorithm, name_qualified::NameQualified},
     model::{Entity, SearchEntity},
     tests::python::nomenklatura_score,
@@ -72,7 +74,7 @@ mod tests {
     let e1 = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
     let e2 = Entity::builder("Company").properties(&[("name", &["Vladimir Putin"])]).build();
 
-    let (score, _) = NameQualified::score(&Bump::new(), &e1, &e2, 0.0);
+    let (score, _) = NameQualified::score(&Bump::new(), &e1, &e2, &Default::default());
 
     assert_eq!(score, 0.0);
   }
@@ -165,7 +167,7 @@ mod tests {
       let nscores = nomenklatura_score(Algorithm::NameQualified, &query, results.clone()).unwrap();
 
       for (index, (_, nscore)) in nscores.into_iter().enumerate() {
-        let (score, _) = NameQualified::score(&Bump::new(), &query, results.get(index).unwrap(), 0.0);
+        let (score, _) = NameQualified::score(&Bump::new(), &query, results.get(index).unwrap(), &ScoringOptions::new(0.0));
 
         assert!(
           approx_eq!(f64, score, nscore, epsilon = 0.01),
@@ -193,7 +195,7 @@ mod tests {
       let nscores = nomenklatura_score(Algorithm::NameQualified, &query, results.clone()).unwrap();
 
       for (index, (_, nscore)) in nscores.into_iter().enumerate() {
-        let (score, _) = NameQualified::score(&Bump::new(), &query, results.get(index).unwrap(), 0.0);
+        let (score, _) = NameQualified::score(&Bump::new(), &query, results.get(index).unwrap(), &ScoringOptions::new(0.0));
 
         assert!(approx_eq!(f64, score, nscore, epsilon = 0.01));
       }

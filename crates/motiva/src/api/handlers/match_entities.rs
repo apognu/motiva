@@ -45,8 +45,14 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
 
   let state = Arc::new(state);
 
+  let options = Arc::new(ScoringOptions {
+    cutoff: query.cutoff,
+    weights: state.config.weights.clone().into_iter().chain(body.weights.clone()).collect(),
+  });
+
   let tasks = body.queries.into_iter().map(|(id, entity)| {
     let mut query = query.clone();
+    let options = options.clone();
 
     if let Some(ref params) = entity.params {
       if let Some(ref datasets) = params.include_datasets {
@@ -72,10 +78,10 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
         };
 
         let scores = match query.algorithm {
-          Algorithm::NameBased => state.motiva.score::<NameBased>(&entity, hits, query.cutoff),
-          Algorithm::NameQualified => state.motiva.score::<NameQualified>(&entity, hits, query.cutoff),
-          Algorithm::MarbleV0 => state.motiva.score::<MarbleV0>(&entity, hits, query.cutoff),
-          Algorithm::LogicV1 | Algorithm::Best => state.motiva.score::<LogicV1>(&entity, hits, query.cutoff),
+          Algorithm::NameBased => state.motiva.score::<NameBased>(&entity, hits, &options),
+          Algorithm::NameQualified => state.motiva.score::<NameQualified>(&entity, hits, &options),
+          Algorithm::MarbleV0 => state.motiva.score::<MarbleV0>(&entity, hits, &options),
+          Algorithm::LogicV1 | Algorithm::Best => state.motiva.score::<LogicV1>(&entity, hits, &options),
         };
 
         match scores {

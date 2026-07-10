@@ -1,4 +1,5 @@
 use std::{
+  collections::HashMap,
   env::{self, VarError},
   fmt::Display,
   fs,
@@ -33,6 +34,7 @@ pub struct Config {
   pub catalog_refresh_interval: Span,
   pub outdated_grace: Span,
   pub match_candidates: usize,
+  pub weights: HashMap<String, f64>,
 
   // Enrichment settings
   pub enrichment_max_recursion: usize,
@@ -54,6 +56,7 @@ impl Config {
       listener: None,
       api_key: env::var("API_KEY").ok(),
       match_candidates: parse_env("MATCH_CANDIDATES", 10)?,
+      weights: parse_weights_from_env()?,
       manifest_url: env::var("MANIFEST_URL").ok(),
       request_timeout: parse_env("REQUEST_TIMEOUT", Span::from_str("10s").unwrap())?,
       catalog_refresh_interval: parse_env("CATALOG_REFRESH_INTERVAL", Span::from_str("1h").unwrap())?,
@@ -149,6 +152,25 @@ where
       _ => Err(AppError::ConfigError(format!("could not read {name}: {err}")).into()),
     },
   }
+}
+
+fn parse_weights_from_env() -> anyhow::Result<HashMap<String, f64>> {
+  let mut weights = HashMap::new();
+
+  for (k, v) in env::vars() {
+    if let Some(feature) = k.strip_prefix("WEIGHT_") {
+      let feature = feature.to_lowercase();
+      let weight = v.parse::<f64>().context(format!("weight value for {k} is outside [-1.0,1.0] ({v})"))?.clamp(-1.0, 1.0);
+
+      if weight.is_nan() {
+        return Err(anyhow::anyhow!(format!("weight value for {feature} (through {k}) is NaN")));
+      }
+
+      weights.insert(feature, weight);
+    }
+  }
+
+  Ok(weights)
 }
 
 fn parse_index_tls_verification() -> Result<EsTlsVerification, anyhow::Error> {
@@ -371,5 +393,38 @@ mod tests {
 
     assert!("bearer".parse::<WrappedEsAuthMethod>().is_err());
     assert!("encoded_api_key".parse::<WrappedEsAuthMethod>().is_err());
+  }
+
+  #[test]
+  #[serial_test::serial]
+  fn parse_weights() {
+    unsafe {
+      env::set_var("WEIGHT_POSITIVE", "0.1");
+      env::set_var("WEIGHT_NEGATIVE", "-0.7");
+      env::set_var("WEIGHT_LOWER_CLAMPED", "-2.0");
+      env::set_var("WEIGHT_HIGHER_CLAMPED", "2.0");
+    }
+
+    let weights = super::parse_weights_from_env().unwrap();
+
+    assert!(matches!(weights.get("positive"), Some(0.1)));
+    assert!(matches!(weights.get("negative"), Some(-0.7)));
+    assert!(matches!(weights.get("lower_clamped"), Some(-1.0)));
+    assert!(matches!(weights.get("higher_clamped"), Some(1.0)));
+
+    unsafe {
+      env::remove_var("WEIGHT_POSITIVE");
+      env::remove_var("WEIGHT_NEGATIVE");
+      env::remove_var("WEIGHT_LOWER_CLAMPED");
+      env::remove_var("WEIGHT_HIGHER_CLAMPED");
+
+      env::set_var("WEIGHT_NAN", "nan");
+    }
+
+    assert!(super::parse_weights_from_env().is_err());
+
+    unsafe {
+      env::remove_var("WEIGHT_NAN");
+    }
   }
 }
