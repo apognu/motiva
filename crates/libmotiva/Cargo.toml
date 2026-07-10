@@ -27,7 +27,7 @@ compact_str = "0.9.0"
 elasticsearch = { version = "9.1.0-alpha.1", default-features = false, features = [
     "rustls-tls",
 ] }
-itertools = "0.14.0"
+itertools = "0.15.0"
 jiff = { version = "0.2.15", features = ["serde"] }
 lei = "0.2.5"
 libmotiva-macros = { version = "0.2.0", path = "../macros" }
