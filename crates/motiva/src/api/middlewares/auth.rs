@@ -19,6 +19,13 @@ pub(crate) struct Auth<F, P> {
   _marker: PhantomData<(F, P)>,
 }
 
+#[cfg(test)]
+impl<F, P> Auth<F, P> {
+  pub(crate) fn noop() -> Self {
+    Auth { _marker: PhantomData }
+  }
+}
+
 impl<S, F, P> FromRequestParts<S> for Auth<F, P>
 where
   for<'s> P: IndexProvider + 's,

@@ -76,3 +76,83 @@ impl ElasticsearchProvider {
     Ok(IndexVersion::V4)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use elasticsearch::{
+    Elasticsearch,
+    http::{
+      Url,
+      transport::{SingleNodeConnectionPool, TransportBuilder},
+    },
+  };
+  use serde_json::json;
+  use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};
+
+  use super::IndexVersion;
+  use crate::{ElasticsearchProvider, MotivaError};
+
+  #[test]
+  fn index_version_display() {
+    assert_eq!(IndexVersion::V4.to_string(), "v4");
+    assert_eq!(IndexVersion::V5.to_string(), "v5");
+  }
+
+  fn provider(server: &MockServer) -> ElasticsearchProvider {
+    let url = Url::parse(&server.uri()).unwrap();
+    let transport = TransportBuilder::new(SingleNodeConnectionPool::new(url)).build().unwrap();
+
+    ElasticsearchProvider {
+      es: Elasticsearch::new(transport),
+      index_version: IndexVersion::V4,
+      index_prefix: "yente".to_string(),
+      main_index: "yente-entities".to_string(),
+      scoped_index: None,
+    }
+  }
+
+  async fn detect_with_excludes(excludes: &str) -> Result<IndexVersion, MotivaError> {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+          "yente-entities": {
+              "mappings": {
+                  "_source": {
+                      "excludes":[excludes]
+                  }
+              }
+          }
+      })))
+      .mount(&server)
+      .await;
+
+    provider(&server).detect_index_version().await
+  }
+
+  #[tokio::test]
+  async fn detect_index_version_v5() {
+    assert_eq!(detect_with_excludes("name_symbols").await.unwrap(), IndexVersion::V5);
+  }
+
+  #[tokio::test]
+  async fn detect_index_version_v4() {
+    assert_eq!(detect_with_excludes("name_keys").await.unwrap(), IndexVersion::V4);
+  }
+
+  #[tokio::test]
+  async fn detect_index_version_fallback() {
+    assert_eq!(detect_with_excludes("something_else").await.unwrap(), IndexVersion::V4);
+  }
+
+  #[tokio::test]
+  async fn detect_index_version_missing_index() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET")).respond_with(ResponseTemplate::new(404)).mount(&server).await;
+
+    let error = provider(&server).detect_index_version().await.unwrap_err();
+
+    assert!(matches!(error, MotivaError::MissingIndex(_)));
+  }
+}

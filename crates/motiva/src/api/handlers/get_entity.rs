@@ -25,3 +25,54 @@ pub async fn get_entity<F: CatalogFetcher, P: IndexProvider>(
     EntityHandle::Nominal(entity) => Ok((StatusCode::OK, Json(entity)).into_response()),
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::sync::Arc;
+
+  use axum::{
+    extract::{Path, State},
+    response::IntoResponse,
+  };
+  use axum_extra::extract::Query;
+  use libmotiva::{Entity, EntityHandle, MockedElasticsearch, Motiva, TestFetcher};
+  use reqwest::StatusCode;
+
+  use crate::api::{AppState, config::Config, dto::GetEntityParams, middlewares::auth::Auth};
+
+  async fn state_with(entity: EntityHandle) -> AppState<TestFetcher, MockedElasticsearch> {
+    let index = MockedElasticsearch::builder().entity(entity).build();
+
+    AppState {
+      config: Arc::new(Config::default()),
+      prometheus: None,
+      motiva: Motiva::test(index).fetcher(TestFetcher::default()).build().await.unwrap(),
+    }
+  }
+
+  #[tokio::test]
+  async fn get_entity_referent_redirects() {
+    let state = state_with(EntityHandle::Referent("canonical".to_string())).await;
+
+    let response = super::get_entity(State(state), Auth::noop(), Path("some-id".to_string()), Query(GetEntityParams { nested: false }))
+      .await
+      .unwrap()
+      .into_response();
+
+    assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
+    assert_eq!(response.headers().get("location").unwrap().to_str().unwrap(), "/entities/canonical");
+  }
+
+  #[tokio::test]
+  async fn get_entity_nominal_returns_json() {
+    let entity = Entity::builder("Person").id("person-1").properties(&[("name", &["John Doe"])]).build();
+    let state = state_with(EntityHandle::Nominal(Box::new(entity))).await;
+
+    let response = super::get_entity(State(state), Auth::noop(), Path("person-1".to_string()), Query(GetEntityParams { nested: false }))
+      .await
+      .unwrap()
+      .into_response();
+
+    assert_eq!(response.status(), StatusCode::OK);
+  }
+}

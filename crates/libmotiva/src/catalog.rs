@@ -326,7 +326,7 @@ mod tests {
 
   use crate::{
     Catalog, MockedElasticsearch,
-    catalog::{CatalogDataset, Manifest, OPENSANCTIONS_CATALOG_URL},
+    catalog::{CatalogDataset, CatalogDatasetResource, Manifest, ManifestCatalog, ManifestDataset, OPENSANCTIONS_CATALOG_URL},
     fetcher::TestFetcher,
   };
 
@@ -389,6 +389,135 @@ mod tests {
     assert!(!datasets_by_name["dataset3"].load);
     assert!(datasets_by_name["dataset3"].index_version.is_none());
     assert!(!datasets_by_name["dataset3"].index_current);
+  }
+
+  #[tokio::test]
+  async fn merge_catalog_grace_and_resources() {
+    let catalog = Catalog {
+      datasets: vec![
+        // Version mismatch, but exported within the grace window (indexed 2025-11-25 + 30d) -> stays current.
+        CatalogDataset {
+          name: "graced".to_string(),
+          version: "different-version".to_string(),
+          last_export: Some(DateTime::constant(2025, 12, 1, 10, 0, 0, 0)),
+          ..Default::default()
+        },
+        // Version mismatch and exported past the grace window -> outdated (the guard evaluates to false).
+        CatalogDataset {
+          name: "stale".to_string(),
+          version: "different-version".to_string(),
+          last_export: Some(DateTime::constant(2026, 1, 15, 10, 0, 0, 0)),
+          ..Default::default()
+        },
+        // Version mismatch and no export timestamp at all -> outdated (the catch-all arm).
+        CatalogDataset {
+          name: "noexport".to_string(),
+          version: "different-version".to_string(),
+          last_export: None,
+          ..Default::default()
+        },
+        // Carries the canonical resource -> entities_url is derived from it.
+        CatalogDataset {
+          name: "withresource".to_string(),
+          version: "v1".to_string(),
+          resources: vec![CatalogDatasetResource {
+            name: "entities.ftm.json".to_string(),
+            url: "http://example/entities.ftm.json".to_string(),
+            ..Default::default()
+          }],
+          ..Default::default()
+        },
+      ],
+      ..Default::default()
+    };
+
+    let mut catalogs = HashMap::default();
+    catalogs.insert(OPENSANCTIONS_CATALOG_URL.to_string(), catalog);
+
+    let manifest = Manifest {
+      catalogs: vec![
+        ManifestCatalog {
+          url: OPENSANCTIONS_CATALOG_URL.to_string(),
+          scope: Some("default".to_string()),
+          ..Default::default()
+        },
+        // Absent from the fetcher's catalog map -> fetch_catalog errors and is skipped.
+        ManifestCatalog {
+          url: "https://absent.example/index.json".to_string(),
+          ..Default::default()
+        },
+      ],
+      datasets: Vec::new(),
+    };
+
+    let fetcher = TestFetcher { manifest, catalogs };
+
+    let indices = vec![
+      ("graced".to_string(), "20251125100000-pop".to_string()),
+      ("stale".to_string(), "20251125100000-pop".to_string()),
+      ("noexport".to_string(), "20251125100000-pop".to_string()),
+    ];
+
+    let catalog = super::get_merged_catalog(&fetcher, &MockedElasticsearch::builder().indices(indices).build(), Span::new().days(30))
+      .await
+      .unwrap();
+
+    // Within the grace window -> current, not outdated.
+    assert!(catalog.current.contains(&"graced".to_string()));
+    assert!(!catalog.outdated.contains(&"graced".to_string()));
+
+    // Past the grace window -> outdated, not current.
+    assert!(catalog.outdated.contains(&"stale".to_string()));
+    assert!(!catalog.current.contains(&"stale".to_string()));
+
+    // No export timestamp -> outdated.
+    assert!(catalog.outdated.contains(&"noexport".to_string()));
+
+    let datasets_by_name = catalog.datasets.iter().map(|ds| (ds.name.clone(), ds.clone())).collect::<HashMap<_, _>>();
+    assert_eq!(datasets_by_name["withresource"].entities_url.as_deref(), Some("http://example/entities.ftm.json"));
+  }
+
+  #[tokio::test]
+  async fn merge_catalog_manifest_datasets() {
+    let manifest = Manifest {
+      catalogs: Vec::new(),
+      datasets: vec![
+        // Non-empty children -> flagged as a collection.
+        ManifestDataset {
+          name: "collection".to_string(),
+          title: "A collection".to_string(),
+          datasets: Some(vec!["child-a".to_string(), "child-b".to_string()]),
+          ..Default::default()
+        },
+        // Name matches an existing index at the same version -> index_current.
+        ManifestDataset {
+          name: "simple".to_string(),
+          title: "A simple dataset".to_string(),
+          version: Some("idx-1".to_string()),
+          entities_url: None,
+          datasets: None,
+        },
+      ],
+    };
+
+    let fetcher = TestFetcher {
+      manifest,
+      catalogs: HashMap::default(),
+    };
+
+    let indices = vec![("simple".to_string(), "idx-1".to_string())];
+    let catalog = super::get_merged_catalog(&fetcher, &MockedElasticsearch::builder().indices(indices).build(), Span::default())
+      .await
+      .unwrap();
+
+    let datasets_by_name = catalog.datasets.iter().map(|ds| (ds.name.clone(), ds.clone())).collect::<HashMap<_, _>>();
+
+    assert_eq!(datasets_by_name["collection"]._type.as_deref(), Some("collection"));
+    assert_eq!(datasets_by_name["collection"].children, vec!["child-a".to_string(), "child-b".to_string()]);
+
+    assert_eq!(datasets_by_name["simple"]._type, None);
+    assert_eq!(datasets_by_name["simple"].index_version.as_deref(), Some("idx-1"));
+    assert!(datasets_by_name["simple"].index_current);
   }
 
   #[test]

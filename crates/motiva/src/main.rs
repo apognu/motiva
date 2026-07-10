@@ -20,7 +20,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
   if let Some("version") = std::env::args().nth(1).as_deref() {
-    return oneoff::version();
+    return oneoff::version(std::io::stdout());
   }
 
   aws_lc_rs::default_provider().install_default().expect("could not install default cryptography provider");

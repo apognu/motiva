@@ -38,11 +38,3 @@ async fn health() {
 
   assert!(motiva.health().await.is_err());
 }
-
-#[tokio::test]
-#[should_panic]
-// Should panic because mock function is not implemented.
-async fn get_entity() {
-  let motiva = Motiva::test(MockedElasticsearch::default()).build().await.unwrap();
-  let _ = motiva.get_entity("", GetEntityBehavior::RootOnly, GetEntityLimits::default()).await;
-}

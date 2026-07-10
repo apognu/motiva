@@ -320,4 +320,56 @@ mod tests {
       env::remove_var("INDEX_CLIENT_SECRET");
     }
   }
+
+  #[test]
+  fn env_from_string() {
+    assert_eq!(Env::from("dev".to_string()), Env::Dev);
+    assert_eq!(Env::from("production".to_string()), Env::Production);
+    assert_eq!(Env::from("garbage".to_string()), Env::Dev);
+    assert_eq!(Env::default(), Env::Dev);
+  }
+
+  #[test]
+  #[serial_test::serial]
+  fn parse_index_tls() {
+    use libmotiva::EsTlsVerification;
+
+    unsafe { env::set_var("INDEX_TLS_SKIP_VERIFY", "1") };
+    assert_eq!(super::parse_index_tls_verification().unwrap(), EsTlsVerification::SkipVerify);
+    unsafe { env::remove_var("INDEX_TLS_SKIP_VERIFY") };
+
+    unsafe { env::set_var("INDEX_TLS_CA_CERT", "Cargo.toml") };
+    assert!(matches!(super::parse_index_tls_verification().unwrap(), EsTlsVerification::CaCertChain(_)));
+    unsafe { env::remove_var("INDEX_TLS_CA_CERT") };
+
+    unsafe { env::set_var("INDEX_TLS_CA_CERT", "") };
+    assert_eq!(super::parse_index_tls_verification().unwrap(), EsTlsVerification::Default);
+    unsafe { env::remove_var("INDEX_TLS_CA_CERT") };
+
+    assert_eq!(super::parse_index_tls_verification().unwrap(), EsTlsVerification::Default);
+
+    unsafe { env::set_var("INDEX_TLS_CA_CERT", "/nonexistent/path/to/cert.pem") };
+    assert!(super::parse_index_tls_verification().is_err());
+    unsafe { env::remove_var("INDEX_TLS_CA_CERT") };
+  }
+
+  #[test]
+  #[serial_test::serial]
+  fn parse_env_empty_returns_default() {
+    unsafe { env::set_var("MOTIVA_TEST_EMPTY", "") };
+    assert_eq!(super::parse_env::<u32>("MOTIVA_TEST_EMPTY", 7).unwrap(), 7);
+    unsafe { env::remove_var("MOTIVA_TEST_EMPTY") };
+  }
+
+  #[test]
+  #[serial_test::serial]
+  fn es_auth_method_missing_credentials() {
+    unsafe {
+      env::remove_var("INDEX_CLIENT_ID");
+      env::remove_var("INDEX_CLIENT_SECRET");
+    }
+
+    assert!("bearer".parse::<WrappedEsAuthMethod>().is_err());
+    assert!("encoded_api_key".parse::<WrappedEsAuthMethod>().is_err());
+  }
 }
