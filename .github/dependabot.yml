@@ -8,6 +8,5 @@ updates:
     directory: /
     schedule:
       interval: daily
-    ignore: []
     cooldown:
       default-days: 7
