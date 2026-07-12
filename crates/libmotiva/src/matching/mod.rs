@@ -77,19 +77,76 @@ pub trait Feature: Send + Sync {
   fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64;
 }
 
-fn run_features<'f, F>(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, cutoff: f64, init: f64, features: F, results: &mut Vec<(&'static str, f64)>) -> f64
+pub struct FeaturesConfig<'f, F>
 where
   F: IntoIterator<Item = &'f (&'f dyn Feature, f64)>,
 {
-  features.into_iter().fold(init, move |score, (func, weight)| {
+  features: F,
+  behavior: FeaturesBehavior,
+  skip: FeaturesSkip,
+}
+
+impl<'f, F> FeaturesConfig<'f, F>
+where
+  F: IntoIterator<Item = &'f (&'f dyn Feature, f64)>,
+{
+  pub fn summed_features(features: F) -> Self {
+    Self {
+      features,
+      behavior: FeaturesBehavior::Sum,
+      skip: FeaturesSkip::Never,
+    }
+  }
+
+  pub fn highest_features(features: F) -> Self {
+    Self {
+      features,
+      behavior: FeaturesBehavior::Highest,
+      skip: FeaturesSkip::Never,
+    }
+  }
+
+  pub fn disqualifiers(features: F, cutoff: f64) -> Self {
+    Self {
+      features,
+      behavior: FeaturesBehavior::Sum,
+      skip: FeaturesSkip::ScoreBelow(cutoff),
+    }
+  }
+}
+
+#[derive(Clone, Copy)]
+pub enum FeaturesBehavior {
+  Highest,
+  Sum,
+}
+
+#[derive(Clone, Copy, Default)]
+pub enum FeaturesSkip {
+  #[default]
+  Never,
+  ScoreBelow(f64),
+}
+
+fn run_features<'f, F>(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, init: f64, config: FeaturesConfig<'f, F>, results: &mut Vec<(&'static str, f64)>) -> f64
+where
+  F: IntoIterator<Item = &'f (&'f dyn Feature, f64)>,
+{
+  config.features.into_iter().fold(init, move |score, (func, weight)| {
+    if weight == &0.0 {
+      return score;
+    }
+
     let span = info_span!("scoring_feature", feature = func.name());
     let _span = span.enter();
 
-    // We assume all modifiers (with negative weights) tail the models, so if we
-    // are already below the cutoff, there is no way the score could go up
-    // again, so we skip the rest.
-    if score < cutoff && weight < &0.0 {
-      return score;
+    if let FeaturesSkip::ScoreBelow(cutoff) = config.skip {
+      // We assume all modifiers (with negative weights) tail the models, so if we
+      // are already below the cutoff, there is no way the score could go up
+      // again, so we skip the rest.
+      if score < cutoff && weight < &0.0 {
+        return score;
+      }
     }
 
     let then = Instant::now();
@@ -99,7 +156,13 @@ where
 
     tracing::debug!(score = feature_score, latency = ?then.elapsed(), "computed feature score");
 
-    score + (feature_score * weight)
+    let weighted = feature_score * weight;
+
+    match config.behavior {
+      FeaturesBehavior::Sum => score + weighted,
+      FeaturesBehavior::Highest if weighted > score => weighted,
+      _ => score,
+    }
   })
 }
 
