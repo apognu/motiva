@@ -2,7 +2,7 @@ use std::{borrow::Cow, collections::HashMap};
 
 use ahash::RandomState;
 use libmotiva::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_inline_default::serde_inline_default;
 use validator::{Validate, ValidationError};
 
@@ -63,6 +63,7 @@ pub(super) struct MatchHit {
 
   #[serde(rename = "match")]
   pub match_: bool,
+  #[serde(serialize_with = "serialize_score")]
   pub score: f64,
 }
 
@@ -116,4 +117,11 @@ mod tests {
 
     assert!(super::validate_weights(&weights).is_ok());
   }
+}
+
+fn serialize_score<S>(score: &f64, serializer: S) -> Result<S::Ok, S::Error>
+where
+  S: Serializer,
+{
+  serializer.serialize_f64(format_score(*score))
 }
