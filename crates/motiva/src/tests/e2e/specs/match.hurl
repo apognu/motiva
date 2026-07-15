@@ -174,3 +174,78 @@ jsonpath "$.responses.test.status" == 200
 jsonpath "$.responses.test.results" count == 1
 jsonpath "$.responses.test.results[?(@.id == 'Q7747')].caption" contains "Vladimir Vladimirovich Putin"
 jsonpath "$.responses.test.results[?(@.id == 'Q7747')].score" == 1.0
+
+# Instance-wide custom weight
+
+POST http://{{baseUrl}}/match/us_sanctions?algorithm=marble-v0&threshold=0.0&cutoff=0.0
+{
+    "queries": {
+        "test": {
+            "schema": "Person",
+            "properties": {
+                "name": ["Nasser Kamel"],
+                "idNumber": ["INVALID"]
+            }
+        }
+    }
+}
+
+HTTP 200
+
+[Asserts]
+jsonpath "$.responses.test.status" == 200
+jsonpath "$.responses.test.results[?(@.id == 'NK-24PVSqqr5CmqxAyN4Tzan6')].caption" contains "Nasser Al Sheikh Ali"
+jsonpath "$.responses.test.results[?(@.id == 'NK-24PVSqqr5CmqxAyN4Tzan6')].score" == 0.6
+jsonpath "$.responses.test.results[?(@.id == 'NK-24PVSqqr5CmqxAyN4Tzan6')].features.identifier_mismatch" == 1.0
+
+# Query-level custom weights
+
+POST http://{{baseUrl}}/match/us_sanctions?algorithm=marble-v0&threshold=0.0&cutoff=0.0
+{
+    "weights": {
+        "identifier_mismatch": -0.2
+    },
+    "queries": {
+        "test": {
+            "schema": "Person",
+            "properties": {
+                "name": ["Nasser Kamel"],
+                "idNumber": ["INVALID"]
+            }
+        }
+    }
+}
+
+HTTP 200
+
+[Asserts]
+jsonpath "$.responses.test.status" == 200
+jsonpath "$.responses.test.results[?(@.id == 'NK-24PVSqqr5CmqxAyN4Tzan6')].caption" contains "Nasser Al Sheikh Ali"
+jsonpath "$.responses.test.results[?(@.id == 'NK-24PVSqqr5CmqxAyN4Tzan6')].score" == 0.7
+jsonpath "$.responses.test.results[?(@.id == 'NK-24PVSqqr5CmqxAyN4Tzan6')].features.identifier_mismatch" == 1.0
+
+# Score rounding
+
+POST http://{{baseUrl}}/match/us_sanctions?algorithm=marble-v0&threshold=0.0&cutoff=0.0
+{
+    "weights": {
+        "identifier_mismatch": -0.21243
+    },
+    "queries": {
+        "test": {
+            "schema": "Person",
+            "properties": {
+                "name": ["Nasser Kamel"],
+                "idNumber": ["INVALID"]
+            }
+        }
+    }
+}
+
+HTTP 200
+
+[Asserts]
+jsonpath "$.responses.test.status" == 200
+jsonpath "$.responses.test.results[?(@.id == 'NK-24PVSqqr5CmqxAyN4Tzan6')].caption" contains "Nasser Al Sheikh Ali"
+jsonpath "$.responses.test.results[?(@.id == 'NK-24PVSqqr5CmqxAyN4Tzan6')].score" == 0.688
+jsonpath "$.responses.test.results[?(@.id == 'NK-24PVSqqr5CmqxAyN4Tzan6')].features.identifier_mismatch" == 1.0

@@ -22,11 +22,15 @@ async fn e2e() {
   let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
   let addr = listener.local_addr().unwrap();
 
+  let mut weights = HashMap::new();
+  weights.insert("identifier_mismatch".into(), -0.3);
+
   let config = Config {
     listener: Some(listener),
     request_timeout: Span::from_str("10s").unwrap(),
     enrichment_max_recursion: 2,
     enrichment_query_limit: 200,
+    weights,
     ..Default::default()
   };
 

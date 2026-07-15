@@ -388,7 +388,7 @@ fn features_to_map<S: Serializer>(input: &[(&'static str, f64)], ser: S) -> Resu
 
   let mut map = ser.serialize_map(Some(input.len()))?;
   for (k, v) in input {
-    map.serialize_entry(k, &v)?;
+    map.serialize_entry(k, &format_score(*v))?;
   }
   map.end()
 }
@@ -462,6 +462,14 @@ impl Entity {
       ..Default::default()
     }
   }
+}
+
+#[inline]
+pub fn format_score(score: f64) -> f64 {
+  const SCORE_DECIMALS: u32 = 3;
+  const MULTIPLIER: f64 = 10u32.pow(SCORE_DECIMALS) as f64;
+
+  (score * MULTIPLIER).round() / MULTIPLIER
 }
 
 #[cfg(test)]
