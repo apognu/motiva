@@ -2719,7 +2719,6 @@ name = "motiva"
 version = "0.0.0"
 dependencies = [
  "ahash",
- "any_ascii",
  "anyhow",
  "axum",
  "axum-extra",
@@ -2751,10 +2750,8 @@ dependencies = [
  "serde_json",
  "serial_test",
  "shadow-rs",
- "strsim 0.11.1",
  "thiserror 2.0.18",
  "tokio",
- "tower",
  "tower-http 0.7.0",
  "tracing",
  "tracing-appender",
