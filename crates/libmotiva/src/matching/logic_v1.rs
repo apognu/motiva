@@ -47,18 +47,19 @@ static FEATURES: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
     (IdentifierMatch::new("vessel_imo_mmsi_match", &["imoNumber", "mmsi"], Some(validate_imo_mmsi)), 0.95),
     (IdentifierMatch::new("inn_code_match", &["innCode"], Some(validate_inn)), 0.95),
     (IdentifierMatch::new("bic_code_match", &["bicCode"], Some(validate_bic)), 0.95),
-    (SimpleMatch::new("identifier_match", &|e| e.prop_group("identifier", PropertyFilter::All), None), 0.85), // TODO: add cleaning
+    (SimpleMatch::new("identifier_match", &|e| e.prop_group("identifier", PropertyFilter::Matchable), None), 0.85), // TODO: add cleaning
     (&WeakAliasMatch, 0.8),
   ]
 });
 
 static QUALIFIERS: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
   vec![
-    (SimpleMismatch::new("country_mismatch", &|e| e.prop_group("country", PropertyFilter::All), None), -0.2),
+    (SimpleMismatch::new("country_mismatch", &|e| e.prop_group("country", PropertyFilter::Matchable), None), -0.2),
     (SimpleMismatch::new("last_name_mismatch", &|e| e.props(&["lastName"]), None), -0.2),
     (SimpleMismatch::new("dob_year_disjoint", &|e| e.props(&["birthDate"]), Some(dob_year_disjoint)), -0.15),
     (SimpleMismatch::new("dob_day_disjoint", &|e| e.props(&["birthDate"]), Some(dob_day_disjoint)), -0.2),
     (SimpleMismatch::new("gender_mismatch", &|e| e.props(&["gender"]), None), -0.2),
+    (SimpleMismatch::new("identifier_mismatch", &|e| e.prop_group("identifier", PropertyFilter::Matchable), None), 0.0), // Motiva-specific, disabled by default
     (&OrgIdMismatch, -0.2),
     (&NumbersMismatch, -0.1),
   ]
