@@ -20,6 +20,13 @@ fn fingerprint_name(name: &str) -> String {
 
 #[scoring_feature(LongestCommonSubsequence, name = "longest_common_subsequence")]
 fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+  #[inline]
+  fn coverage(matched: &str, full: &str) -> f64 {
+    let full = full.chars().count();
+
+    if full == 0 { 0.0 } else { matched.chars().count() as f64 / full as f64 }
+  }
+
   let lhs_names = lhs.prop_group("name", PropertyFilter::All);
   let rhs_names = rhs.prop_group("name", PropertyFilter::All);
 
@@ -32,8 +39,8 @@ fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     let rname = fingerprint_name(&rhs_name);
 
     for lname in &lhs_names {
-      if let Some((score, _)) = rname.fuzzy_find_str(lname, 0.6) {
-        max = max.max(score as f64);
+      if let Some((score, matched)) = rname.fuzzy_find_str(lname, 0.6) {
+        max = max.max(score as f64 * coverage(matched, &rname));
       }
     }
   }
@@ -58,5 +65,23 @@ mod tests {
     // Sanity check that PersonNameJaroWinkler had a very bad scoring for this
     assert!(PersonNameJaroWinkler.score_feature(&Bump::new(), &lhs, &rhs) < 0.3);
     assert!(super::LongestCommonSubsequence.score_feature(&Bump::new(), &lhs, &rhs) > 0.8);
+  }
+
+  #[test]
+  fn fills_jaro_winkler_gaps() {
+    let cases = [
+      ("Abdul Aziz", "Abdelaziz"),
+      ("Abdul Rahman", "Abdurrahman"),
+      ("Mohammed Reza", "Mohammadreza"),
+      ("Hafez Al Assad", "Hafiz Alasad"),
+    ];
+
+    for (l, r) in cases {
+      let lhs = SearchEntity::builder("Person").properties(&[("name", &[l])]).build();
+      let rhs = Entity::builder("Person").properties(&[("name", &[r])]).build();
+
+      assert!(PersonNameJaroWinkler.score_feature(&Bump::new(), &lhs, &rhs) < 0.7);
+      assert!(super::LongestCommonSubsequence.score_feature(&Bump::new(), &lhs, &rhs) > 0.8);
+    }
   }
 }
