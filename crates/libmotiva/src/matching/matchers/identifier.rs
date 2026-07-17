@@ -2,11 +2,12 @@ use bumpalo::{
   Bump,
   collections::{CollectIn, Vec},
 };
+use compact_str::CompactString;
 use itertools::Itertools;
 use tracing::instrument;
 
 use crate::{
-  matching::{Feature, comparers::is_disjoint},
+  matching::{Detail, Feature},
   model::{Entity, HasProperties, Schema, SearchEntity},
   schemas::{FtmProperty, SCHEMAS},
 };
@@ -22,22 +23,20 @@ impl<'p> IdentifierMatch<'p> {
     Box::leak(Box::new(Self { name, properties, validator }))
   }
 
-  fn match_property(&self, bump: &Bump, schema: &Schema, lhs: &impl HasProperties, rhs: &impl HasProperties, property: &str) -> bool {
+  fn match_property(&self, bump: &Bump, schema: &Schema, lhs: &impl HasProperties, rhs: &impl HasProperties, property: &str) -> Option<CompactString> {
     let lhs_values = lhs.props(&[property]);
 
     if lhs_values.is_empty() {
-      return false;
+      return None;
     }
 
     if let Some(validator) = self.validator
       && lhs_values.iter().any(|code| !(validator)(code))
     {
-      return false;
+      return None;
     }
 
-    let Some(schema) = SCHEMAS.get(schema.as_str()) else {
-      return false;
-    };
+    let schema = SCHEMAS.get(schema.as_str())?;
 
     let mut schema_property: Option<FtmProperty> = None;
     let mut properties = Vec::new_in(bump);
@@ -55,9 +54,7 @@ impl<'p> IdentifierMatch<'p> {
       }
     }
 
-    let Some(schema_property) = schema_property else {
-      return false;
-    };
+    let schema_property = schema_property?;
 
     for chain in &schema.parents {
       let Some(chain_schema) = SCHEMAS.get(chain) else {
@@ -81,7 +78,10 @@ impl<'p> IdentifierMatch<'p> {
       .filter(|code| self.validator.map(|v| v(code)).unwrap_or(true))
       .collect_in::<Vec<_>>(bump);
 
-    !is_disjoint(&lhs_values, &rhs_values)
+    lhs_values
+      .iter()
+      .find(|code| rhs_values.iter().any(|other| other == *code))
+      .map(|code| CompactString::from(code.as_str()))
   }
 }
 
@@ -91,16 +91,41 @@ impl<'p> Feature for IdentifierMatch<'p> {
   }
 
   #[instrument(level = "trace", name = "identifier_match", skip_all, fields(entity_id = rhs.id, identifier = ?self.properties))]
-  fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
-    for property in self.properties {
-      if self.match_property(bump, &lhs.schema, lhs, rhs, property) {
-        return 1.0;
-      }
-      if self.match_property(bump, &rhs.schema, rhs, lhs, property) {
-        return 1.0;
-      }
-    }
+  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+    let matched = self.properties.iter().find_map(|property| {
+      self
+        .match_property(bump, &lhs.schema, lhs, rhs, property)
+        .or_else(|| self.match_property(bump, &rhs.schema, rhs, lhs, property))
+    });
 
-    0.0
+    match matched {
+      Some(code) => (1.0, explain.then(|| Detail::Labeled("matched identifier", code))),
+      None => (0.0, explain.then_some(Detail::Note("no match on identifiers"))),
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use bumpalo::Bump;
+
+  use crate::{
+    matching::{Feature, matchers::identifier::IdentifierMatch},
+    model::{Entity, SearchEntity},
+  };
+
+  #[test]
+  fn identifier_match_details() {
+    let feature = IdentifierMatch::new("t", &["leiCode"], None);
+
+    // Matched: the shared identifier is surfaced.
+    let lhs = SearchEntity::builder("Company").properties(&[("leiCode", &["ABC123"])]).build();
+    let rhs = Entity::builder("Company").properties(&[("leiCode", &["ABC123"])]).build();
+    assert_eq!(feature.score(&Bump::new(), &lhs, &rhs, true).1.unwrap().to_string(), "matched identifier: ABC123");
+
+    // No match.
+    let lhs = SearchEntity::builder("Company").properties(&[("leiCode", &["ABC123"])]).build();
+    let rhs = Entity::builder("Company").properties(&[("leiCode", &["XYZ789"])]).build();
+    assert_eq!(feature.score(&Bump::new(), &lhs, &rhs, true).1.unwrap().to_string(), "no match on identifiers");
   }
 }

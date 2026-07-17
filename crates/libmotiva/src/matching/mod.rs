@@ -1,7 +1,10 @@
+mod explanation;
 mod matchers;
 
 #[cfg(test)]
 mod tests;
+
+pub use explanation::{CodedPair, Detail, Explanation};
 
 use std::{collections::HashMap, time::Instant};
 
@@ -67,9 +70,9 @@ pub trait MatchingAlgorithm {
   /// The configured `cutoff` needs to be passed in order to skip features that
   /// cannot influence the score.
   ///
-  /// It returns a tuple of the resulting score and a vector of features and
-  /// their resulting score.
-  fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, options: &ScoringOptions) -> (f64, Vec<(&'static str, f64)>);
+  /// It returns a tuple of the resulting score and a vector of per-feature
+  /// [`Explanation`]s (name, raw score, weighted score and an optional detail).
+  fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, options: &ScoringOptions) -> (f64, Vec<Explanation>);
 }
 
 /// A scoring facet composed into a [`MatchingAlgorithm`]
@@ -77,47 +80,60 @@ pub trait Feature: Send + Sync {
   /// Readable name for the feature
   fn name(&self) -> &'static str;
   /// Score an entity against search parameters.
-  fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64;
+  ///
+  /// When `explain` is set, the feature also returns a structured [`Detail`]
+  /// describing how it scored, computed in the same pass as the score. When it
+  /// is not set, the feature returns `None` and does no explanation work at all.
+  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>);
+
+  /// Convenience for callers (mostly tests) that only need the raw score.
+  fn score_scalar(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+    self.score(bump, lhs, rhs, false).0
+  }
 }
 
 pub struct FeaturesConfig<'f, F>
 where
   F: IntoIterator<Item = &'f (&'f dyn Feature, f64)>,
 {
-  weights: &'f HashMap<String, f64>,
   features: F,
+  weights: &'f HashMap<String, f64>,
   behavior: FeaturesBehavior,
   skip: FeaturesSkip,
+  explain: bool,
 }
 
 impl<'f, F> FeaturesConfig<'f, F>
 where
   F: IntoIterator<Item = &'f (&'f dyn Feature, f64)>,
 {
-  pub fn summed_features(weights: &'f HashMap<String, f64>, features: F) -> Self {
+  pub fn summed_features(features: F, options: &'f ScoringOptions) -> Self {
     Self {
-      weights,
       features,
+      weights: &options.weights,
       behavior: FeaturesBehavior::Sum,
       skip: FeaturesSkip::Never,
+      explain: options.explain,
     }
   }
 
-  pub fn highest_features(weights: &'f HashMap<String, f64>, features: F) -> Self {
+  pub fn highest_features(features: F, options: &'f ScoringOptions) -> Self {
     Self {
-      weights,
       features,
+      weights: &options.weights,
       behavior: FeaturesBehavior::Highest,
       skip: FeaturesSkip::Never,
+      explain: options.explain,
     }
   }
 
-  pub fn disqualifiers(weights: &'f HashMap<String, f64>, features: F, cutoff: f64) -> Self {
+  pub fn disqualifiers(features: F, options: &'f ScoringOptions) -> Self {
     Self {
-      weights,
       features,
+      weights: &options.weights,
       behavior: FeaturesBehavior::Sum,
-      skip: FeaturesSkip::ScoreBelow(cutoff),
+      skip: FeaturesSkip::ScoreBelow(options.cutoff),
+      explain: options.explain,
     }
   }
 }
@@ -135,7 +151,7 @@ pub enum FeaturesSkip {
   ScoreBelow(f64),
 }
 
-fn run_features<'f, F>(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, init: f64, config: FeaturesConfig<'f, F>, results: &mut Vec<(&'static str, f64)>) -> f64
+fn run_features<'f, F>(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, init: f64, config: FeaturesConfig<'f, F>, results: &mut Vec<Explanation>) -> f64
 where
   F: IntoIterator<Item = &'f (&'f dyn Feature, f64)>,
 {
@@ -159,13 +175,20 @@ where
     }
 
     let then = Instant::now();
-    let feature_score = func.score_feature(bump, lhs, rhs);
-
-    results.push((func.name(), feature_score));
-
-    tracing::debug!(score = feature_score, latency = ?then.elapsed(), "computed feature score");
+    // The detail is only built when explanations are requested; otherwise the
+    // feature returns `None` and does no explanation work at all.
+    let (feature_score, detail) = func.score(bump, lhs, rhs, config.explain);
 
     let weighted = feature_score * weight;
+
+    results.push(Explanation {
+      name: func.name(),
+      score: feature_score,
+      weighted,
+      detail: detail.unwrap_or_default(),
+    });
+
+    tracing::debug!(score = feature_score, latency = ?then.elapsed(), "computed feature score");
 
     match config.behavior {
       FeaturesBehavior::Sum => score + weighted,
@@ -228,6 +251,10 @@ pub struct MatchParams {
   /// How many names to sample from the list of names and aliases
   #[serde_inline_default(10)]
   pub name_sample_size: usize,
+  /// Return a per-feature `explanations` object detailing how each feature
+  /// scored. Disabled by default; enabling it costs extra computation.
+  #[serde(default)]
+  pub explain: bool,
 }
 
 /// Variant of the index to use.
@@ -265,7 +292,13 @@ mod testing {
   fn algorithm_to_name() {
     use super::Algorithm::*;
 
-    for (alg, name) in [(NameBased, "name-based"), (NameQualified, "name-qualified"), (LogicV1, "logic-v1"), (Best, "best")] {
+    for (alg, name) in [
+      (NameBased, "name-based"),
+      (NameQualified, "name-qualified"),
+      (LogicV1, "logic-v1"),
+      (MarbleV0, "marble-v0"),
+      (Best, "best"),
+    ] {
       assert_eq!(alg.name(), name);
     }
   }
@@ -287,5 +320,21 @@ mod testing {
   fn match_params_index_type_parses_scoped() {
     let params: MatchParams = serde_json::from_str(r#"{"index_type":"scoped"}"#).unwrap();
     assert_eq!(params.index_type, IndexType::Scoped);
+  }
+
+  #[test]
+  fn candidate_limit() {
+    fn p(limit: usize, factor: usize) -> MatchParams {
+      super::MatchParams {
+        limit,
+        candidate_factor: factor,
+        ..Default::default()
+      }
+    }
+
+    assert_eq!(p(10, 10).candidate_limit(50), 100);
+    assert_eq!(p(10, 10).candidate_limit(101), 101);
+    assert_eq!(p(1, 1).candidate_limit(1), 20);
+    assert_eq!(p(10, 1000).candidate_limit(1), 9999);
   }
 }

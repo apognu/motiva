@@ -2,24 +2,40 @@ use bumpalo::{
   Bump,
   collections::{CollectIn, Vec},
 };
+use compact_str::CompactString;
 use itertools::Itertools;
-use libmotiva_macros::scoring_feature;
 
 use crate::{
   matching::{
-    Feature,
-    comparers::is_disjoint,
+    Detail, Feature,
     extractors::{self},
   },
   model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
-#[scoring_feature(NameLiteralMatch, name = "name_literal_match")]
-fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
-  let lhs_names = extractors::clean_literal_names(lhs.prop_group("name", PropertyFilter::All).iter()).unique().collect_in::<Vec<_>>(bump);
-  let rhs_names = extractors::clean_literal_names(rhs.prop_group("name", PropertyFilter::All).iter()).unique().collect_in::<Vec<_>>(bump);
+pub struct NameLiteralMatch;
 
-  if is_disjoint(&lhs_names, &rhs_names) { 0.0 } else { 1.0 }
+impl NameLiteralMatch {
+  fn shared_name<'a>(lhs_names: &'a [String], rhs_names: &[String]) -> Option<&'a String> {
+    lhs_names.iter().find(|name| rhs_names.contains(name))
+  }
+}
+
+impl Feature for NameLiteralMatch {
+  fn name(&self) -> &'static str {
+    "name_literal_match"
+  }
+
+  #[tracing::instrument(level = "trace", name = "name_literal_match", skip_all, fields(feature = "name_literal_match", entity_id = rhs.id))]
+  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+    let lhs_names = extractors::clean_literal_names(lhs.prop_group("name", PropertyFilter::All).iter()).unique().collect_in::<Vec<_>>(bump);
+    let rhs_names = extractors::clean_literal_names(rhs.prop_group("name", PropertyFilter::All).iter()).unique().collect_in::<Vec<_>>(bump);
+
+    match Self::shared_name(&lhs_names, &rhs_names) {
+      Some(name) => (1.0, explain.then(|| Detail::Equal(CompactString::from(name.as_str()), CompactString::from(name.as_str())))),
+      None => (0.0, explain.then_some(Detail::Note("no literal name match"))),
+    }
+  }
 }
 
 #[cfg(test)]
@@ -35,11 +51,11 @@ mod tests {
     let lhs = SearchEntity::builder("Person").properties(&[("name", &["Donald Trump"]), ("alias", &["Orange man"])]).build();
     let rhs = Entity::builder("Person").properties(&[("name", &["Donald Trump"]), ("alias", &["Orange man"])]).build();
 
-    assert_eq!(super::NameLiteralMatch.score_feature(&Bump::new(), &lhs, &rhs), 1.0);
+    assert_eq!(super::NameLiteralMatch.score_scalar(&Bump::new(), &lhs, &rhs), 1.0);
 
     let lhs = SearchEntity::builder("Person").properties(&[("name", &["Donald Trump"]), ("alias", &["Orange man"])]).build();
     let rhs = Entity::builder("Person").properties(&[("name", &["Donald Duck"]), ("alias", &["POTUS"])]).build();
 
-    assert_eq!(super::NameLiteralMatch.score_feature(&Bump::new(), &lhs, &rhs), 0.0);
+    assert_eq!(super::NameLiteralMatch.score_scalar(&Bump::new(), &lhs, &rhs), 0.0);
   }
 }

@@ -11,3 +11,5 @@ pub(crate) mod name_literal_match;
 pub(crate) mod orgid_mismatch;
 pub(crate) mod phonetic;
 pub(crate) mod soundex;
+
+pub(crate) const NO_DATA: &str = "no data to match against";

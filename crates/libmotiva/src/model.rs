@@ -15,7 +15,10 @@ use strsim::levenshtein;
 use validator::Validate;
 
 use crate::{
-  matching::extractors::{self, clean_names},
+  matching::{
+    Explanation,
+    extractors::{self, clean_names},
+  },
   schemas::{FtmProperty, SCHEMAS, resolve_schemas},
 };
 
@@ -346,6 +349,9 @@ pub struct Entity {
 
   #[serde(serialize_with = "features_to_map", skip_serializing_if = "Vec::is_empty")]
   pub features: Vec<(&'static str, f64)>,
+
+  #[serde(serialize_with = "explanations_to_map", skip_serializing_if = "Vec::is_empty", skip_deserializing)]
+  pub explanations: Vec<Explanation>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -390,6 +396,34 @@ fn features_to_map<S: Serializer>(input: &[(&'static str, f64)], ser: S) -> Resu
   let mut map = ser.serialize_map(Some(input.len()))?;
   for (k, v) in input {
     map.serialize_entry(k, &format_score(*v))?;
+  }
+  map.end()
+}
+
+fn explanations_to_map<S: Serializer>(input: &[crate::matching::Explanation], ser: S) -> Result<S::Ok, S::Error> {
+  use crate::matching::Explanation;
+
+  struct Rendered<'a>(&'a Explanation);
+
+  impl Serialize for Rendered<'_> {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+      let scored = self.0.score != 0.0;
+
+      let mut map = ser.serialize_map(Some(if scored { 3 } else { 1 }))?;
+
+      if scored {
+        map.serialize_entry("score", &format_score(self.0.score))?;
+        map.serialize_entry("weighted", &format_score(self.0.weighted))?;
+      }
+
+      map.serialize_entry("detail", &self.0.detail.to_string())?;
+      map.end()
+    }
+  }
+
+  let mut map = ser.serialize_map(Some(input.len()))?;
+  for explanation in input {
+    map.serialize_entry(explanation.name, &Rendered(explanation))?;
   }
   map.end()
 }
@@ -479,8 +513,40 @@ mod tests {
 
   use crate::{
     HasProperties, SearchEntity,
+    matching::{Detail, Explanation},
     model::{Entity, PropertyFilter, ResolveSchemaLevel, Schema},
   };
+
+  #[test]
+  fn explanations_serialize_to_map() {
+    let mut entity = Entity::builder("Person").properties(&[]).build();
+    entity.explanations = vec![
+      Explanation {
+        name: "identifier_match",
+        score: 1.0,
+        weighted: 0.851_2,
+        detail: Detail::Labeled("matched identifier", "X123".into()),
+      },
+      Explanation {
+        name: "dob_year_disjoint",
+        score: 0.0,
+        weighted: 0.0,
+        detail: Detail::Note("no data to match against"),
+      },
+    ];
+
+    let json = serde_json::to_value(&entity).unwrap();
+    let explanations = &json["explanations"];
+
+    assert_eq!(explanations["identifier_match"]["score"], 1.0);
+    assert_eq!(explanations["identifier_match"]["weighted"], 0.851);
+    assert_eq!(explanations["identifier_match"]["detail"], "matched identifier: X123");
+    assert_eq!(explanations["dob_year_disjoint"]["detail"], "no data to match against");
+
+    let entity = Entity::builder("Person").properties(&[]).build();
+    let json = serde_json::to_value(&entity).unwrap();
+    assert!(json.get("explanations").is_none());
+  }
 
   #[test]
   fn entity_is_a() {

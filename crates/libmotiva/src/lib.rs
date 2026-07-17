@@ -76,8 +76,8 @@ mod testing {
   }
 
   #[scoring_feature(TestFeature, name = "test_feature")]
-  fn score_feature(&self, _: &Bump, _: &SearchEntity, rhs: &Entity) -> f64 {
-    42.0
+  fn score(&self, _: &Bump, _: &SearchEntity, rhs: &Entity, _explain: bool) -> (f64, Option<crate::matching::Detail>) {
+    (42.0, None)
   }
 
   #[test]
@@ -86,6 +86,6 @@ mod testing {
     let rhs = Entity::builder("Person").properties(&[]).build();
 
     assert_eq!(TestFeature.name(), "test_feature");
-    assert_eq!(TestFeature.score_feature(&Bump::default(), &lhs, &rhs), 42.0);
+    assert_eq!(TestFeature.score_scalar(&Bump::default(), &lhs, &rhs), 42.0);
   }
 }

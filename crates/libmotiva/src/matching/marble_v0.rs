@@ -5,12 +5,12 @@ use tracing::instrument;
 
 use crate::{
   matching::{
-    Feature, MatchingAlgorithm,
+    Explanation, Feature, MatchingAlgorithm,
     logic_v1::logic_v1,
     matchers::{
       address::AddressEntityMatch,
       crypto_wallet::CryptoWalletMatch,
-      dates::dob_progressive_match,
+      dates::DobProgressiveMatch,
       identifier::IdentifierMatch,
       jaro_winkler::PersonNameJaroWinkler,
       marble::LongestCommonSubsequence,
@@ -51,15 +51,15 @@ static FEATURES: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
     (IdentifierMatch::new("vessel_imo_mmsi_match", &["imoNumber", "mmsi"], Some(validate_imo_mmsi)), 0.95),
     (IdentifierMatch::new("inn_code_match", &["innCode"], Some(validate_inn)), 0.95),
     (IdentifierMatch::new("bic_code_match", &["bicCode"], Some(validate_bic)), 0.95),
-    (SimpleMatch::new("identifier_match", &|e| e.prop_group("identifier", PropertyFilter::Matchable), None), 0.85), // TODO: add cleaning
+    (SimpleMatch::new("identifier_match", &|e| e.prop_group("identifier", PropertyFilter::Matchable)), 0.85), // TODO: add cleaning
     (&WeakAliasMatch, 0.8),
   ]
 });
 
 static QUALIFIERS: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
   vec![
-    (SimpleMatch::new("country_match", &|e| e.prop_group("country", PropertyFilter::Matchable), None), 0.1),
-    (SimpleMatch::new("dob_progressive_match", &|e| e.props(&["birthDate"]), Some(dob_progressive_match)), 0.15),
+    (SimpleMatch::new("country_match", &|e| e.prop_group("country", PropertyFilter::Matchable)), 0.1),
+    (&DobProgressiveMatch, 0.15),
   ]
 });
 
@@ -80,7 +80,7 @@ impl MatchingAlgorithm for MarbleV0 {
   }
 
   #[instrument(name = "score_hit", skip_all, fields(entity_id = rhs.id))]
-  fn score(bump: &Bump, lhs: &crate::model::SearchEntity, rhs: &crate::model::Entity, options: &ScoringOptions) -> (f64, Vec<(&'static str, f64)>) {
+  fn score(bump: &Bump, lhs: &crate::model::SearchEntity, rhs: &crate::model::Entity, options: &ScoringOptions) -> (f64, Vec<Explanation>) {
     logic_v1(bump, lhs, rhs, options, &FEATURES, &QUALIFIERS, &DISQUALIFIERS)
   }
 }
@@ -89,7 +89,6 @@ impl MatchingAlgorithm for MarbleV0 {
 mod tests {
   use bumpalo::Bump;
   use float_cmp::approx_eq;
-  use itertools::Itertools;
 
   use crate::{
     matching::{Feature, MatchingAlgorithm},
@@ -108,11 +107,11 @@ mod tests {
     assert!(approx_eq!(f64, score, 0.72, epsilon = 0.01));
     assert!(approx_eq!(
       f64,
-      features.iter().filter(|(name, _)| *name == "person_name_jaro_winkler").map(|(_, score)| *score).next().unwrap(),
+      features.iter().filter(|e| e.name == "person_name_jaro_winkler").map(|e| e.score).next().unwrap(),
       0.9,
       epsilon = 0.01
     ));
-    assert!(features.iter().contains(&("person_name_phonetic_match", 2.0 / 3.0)));
+    assert!(features.iter().any(|e| e.name == "person_name_phonetic_match" && e.score == 2.0 / 3.0));
   }
 
   #[test]
@@ -131,9 +130,9 @@ mod tests {
     let (score, features) = super::MarbleV0::score(&Bump::new(), &lhs, &rhs, &Default::default());
 
     assert_eq!(score, 0.95);
-    assert!(features.iter().contains(&("name_fingerprint_levenshtein", 7.0 / 9.0)));
-    assert!(features.iter().contains(&("lei_code_match", 1.0)));
-    assert!(features.iter().contains(&("ogrn_code_match", 1.0)));
+    assert!(features.iter().any(|e| e.name == "name_fingerprint_levenshtein" && e.score == 7.0 / 9.0));
+    assert!(features.iter().any(|e| e.name == "lei_code_match" && e.score == 1.0));
+    assert!(features.iter().any(|e| e.name == "ogrn_code_match" && e.score == 1.0));
   }
 
   #[test]
@@ -144,7 +143,7 @@ mod tests {
     let (score, features) = super::MarbleV0::score(&Bump::new(), &lhs, &rhs, &Default::default());
 
     assert_eq!(score, 0.95);
-    assert!(features.iter().contains(&("vessel_imo_mmsi_match", 1.0)));
+    assert!(features.iter().any(|e| e.name == "vessel_imo_mmsi_match" && e.score == 1.0));
   }
 
   #[test]
@@ -154,7 +153,7 @@ mod tests {
       .properties(&[("name", &["PUTIN vladimir vladimirovich", "PUTIN, Vladimir Vladimirovich", "Владимир Путин"])])
       .build();
 
-    assert_eq!(super::PersonNameJaroWinkler.score_feature(&Bump::new(), &lhs, &rhs), 1.0);
+    assert_eq!(super::PersonNameJaroWinkler.score_scalar(&Bump::new(), &lhs, &rhs), 1.0);
   }
 
   #[test]
@@ -164,7 +163,7 @@ mod tests {
       .properties(&[("name", &["PUTIN vladimir vladimirovich", "PUTIN, Vladimir Vladimirovich", "Владимир Путин"])])
       .build();
 
-    assert!(approx_eq!(f64, super::PersonNamePhoneticMatch.score_feature(&Bump::new(), &lhs, &rhs), 2.0 / 3.0));
+    assert!(approx_eq!(f64, super::PersonNamePhoneticMatch.score_scalar(&Bump::new(), &lhs, &rhs), 2.0 / 3.0));
   }
 
   #[test]
@@ -177,7 +176,7 @@ mod tests {
       .build();
 
     let (_, features) = super::MarbleV0::score(&Bump::new(), &lhs, &rhs, &Default::default());
-    let feature_score = |name: &str| features.iter().find(|(n, _)| *n == name).map(|(_, score)| *score);
+    let feature_score = |name: &str| features.iter().find(|e| e.name == name).map(|e| e.score);
 
     assert!(feature_score("longest_common_subsequence").is_some_and(|score| score > 0.8));
     assert_eq!(feature_score("country_match"), Some(1.0));
