@@ -1,6 +1,5 @@
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::Context;
 use bon::bon;
 use jiff::Span;
 use tokio::sync::RwLock;
@@ -90,6 +89,24 @@ pub struct Motiva<P: IndexProvider, F: CatalogFetcher = HttpCatalogFetcher> {
   catalog: Arc<RwLock<Catalog>>,
 }
 
+/// Perform the initial catalog fetch, tolerating failures.
+///
+/// If the catalog cannot be built (e.g. the index is missing or upstream is
+/// unreachable), we start with an empty catalog and log a warning rather than
+/// aborting startup. The background refresh loop recovers it once the index and
+/// upstream become available.
+async fn init_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F, provider: &P, outdated_grace: Span) -> Catalog {
+  match get_merged_catalog(fetcher, provider, outdated_grace).await {
+    Ok(catalog) => catalog,
+
+    Err(err) => {
+      tracing::warn!(error = err.to_string(), "could not initialize catalog, starting with an empty catalog");
+
+      Catalog::default()
+    }
+  }
+}
+
 #[bon]
 impl<P: IndexProvider> Motiva<P> {
   /// Create a new Motiva instance.
@@ -115,7 +132,7 @@ impl<P: IndexProvider> Motiva<P> {
     provider.after_init();
 
     let fetcher = HttpCatalogFetcher::default();
-    let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
+    let catalog = init_catalog(&fetcher, &provider, config.outdated_grace).await;
 
     Ok(Motiva {
       config,
@@ -131,7 +148,7 @@ impl<P: IndexProvider> Motiva<P> {
 
     provider.after_init();
 
-    let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
+    let catalog = init_catalog(&fetcher, &provider, config.outdated_grace).await;
 
     Ok(Motiva {
       config,
@@ -152,7 +169,7 @@ impl<P: IndexProvider> Motiva<P, TestFetcher> {
   ) -> Result<Motiva<P, TestFetcher>, MotivaError> {
     crate::init();
 
-    let catalog = get_merged_catalog(&fetcher, &provider, config.outdated_grace).await.context("could not initialize manifest")?;
+    let catalog = init_catalog(&fetcher, &provider, config.outdated_grace).await;
 
     Ok(Motiva::<P, _> {
       config,
@@ -171,6 +188,23 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
   /// index is available and ready to be queried.
   pub async fn health(&self) -> Result<bool, MotivaError> {
     self.index.health().await
+  }
+
+  /// Whether the backing index is ready to serve queries.
+  ///
+  /// This reflects the latest background readiness check performed by the
+  /// [`IndexProvider`]. When `false`, callers should surface an unavailable
+  /// status rather than attempting to query.
+  pub fn ready(&self) -> bool {
+    self.index.ready()
+  }
+
+  /// Re-check the backing index and update its cached readiness state.
+  ///
+  /// Meant to be called periodically from a background task so the index can
+  /// recover once it becomes available.
+  pub async fn refresh(&self) {
+    self.index.refresh().await;
   }
 
   /// Get the detected index version.
@@ -240,7 +274,11 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
   /// By default, returns the cached merged dataset from the latest pull.
   /// If `force_refresh` is set to `true`, will perform a synchronous
   /// synchronization and merge from upstream.
-  pub async fn get_catalog(&self, force_refresh: bool) -> anyhow::Result<Catalog> {
+  pub async fn get_catalog(&self, force_refresh: bool) -> Result<Catalog, MotivaError> {
+    if !self.ready() {
+      return Err(MotivaError::IndexUnavailable);
+    }
+
     if force_refresh {
       self.refresh_catalog().await;
     }
@@ -299,5 +337,28 @@ mod tests {
     assert!(initial_catalog.datasets.iter().find(|ds| ds.name == "dataset1").is_some());
 
     motiva.refresh_catalog().await;
+  }
+
+  #[tokio::test]
+  async fn ready_and_refresh_passthrough() {
+    let index = MockedElasticsearch::builder().ready(false).build();
+    let motiva = Motiva::test(index).build().await.unwrap();
+
+    assert!(!motiva.ready());
+    motiva.refresh().await;
+    assert!(!motiva.ready());
+
+    let index = MockedElasticsearch::builder().ready(true).build();
+    let motiva = Motiva::test(index).build().await.unwrap();
+
+    assert!(motiva.ready());
+  }
+
+  #[tokio::test]
+  async fn build_tolerates_failing_catalog() {
+    let index = MockedElasticsearch::builder().indexing_done(false).build();
+    let motiva = Motiva::test(index).build().await.unwrap();
+
+    assert!(motiva.get_catalog(false).await.unwrap().datasets.is_empty());
   }
 }

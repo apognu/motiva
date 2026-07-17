@@ -24,10 +24,10 @@ pub async fn healthz() -> StatusCode {
   StatusCode::OK
 }
 
-pub async fn readyz<F: CatalogFetcher, P: IndexProvider>(State(state): State<AppState<F, P>>) -> Result<impl IntoResponse, AppError> {
-  match state.motiva.health().await? {
-    true => Ok(StatusCode::OK),
-    false => Ok(StatusCode::SERVICE_UNAVAILABLE),
+pub async fn readyz<F: CatalogFetcher, P: IndexProvider>(State(state): State<AppState<F, P>>) -> impl IntoResponse {
+  match state.motiva.ready() {
+    true => StatusCode::OK,
+    false => StatusCode::SERVICE_UNAVAILABLE,
   }
 }
 

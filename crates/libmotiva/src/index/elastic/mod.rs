@@ -3,7 +3,12 @@ pub(crate) mod config;
 pub(crate) mod queries;
 pub(crate) mod scoped;
 
-use std::{collections::HashMap, fmt::Debug};
+use std::{
+  borrow::Cow,
+  collections::HashMap,
+  fmt::Debug,
+  sync::{Arc, PoisonError, RwLock},
+};
 
 use ahash::RandomState;
 use elasticsearch::Elasticsearch;
@@ -20,23 +25,33 @@ use crate::{
 const DEFAULT_INDEX_PREFIX: &str = "yente";
 const SCOPED_INDEX_SUFFIX: &str = "motiva-scoped-entities";
 
+#[derive(Clone, Debug)]
+pub(crate) struct IndexState {
+  pub(crate) ready: bool,
+  pub(crate) index_version: IndexVersion,
+  pub(crate) scoped_index: Option<String>,
+}
+
 /// Main index provider using Elasticsearch
 #[derive(Clone)]
 pub struct ElasticsearchProvider {
   pub es: Elasticsearch,
-  pub(crate) index_version: IndexVersion,
   pub(crate) index_prefix: String,
   pub(crate) main_index: String,
-  pub(crate) scoped_index: Option<String>,
+  pub(crate) state: Arc<RwLock<IndexState>>,
 }
 
 impl ElasticsearchProvider {
   #[inline]
-  pub fn index_name(&self, kind: IndexType) -> &str {
-    match (kind, &self.scoped_index) {
-      (IndexType::Main, _) => &self.main_index,
-      (IndexType::Scoped, None) => &self.main_index,
-      (IndexType::Scoped, Some(scoped_index)) => scoped_index,
+  pub fn index_name(&self, kind: IndexType) -> Cow<'_, str> {
+    let scoped_index = match kind {
+      IndexType::Main => None,
+      IndexType::Scoped => self.state.read().unwrap_or_else(PoisonError::into_inner).scoped_index.clone(),
+    };
+
+    match scoped_index {
+      Some(scoped_index) => Cow::Owned(scoped_index),
+      None => Cow::Borrowed(&self.main_index),
     }
   }
 }
@@ -196,18 +211,25 @@ mod tests {
 
   #[test]
   fn build_index_name() {
-    let mut p = ElasticsearchProvider {
+    use std::sync::{Arc, RwLock};
+
+    use crate::index::elastic::IndexState;
+
+    let p = ElasticsearchProvider {
       es: Elasticsearch::default(),
-      index_version: IndexVersion::V5,
       index_prefix: "myprefix".to_string(),
       main_index: "myprefix-entities".to_string(),
-      scoped_index: None,
+      state: Arc::new(RwLock::new(IndexState {
+        ready: true,
+        index_version: IndexVersion::V5,
+        scoped_index: None,
+      })),
     };
 
     assert_eq!(p.index_name(IndexType::Main), "myprefix-entities");
     assert_eq!(p.index_name(IndexType::Scoped), "myprefix-entities");
 
-    p.scoped_index = Some("myprefix-motiva-scoped-entities".to_string());
+    p.state.write().unwrap().scoped_index = Some("myprefix-motiva-scoped-entities".to_string());
 
     assert_eq!(p.index_name(IndexType::Main), "myprefix-entities");
     assert_eq!(p.index_name(IndexType::Scoped), "myprefix-motiva-scoped-entities");

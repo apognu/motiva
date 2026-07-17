@@ -45,7 +45,7 @@ async fn api_not_version() {
 
 #[tokio::test]
 async fn api_health_unhealthy() {
-  let index = MockedElasticsearch::builder().healthy(false).build();
+  let index = MockedElasticsearch::builder().ready(false).build();
 
   let state = AppState {
     config: Arc::new(Config::default()),
@@ -173,6 +173,31 @@ async fn api_match() {
         }
       }
   }));
+}
+
+#[tokio::test]
+async fn api_match_not_ready() {
+  let index = MockedElasticsearch::builder().ready(false).build();
+
+  let state = AppState {
+    config: Arc::new(Config::default()),
+    prometheus: None,
+    motiva: Motiva::test(index).fetcher(TestFetcher::default()).build().await.unwrap(),
+  };
+
+  let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
+  let server = TestServer::new(app);
+
+  let response = server
+    .post("/match/default")
+    .json(&json!({
+        "queries": {
+            "test": { "schema": "Person", "properties": { "name": ["Vladimir Putin"] } }
+        }
+    }))
+    .await;
+
+  assert_eq!(response.status_code(), 503);
 }
 
 #[tokio::test]

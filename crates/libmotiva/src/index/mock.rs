@@ -20,6 +20,9 @@ use crate::{
 #[derive(Clone, Builder, Default)]
 pub struct MockedElasticsearch {
   healthy: Option<bool>,
+  ready: Option<bool>,
+  indexing_done: Option<bool>,
+
   #[builder(default)]
   entities: Vec<Entity>,
   entity: Option<EntityHandle>,
@@ -32,6 +35,10 @@ pub struct MockedElasticsearch {
 impl IndexProvider for MockedElasticsearch {
   fn index_version(&self) -> IndexVersion {
     IndexVersion::V4
+  }
+
+  fn ready(&self) -> bool {
+    self.ready.unwrap_or(true)
   }
 
   async fn health(&self) -> Result<bool, MotivaError> {
@@ -65,6 +72,10 @@ impl IndexProvider for MockedElasticsearch {
   }
 
   async fn list_indices(&self) -> Result<Vec<(String, String)>, MotivaError> {
+    if !self.indexing_done.unwrap_or(true) {
+      return Err(MotivaError::OtherError(anyhow::anyhow!("indexing is not done")));
+    }
+
     Ok(self.indices.clone())
   }
 
