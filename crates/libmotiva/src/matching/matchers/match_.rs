@@ -4,25 +4,24 @@ use bumpalo::{
   Bump,
   collections::{CollectIn, Vec},
 };
+use itertools::Itertools;
 use libmotiva_macros::scoring_feature;
 
 use crate::{
-  matching::{Feature, comparers::is_disjoint, extractors},
+  matching::{Detail, Feature, extractors, matchers::NO_DATA},
   model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
 pub(crate) type MatchExtractor<'e> = &'e (dyn Fn(&'_ dyn HasProperties) -> Cow<[String]> + Send + Sync);
-type MismatchMatcher = Option<fn(lhs: &[String], rhs: &[String]) -> f64>;
 
 pub(crate) struct SimpleMatch<'e> {
   name: &'static str,
   extractor: MatchExtractor<'e>,
-  matcher: MismatchMatcher,
 }
 
 impl<'e> SimpleMatch<'e> {
-  pub(crate) fn new(name: &'static str, extractor: MatchExtractor<'e>, matcher: MismatchMatcher) -> &'static Self {
-    Box::leak(Box::new(SimpleMatch { name, extractor, matcher }))
+  pub(crate) fn new(name: &'static str, extractor: MatchExtractor<'e>) -> &'static Self {
+    Box::leak(Box::new(SimpleMatch { name, extractor }))
   }
 }
 
@@ -31,37 +30,42 @@ impl<'e> Feature for SimpleMatch<'e> {
     self.name
   }
 
-  fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+  fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
     let lhs_names = (self.extractor)(lhs);
     let rhs_names = (self.extractor)(rhs);
 
     if lhs_names.is_empty() || rhs_names.is_empty() {
-      return 0.0;
+      return (0.0, explain.then_some(Detail::Note(NO_DATA)));
     }
 
-    match self.matcher {
-      Some(func) => (func)(&lhs_names, &rhs_names),
+    let matched = lhs_names.iter().any(|value| rhs_names.contains(value));
 
-      None => match is_disjoint(&lhs_names, &rhs_names) {
-        false => 1.0,
-        true => 0.0,
-      },
-    }
+    let detail = explain.then(|| {
+      if !matched {
+        return Detail::Note("no match");
+      }
+
+      let shared = lhs_names.iter().filter(|value| rhs_names.contains(value)).map(String::as_str).unique().join(", ");
+
+      Detail::Labeled("matched", shared.into())
+    });
+
+    (if matched { 1.0 } else { 0.0 }, detail)
   }
 }
 
 #[scoring_feature(WeakAliasMatch, name = "weak_alias_match")]
-fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
   let lhs_names = extractors::clean_names_light(lhs.prop_group("name", PropertyFilter::All).iter()).collect_in::<Vec<_>>(bump);
   let rhs_names = extractors::clean_names_light(rhs.props(&["weakAlias", "abbreviation"]).iter()).collect_in::<Vec<_>>(bump);
 
   if lhs_names.is_empty() || rhs_names.is_empty() {
-    return 0.0;
+    return (0.0, explain.then_some(Detail::Note(NO_DATA)));
   }
 
-  match is_disjoint(&lhs_names, &rhs_names) {
-    false => 1.0,
-    true => 0.0,
+  match lhs_names.iter().find(|name| rhs_names.contains(name)) {
+    Some(alias) => (1.0, explain.then(|| Detail::Labeled("matched weak alias", alias.as_str().into()))),
+    None => (0.0, explain.then_some(Detail::Note("no weak alias match"))),
   }
 }
 
@@ -79,54 +83,60 @@ mod tests {
     let lhs = SearchEntity::builder("Company").properties(&[("name", &["bob"])]).build();
     let rhs = Entity::builder("Company").properties(&[("weakAlias", &["joe", "bob"])]).build();
 
-    let score = WeakAliasMatch.score_feature(&Bump::new(), &lhs, &rhs);
+    let score = WeakAliasMatch.score_scalar(&Bump::new(), &lhs, &rhs);
 
     assert_eq!(score, 1.0);
 
     let lhs = SearchEntity::builder("Company").properties(&[("name", &["bill"])]).build();
     let rhs = Entity::builder("Company").properties(&[("weakAlias", &["joe", "bob"])]).build();
 
-    let score = WeakAliasMatch.score_feature(&Bump::new(), &lhs, &rhs);
+    let score = WeakAliasMatch.score_scalar(&Bump::new(), &lhs, &rhs);
 
     assert_eq!(score, 0.0);
   }
 
   #[test]
-  fn simple_match() {
-    let lhs = SearchEntity::builder("Company").properties(&[("id", &["12345"])]).build();
-    let rhs = Entity::builder("Company").properties(&[("id", &["1234"])]).build();
+  fn weak_alias_match_details() {
+    fn detail(lhs: &[&str], rhs: &[&str]) -> String {
+      let lhs = SearchEntity::builder("Company").properties(&[("name", lhs)]).build();
+      let rhs = Entity::builder("Company").properties(&[("weakAlias", rhs)]).build();
 
-    let matcher = SimpleMatch::new("", &|e| e.props(&["id"]), None);
+      WeakAliasMatch.score(&Bump::new(), &lhs, &rhs, true).1.unwrap().to_string()
+    }
 
-    assert_eq!(matcher.score_feature(&Bump::new(), &lhs, &rhs), 0.0);
+    assert_eq!(detail(&["bob"], &["joe", "bob"]), "matched weak alias: bob");
+    assert_eq!(detail(&["bill"], &["joe", "bob"]), "no weak alias match");
 
-    let lhs = SearchEntity::builder("Company").properties(&[("id", &["1234"])]).build();
-    let rhs = Entity::builder("Company").properties(&[("id", &["1234"])]).build();
-
-    let matcher = SimpleMatch::new("", &|e| e.props(&["id"]), None);
-
-    assert_eq!(matcher.score_feature(&Bump::new(), &lhs, &rhs), 1.0);
+    // No aliases to compare on the candidate side.
+    let lhs = SearchEntity::builder("Company").properties(&[("name", &["bob"])]).build();
+    let rhs = Entity::builder("Company").properties(&[]).build();
+    assert_eq!(WeakAliasMatch.score(&Bump::new(), &lhs, &rhs, true).1.unwrap().to_string(), "no data to match against");
   }
 
   #[test]
-  fn simple_match_with_custom_matcher() {
+  fn simple_match() {
+    let matcher = SimpleMatch::new("", &|e| e.props(&["id"]));
+
+    let lhs = SearchEntity::builder("Company").properties(&[("id", &["12345"])]).build();
+    let rhs = Entity::builder("Company").properties(&[("id", &["1234"])]).build();
+
+    assert_eq!(matcher.score_scalar(&Bump::new(), &lhs, &rhs), 0.0);
+
     let lhs = SearchEntity::builder("Company").properties(&[("id", &["1234"])]).build();
     let rhs = Entity::builder("Company").properties(&[("id", &["1234"])]).build();
 
-    fn match_quarter(_: &[String], _: &[String]) -> f64 {
-      0.25
-    }
+    assert_eq!(matcher.score_scalar(&Bump::new(), &lhs, &rhs), 1.0);
+  }
 
-    fn match_three_quarter(_: &[String], _: &[String]) -> f64 {
-      0.75
-    }
+  #[test]
+  fn simple_match_details() {
+    let matcher = SimpleMatch::new("", &|e| e.props(&["id"]));
 
-    let matcher = SimpleMatch::new("", &|e| e.props(&["id"]), Some(match_quarter));
+    let lhs = SearchEntity::builder("Company").properties(&[("id", &["a", "b", "c"])]).build();
+    let rhs = Entity::builder("Company").properties(&[("id", &["b", "c", "d"])]).build();
 
-    assert_eq!(matcher.score_feature(&Bump::new(), &lhs, &rhs), 0.25);
-
-    let matcher = SimpleMatch::new("", &|e| e.props(&["id"]), Some(match_three_quarter));
-
-    assert_eq!(matcher.score_feature(&Bump::new(), &lhs, &rhs), 0.75);
+    let (score, detail) = matcher.score(&Bump::new(), &lhs, &rhs, true);
+    assert_eq!(score, 1.0);
+    assert_eq!(detail.unwrap().to_string(), "matched: b, c");
   }
 }

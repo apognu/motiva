@@ -10,7 +10,7 @@ use libmotiva_macros::scoring_feature;
 
 use crate::{
   matching::{
-    Feature,
+    Detail, Feature,
     comparers::levenshtein_similarity,
     extractors,
     replacers::{self, addresses::ADDRESS_FORMS, ordinals::ORDINALS},
@@ -19,9 +19,14 @@ use crate::{
 };
 
 #[scoring_feature(AddressEntityMatch, name = "address_entity_match")]
-fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+  #[inline]
+  fn overlap_detail(overlap: &[&String]) -> Detail {
+    Detail::Labeled("address overlap", overlap.iter().map(|token| token.as_str()).sorted().join(", ").into())
+  }
+
   if !lhs.schema.is_a("Address") || !rhs.schema.is_a("Address") {
-    return 0.0;
+    return (0.0, explain.then_some(Detail::Note("not an address")));
   }
 
   let lhs_props = lhs.props(&["full"]);
@@ -43,6 +48,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   });
 
   let mut max_score = 0.0f64;
+  let mut best_overlap: Option<Detail> = None;
 
   for (lhs, rhs) in lhs_addresses.cartesian_product(rhs_addresses) {
     if lhs.is_empty() || rhs.is_empty() {
@@ -53,7 +59,7 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     let overlap_size = overlap.len();
 
     if overlap_size == lhs.len() || overlap_size == rhs.len() {
-      return 1.0;
+      return (1.0, explain.then(|| overlap_detail(&overlap)));
     }
 
     let lhs_remainder: std::vec::Vec<_> = lhs.iter().filter(|word| !overlap.contains(word)).sorted().collect();
@@ -68,13 +74,21 @@ fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
     let score = (overlap.len() as f64 + (remainder_len as f64 * score)) / (remainder_len + overlap.len()) as f64;
 
     if score >= 1.0 {
-      return 1.0;
+      return (1.0, explain.then(|| overlap_detail(&overlap)));
     }
 
-    max_score = score.max(max_score);
+    if score > max_score {
+      max_score = score;
+
+      if explain {
+        best_overlap = Some(if overlap.is_empty() { Detail::Note("no address overlap") } else { overlap_detail(&overlap) });
+      }
+    }
   }
 
-  max_score
+  let detail = explain.then(|| best_overlap.unwrap_or(Detail::Note("no address overlap")));
+
+  (max_score, detail)
 }
 
 #[cfg(test)]
@@ -92,6 +106,28 @@ mod tests {
     let lhs = SearchEntity::builder("Address").properties(&[("full", &["No.3, Chabanais avenue, 103-222, Los Angeles"])]).build();
     let rhs = Entity::builder("Address").properties(&[("full", &["3 Chabanais ave, 103222, Los Angeles"])]).build();
 
-    assert!(approx_eq!(f64, super::AddressEntityMatch.score_feature(&Bump::new(), &lhs, &rhs), 0.95, epsilon = 0.01));
+    assert!(approx_eq!(f64, super::AddressEntityMatch.score_scalar(&Bump::new(), &lhs, &rhs), 0.95, epsilon = 0.01));
+  }
+
+  #[test]
+  fn address_entity_match_details() {
+    fn detail(lhs: &str, rhs: &str) -> String {
+      let lhs = SearchEntity::builder("Address").properties(&[("full", &[lhs])]).build();
+      let rhs = Entity::builder("Address").properties(&[("full", &[rhs])]).build();
+
+      super::AddressEntityMatch.score(&Bump::new(), &lhs, &rhs, true).1.unwrap().to_string()
+    }
+
+    // Not an address.
+    let lhs = SearchEntity::builder("Person").properties(&[("full", &["x"])]).build();
+    let rhs = Entity::builder("Person").properties(&[("full", &["x"])]).build();
+    assert_eq!(super::AddressEntityMatch.score(&Bump::new(), &lhs, &rhs, true).1.unwrap().to_string(), "not an address");
+
+    // Full containment and partial overlap both surface the shared tokens.
+    assert!(detail("Chabanais", "Chabanais Avenue").starts_with("address overlap: "));
+    assert!(detail("No.3, Chabanais avenue, 103-222, Los Angeles", "3 Chabanais ave, 103222, Los Angeles").starts_with("address overlap: "));
+
+    // No overlap.
+    assert_eq!(detail("Zzzz", "Qqqq"), "no address overlap");
   }
 }

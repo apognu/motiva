@@ -5,7 +5,7 @@ use tracing::instrument;
 
 use crate::{
   matching::{
-    Feature, FeaturesConfig, MatchingAlgorithm,
+    Explanation, Feature, FeaturesConfig, MatchingAlgorithm,
     matchers::{
       jaro_winkler::JaroNameParts,
       mismatch::{SimpleMismatch, dob_day_disjoint, dob_year_disjoint},
@@ -39,13 +39,13 @@ impl MatchingAlgorithm for NameQualified {
   }
 
   #[instrument(name = "score_hit", skip_all, fields(algorithm = Self::name(), entity_id = rhs.id))]
-  fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, options: &ScoringOptions) -> (f64, Vec<(&'static str, f64)>) {
+  fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, options: &ScoringOptions) -> (f64, Vec<Explanation>) {
     if !rhs.schema.is_a(lhs.schema.as_str()) {
       return (0.0, vec![]);
     }
 
     let mut results = Vec::with_capacity(FEATURES.len());
-    let score = run_features(bump, lhs, rhs, 0.0, FeaturesConfig::summed_features(&options.weights, FEATURES.iter()), &mut results);
+    let score = run_features(bump, lhs, rhs, 0.0, FeaturesConfig::summed_features(FEATURES.iter(), options), &mut results);
 
     (score.clamp(0.0, 1.0), results)
   }

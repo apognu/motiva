@@ -5,7 +5,7 @@ use tracing::instrument;
 
 use crate::{
   matching::{
-    Feature, FeaturesConfig, MatchingAlgorithm,
+    Explanation, Feature, FeaturesConfig, MatchingAlgorithm,
     matchers::{
       address::AddressEntityMatch,
       crypto_wallet::CryptoWalletMatch,
@@ -48,7 +48,7 @@ static FEATURES: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
     (IdentifierMatch::new("vessel_imo_mmsi_match", &["imoNumber", "mmsi"], Some(validate_imo_mmsi)), 0.95),
     (IdentifierMatch::new("inn_code_match", &["innCode"], Some(validate_inn)), 0.95),
     (IdentifierMatch::new("bic_code_match", &["bicCode"], Some(validate_bic)), 0.95),
-    (SimpleMatch::new("identifier_match", &|e| e.prop_group("identifier", PropertyFilter::Matchable), None), 0.85), // TODO: add cleaning
+    (SimpleMatch::new("identifier_match", &|e| e.prop_group("identifier", PropertyFilter::Matchable)), 0.85), // TODO: add cleaning
     (&WeakAliasMatch, 0.8),
   ]
 });
@@ -74,16 +74,16 @@ pub(crate) fn logic_v1(
   features: &[(&'static dyn Feature, f64)],
   qualifiers: &[(&'static dyn Feature, f64)],
   disqualifiers: &[(&'static dyn Feature, f64)],
-) -> (f64, Vec<(&'static str, f64)>) {
+) -> (f64, Vec<Explanation>) {
   if !rhs.schema.can_match(lhs.schema.as_str()) {
     return (0.0, vec![]);
   }
 
   let mut results = Vec::with_capacity(features.len() + qualifiers.len() + disqualifiers.len());
 
-  let score = run_features(bump, lhs, rhs, 0.0, FeaturesConfig::highest_features(&options.weights, features), &mut results);
-  let score = run_features(bump, lhs, rhs, score, FeaturesConfig::summed_features(&options.weights, qualifiers), &mut results);
-  let score = run_features(bump, lhs, rhs, score, FeaturesConfig::disqualifiers(&options.weights, disqualifiers, options.cutoff), &mut results);
+  let score = run_features(bump, lhs, rhs, 0.0, FeaturesConfig::highest_features(features, options), &mut results);
+  let score = run_features(bump, lhs, rhs, score, FeaturesConfig::summed_features(qualifiers, options), &mut results);
+  let score = run_features(bump, lhs, rhs, score, FeaturesConfig::disqualifiers(disqualifiers, options), &mut results);
 
   (score.clamp(0.0, 1.0), results)
 }
@@ -94,7 +94,7 @@ impl MatchingAlgorithm for LogicV1 {
   }
 
   #[instrument(name = "score_hit", skip_all, fields(entity_id = rhs.id))]
-  fn score(bump: &Bump, lhs: &crate::model::SearchEntity, rhs: &crate::model::Entity, options: &ScoringOptions) -> (f64, Vec<(&'static str, f64)>) {
+  fn score(bump: &Bump, lhs: &crate::model::SearchEntity, rhs: &crate::model::Entity, options: &ScoringOptions) -> (f64, Vec<Explanation>) {
     logic_v1(bump, lhs, rhs, options, &FEATURES, &[], &QUALIFIERS)
   }
 }
@@ -105,7 +105,6 @@ mod tests {
 
   use bumpalo::Bump;
   use float_cmp::approx_eq;
-  use itertools::Itertools;
   use pyo3::Python;
 
   use crate::{
@@ -127,11 +126,11 @@ mod tests {
     assert!(approx_eq!(f64, score, 0.72, epsilon = 0.01));
     assert!(approx_eq!(
       f64,
-      features.iter().filter(|(name, _)| *name == "person_name_jaro_winkler").map(|(_, score)| *score).next().unwrap(),
+      features.iter().filter(|e| e.name == "person_name_jaro_winkler").map(|e| e.score).next().unwrap(),
       0.9,
       epsilon = 0.01
     ));
-    assert!(features.iter().contains(&("person_name_phonetic_match", 2.0 / 3.0)));
+    assert!(features.iter().any(|e| e.name == "person_name_phonetic_match" && e.score == 2.0 / 3.0));
   }
 
   #[test]
@@ -150,9 +149,9 @@ mod tests {
     let (score, features) = super::LogicV1::score(&Bump::new(), &lhs, &rhs, &Default::default());
 
     assert_eq!(score, 0.95);
-    assert!(features.iter().contains(&("name_fingerprint_levenshtein", 7.0 / 9.0)));
-    assert!(features.iter().contains(&("lei_code_match", 1.0)));
-    assert!(features.iter().contains(&("ogrn_code_match", 1.0)));
+    assert!(features.iter().any(|e| e.name == "name_fingerprint_levenshtein" && e.score == 7.0 / 9.0));
+    assert!(features.iter().any(|e| e.name == "lei_code_match" && e.score == 1.0));
+    assert!(features.iter().any(|e| e.name == "ogrn_code_match" && e.score == 1.0));
   }
 
   #[test]
@@ -163,7 +162,7 @@ mod tests {
     let (score, features) = super::LogicV1::score(&Bump::new(), &lhs, &rhs, &Default::default());
 
     assert_eq!(score, 0.95);
-    assert!(features.iter().contains(&("vessel_imo_mmsi_match", 1.0)));
+    assert!(features.iter().any(|e| e.name == "vessel_imo_mmsi_match" && e.score == 1.0));
   }
 
   #[test]
@@ -173,7 +172,7 @@ mod tests {
       .properties(&[("name", &["PUTIN vladimir vladimirovich", "PUTIN, Vladimir Vladimirovich", "Владимир Путин"])])
       .build();
 
-    assert_eq!(super::PersonNameJaroWinkler.score_feature(&Bump::new(), &lhs, &rhs), 1.0);
+    assert_eq!(super::PersonNameJaroWinkler.score_scalar(&Bump::new(), &lhs, &rhs), 1.0);
   }
 
   #[test]
@@ -183,7 +182,7 @@ mod tests {
       .properties(&[("name", &["PUTIN vladimir vladimirovich", "PUTIN, Vladimir Vladimirovich", "Владимир Путин"])])
       .build();
 
-    assert!(approx_eq!(f64, super::PersonNamePhoneticMatch.score_feature(&Bump::new(), &lhs, &rhs), 2.0 / 3.0));
+    assert!(approx_eq!(f64, super::PersonNamePhoneticMatch.score_scalar(&Bump::new(), &lhs, &rhs), 2.0 / 3.0));
   }
 
   #[test]
@@ -196,10 +195,10 @@ mod tests {
     weights.insert("person_name_jaro_winkler".into(), 0.2);
     weights.insert("person_name_phonetic_match".into(), 0.2);
 
-    let options = ScoringOptions { weights, cutoff: 0.0 };
+    let options = ScoringOptions { weights, cutoff: 0.0, explain: false };
     let (score, features) = super::LogicV1::score(&Bump::new(), &lhs, &rhs, &options);
 
-    assert!(features.contains(&("name_literal_match", 1.0)));
+    assert!(features.iter().any(|e| e.name == "name_literal_match" && e.score == 1.0));
     assert_eq!(score, 0.2);
   }
 

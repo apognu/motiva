@@ -5,15 +5,16 @@ use bumpalo::{
   collections::{CollectIn, Vec},
 };
 use compact_str::CompactString;
+use itertools::Itertools;
 use libmotiva_macros::scoring_feature;
 use tracing::instrument;
 
 use crate::{
   matching::{
-    Feature,
+    Detail, Feature,
     comparers::{is_disjoint, is_disjoint_chars},
     extractors::{self, extract_numbers},
-    matchers::match_::MatchExtractor,
+    matchers::{NO_DATA, match_::MatchExtractor},
   },
   model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
@@ -38,32 +39,36 @@ impl<'e> Feature for SimpleMismatch<'e> {
   }
 
   #[instrument(level = "trace", name = "simple_mismatch", skip_all, fields(entity_id = rhs.id, mismatch = self.name))]
-  fn score_feature(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
     let lhs = (self.extractor)(lhs);
 
     if lhs.is_empty() {
-      return 0.0;
+      return (0.0, explain.then_some(Detail::Note(NO_DATA)));
     }
 
     let rhs = (self.extractor)(rhs);
 
     if rhs.is_empty() {
-      return 0.0;
+      return (0.0, explain.then_some(Detail::Note(NO_DATA)));
     }
 
-    match self.matcher {
+    let score = match self.matcher {
       Some(func) => (func)(bump, lhs.as_ref(), rhs.as_ref()),
 
       None => match is_disjoint(lhs.as_ref(), rhs.as_ref()) {
         true => 1.0,
         false => 0.0,
       },
-    }
+    };
+
+    let detail = explain.then(|| if score > 0.0 { Detail::Note("mismatch detected") } else { Detail::Note("no mismatch") });
+
+    (score, detail)
   }
 }
 
 #[scoring_feature(NumbersMismatch, name = "numbers_mismatch")]
-fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
+fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
   let (lhs_numbers, rhs_numbers) = match lhs.schema.is_a("Address") {
     true => (
       HashSet::<String>::from_iter(extract_numbers(lhs.props(&["full"]).iter()).map(ToOwned::to_owned)),
@@ -78,7 +83,21 @@ fn score_feature(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
   let base = lhs_numbers.len().min(rhs_numbers.len());
   let mismatches = lhs_numbers.difference(&rhs_numbers).count();
 
-  mismatches as f64 / base.max(1) as f64
+  let score = mismatches as f64 / base.max(1) as f64;
+
+  let detail = explain.then(|| {
+    if lhs_numbers.is_empty() || rhs_numbers.is_empty() {
+      Detail::Note("no numbers to compare")
+    } else if mismatches == 0 {
+      Detail::Note("all numbers matched")
+    } else {
+      let unmatched = lhs_numbers.difference(&rhs_numbers).map(String::as_str).sorted().join(", ");
+
+      Detail::Labeled("unmatched numbers", unmatched.into())
+    }
+  });
+
+  (score, detail)
 }
 
 pub(crate) fn dob_year_disjoint<S: AsRef<str>>(bump: &Bump, lhs: &[S], rhs: &[S]) -> f64 {
@@ -177,6 +196,36 @@ mod tests {
     let lhs = SearchEntity::builder("Person").properties(&[("name", &["123 Limited", "The answer is 42"])]).build();
     let rhs = Entity::builder("Person").properties(&[("name", &["The 123 Name", "Avenue 4123"])]).build();
 
-    assert_eq!(super::NumbersMismatch.score_feature(&Bump::new(), &lhs, &rhs), 0.5);
+    assert_eq!(super::NumbersMismatch.score_scalar(&Bump::new(), &lhs, &rhs), 0.5);
+  }
+
+  #[test]
+  fn simple_mismatch_details() {
+    let feature = super::SimpleMismatch::new("t", &|e| e.props(&["country"]), None);
+
+    let detail = |lhs: &[&str], rhs: &[&str]| {
+      let l = SearchEntity::builder("Person").properties(&[("country", lhs)]).build();
+      let r = Entity::builder("Person").properties(&[("country", rhs)]).build();
+
+      feature.score(&Bump::new(), &l, &r, true).1.unwrap().to_string()
+    };
+
+    assert_eq!(detail(&[], &["fr"]), "no data to match against");
+    assert_eq!(detail(&["fr"], &["de"]), "mismatch detected");
+    assert_eq!(detail(&["fr"], &["fr"]), "no mismatch");
+  }
+
+  #[test]
+  fn numbers_mismatch_details() {
+    let detail = |lhs: &str, rhs: &str| {
+      let l = SearchEntity::builder("Person").properties(&[("name", &[lhs])]).build();
+      let r = Entity::builder("Person").properties(&[("name", &[rhs])]).build();
+
+      super::NumbersMismatch.score(&Bump::new(), &l, &r, true).1.unwrap().to_string()
+    };
+
+    assert_eq!(detail("Acme", "Acme"), "no numbers to compare");
+    assert_eq!(detail("Route 66", "Highway 66"), "all numbers matched");
+    assert_eq!(detail("Route 66", "Highway 77"), "unmatched numbers: 66");
   }
 }

@@ -52,6 +52,7 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
   let options = Arc::new(ScoringOptions {
     cutoff: query.cutoff,
     weights: state.config.weights.clone().into_iter().chain(body.weights.clone()).collect(),
+    explain: query.explain,
   });
 
   let tasks = body.queries.into_iter().map(|(id, entity)| {
