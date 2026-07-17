@@ -26,6 +26,10 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
   Query(mut query): Query<MatchParams>,
   TypedJson(mut body): TypedJson<Payload>,
 ) -> Result<(StatusCode, impl IntoResponse), AppError> {
+  if !state.motiva.ready() {
+    return Err(AppError::ServiceUnavailable);
+  }
+
   query.scope = scope;
   query.candidate_factor = state.config.match_candidates;
 

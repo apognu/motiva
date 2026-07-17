@@ -20,8 +20,9 @@ jobs:
           name: motiva
       - uses: softprops/action-gh-release@v3
         with:
-          name: motiva ${{ github.ref_name }}
-          make_latest: true
+          name: motiva ${{ inputs.tag }}
+          make_latest: ${{ !contains(inputs.tag, '-rc.') }}
           generate_release_notes: true
+          prerelease: ${{ contains(inputs.tag, '-rc.') }}
           files: |
             motiva

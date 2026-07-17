@@ -21,6 +21,14 @@ use crate::{
 pub trait IndexProvider: Clone + Send + Sync + 'static {
   fn after_init(&self) {}
 
+  fn ready(&self) -> bool {
+    true
+  }
+
+  fn refresh(&self) -> impl Future<Output = ()> + Send {
+    async {}
+  }
+
   fn index_version(&self) -> IndexVersion;
   fn health(&self) -> impl Future<Output = Result<bool, MotivaError>> + Send;
   fn get_entity(&self, id: &str) -> impl Future<Output = Result<EntityHandle, MotivaError>> + Send;

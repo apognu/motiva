@@ -1,6 +1,6 @@
 use std::{
   collections::{HashMap, HashSet},
-  sync::Arc,
+  sync::{Arc, PoisonError},
 };
 
 use ahash::RandomState;
@@ -32,11 +32,21 @@ use crate::{
 
 impl IndexProvider for ElasticsearchProvider {
   fn after_init(&self) {
-    tracing::info!(version = ?self.index_version, scoped_index = self.scoped_index, main_index = self.main_index, "detected yente version and index name");
+    let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
+
+    tracing::info!(version = ?state.index_version, scoped_index = ?state.scoped_index, main_index = self.main_index, ready = state.ready, "detected yente version and index name");
   }
 
   fn index_version(&self) -> IndexVersion {
-    self.index_version
+    self.state.read().unwrap_or_else(PoisonError::into_inner).index_version
+  }
+
+  fn ready(&self) -> bool {
+    self.state.read().unwrap_or_else(PoisonError::into_inner).ready
+  }
+
+  async fn refresh(&self) {
+    self.refresh_index_state().await;
   }
 
   /// Whether the Elasticsearch cluster is up and healthy.
@@ -68,13 +78,19 @@ impl IndexProvider for ElasticsearchProvider {
   /// Search for candidate entities matching input parameters.
   #[instrument(skip_all)]
   async fn search(&self, catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, MotivaError> {
-    let query = build_query(catalog, self.index_version, self.index_name(params.index_type), entity, params).await?;
+    if !self.ready() {
+      return Err(MotivaError::IndexUnavailable);
+    }
+
+    let index_version = self.index_version();
+    let index_name = self.index_name(params.index_type);
+    let query = build_query(catalog, index_version, &index_name, entity, params).await?;
 
     tracing::trace!(%query, "running query");
 
     let response = self
       .es
-      .search(SearchParts::Index(&[self.index_name(params.index_type)]))
+      .search(SearchParts::Index(&[index_name.as_ref()]))
       .from(0)
       .size(params.candidate_limit(params.match_candidates) as i64)
       .search_type(SearchType::DfsQueryThenFetch)
@@ -114,6 +130,10 @@ impl IndexProvider for ElasticsearchProvider {
   /// with their IDs, and not their actual data.
   #[instrument(skip_all)]
   async fn get_entity(&self, id: &str) -> Result<EntityHandle, MotivaError> {
+    if !self.ready() {
+      return Err(MotivaError::IndexUnavailable);
+    }
+
     let query = json!({
       "query": {
           "bool": {
@@ -162,6 +182,10 @@ impl IndexProvider for ElasticsearchProvider {
   /// Get entities related to an entity.
   #[instrument(skip_all)]
   async fn get_related_entities(&self, root: Option<&String>, values: &[String], negatives: &HashSet<String, RandomState>, limit: usize) -> Result<Vec<Entity>, MotivaError> {
+    if !self.ready() {
+      return Err(MotivaError::IndexUnavailable);
+    }
+
     let mut shoulds = vec![json!({ "ids": { "values": values } })];
 
     if let Some(root) = root {
@@ -224,6 +248,10 @@ impl IndexProvider for ElasticsearchProvider {
   }
 
   async fn list_field_values(&self, fields: &[&str], query: Option<serde_json::Value>) -> Result<HashMap<String, Vec<String>>, MotivaError> {
+    if !self.ready() {
+      return Err(MotivaError::IndexUnavailable);
+    }
+
     let mut aggs = HashMap::<String, serde_json::Value>::default();
 
     for field in fields {
@@ -915,5 +943,34 @@ mod tests {
       HashSet::<(String, String)>::from_iter(versions.into_iter()),
       HashSet::from_iter(vec![("dataset1".to_string(), "20250901000000-abc".to_string()), ("dataset2".to_string(), "20251127104000-xyz".to_string())].into_iter())
     );
+  }
+
+  #[tokio::test]
+  async fn queries_are_unavailable_when_not_ready() {
+    use crate::{
+      MotivaError,
+      index::{IndexProvider, elastic::IndexState},
+      prelude::ElasticsearchProvider,
+    };
+
+    let provider = ElasticsearchProvider {
+      es: elasticsearch::Elasticsearch::default(),
+      index_prefix: "yente".to_string(),
+      main_index: "yente-entities".to_string(),
+      state: Arc::new(std::sync::RwLock::new(IndexState {
+        ready: false,
+        index_version: IndexVersion::V4,
+        scoped_index: None,
+      })),
+    };
+
+    let catalog = fake_catalog();
+    let entity = SearchEntity::builder("Person").properties(&[("name", &["x"])]).build();
+    let negatives = HashSet::<String, ahash::RandomState>::default();
+
+    assert!(matches!(provider.search(&catalog, &entity, &MatchParams::default()).await, Err(MotivaError::IndexUnavailable)));
+    assert!(matches!(provider.get_entity("id").await, Err(MotivaError::IndexUnavailable)));
+    assert!(matches!(provider.get_related_entities(None, &[], &negatives, 10).await, Err(MotivaError::IndexUnavailable)));
+    assert!(matches!(provider.list_field_values(&["schema"], None).await, Err(MotivaError::IndexUnavailable)));
   }
 }

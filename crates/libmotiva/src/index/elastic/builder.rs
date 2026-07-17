@@ -1,5 +1,8 @@
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
+
 use crate::index::elastic::config::EsOptions;
-use crate::index::elastic::{DEFAULT_INDEX_PREFIX, SCOPED_INDEX_SUFFIX};
+use crate::index::elastic::{DEFAULT_INDEX_PREFIX, IndexState, SCOPED_INDEX_SUFFIX};
 use crate::{error::MotivaError, index::elastic::config::IndexVersion, prelude::ElasticsearchProvider};
 use anyhow::Context;
 use elasticsearch::cert::{Certificate, CertificateValidation};
@@ -36,24 +39,24 @@ impl ElasticsearchProvider {
 
     let index_prefix = options.index_name.unwrap_or_else(|| DEFAULT_INDEX_PREFIX.to_string());
 
-    let mut provider = ElasticsearchProvider {
+    let provider = ElasticsearchProvider {
       es,
       index_prefix: index_prefix.clone(),
-      index_version: IndexVersion::V4,
       main_index: format!("{}-entities", index_prefix),
-      scoped_index: None,
+      state: Arc::new(RwLock::new(IndexState {
+        ready: false,
+        index_version: IndexVersion::V4,
+        scoped_index: None,
+      })),
     };
 
-    if options.index_version.is_none() {
-      provider.index_version = provider.detect_index_version().await?;
-    }
-
-    provider.detect_index().await;
+    let _ = tokio::time::timeout(Duration::from_secs(5), provider.refresh_index_state()).await;
 
     Ok(provider)
   }
 
-  async fn detect_index(&mut self) {
+  /// Detect the scoped-entities alias, returning its name if it exists.
+  pub(crate) async fn detect_scoped_index(&self) -> Option<String> {
     let alias = self
       .es
       .indices()
@@ -63,9 +66,7 @@ impl ElasticsearchProvider {
       .map(|resp| resp.status_code())
       .unwrap_or(StatusCode::NOT_FOUND);
 
-    if alias == StatusCode::OK {
-      self.scoped_index = Some(self.scoped_alias_name());
-    }
+    (alias == StatusCode::OK).then(|| self.scoped_alias_name())
   }
 
   pub fn scoped_alias_name(&self) -> String {
@@ -109,10 +110,12 @@ impl Default for &EsTlsVerification {
 
 #[cfg(test)]
 mod tests {
+  use std::sync::{Arc, RwLock};
+
   use crate::index::elastic::builder::EsTlsVerification;
   use crate::index::elastic::config::EsOptions;
   use crate::{
-    index::elastic::config::IndexVersion,
+    index::elastic::{IndexState, config::IndexVersion},
     prelude::{ElasticsearchProvider, EsAuthMethod},
   };
   use elasticsearch::Elasticsearch;
@@ -122,21 +125,12 @@ mod tests {
     let (u, p) = ("secret".to_string(), "secret".to_string());
     let cert = "-----BEGIN CERTIFICATE-----\nMFAwRgIBADADBgEAMAAwHhcNNTAwMTAxMDAwMDAwWhcNNDkxMjMxMjM1OTU5WjAAMBgwCwYJKoZIhvcNAQEBAwkAMAYCAQACAQAwAwYBAAMBAA==\n-----END CERTIFICATE-----";
 
-    ElasticsearchProvider::new(
-      "http://url:9200",
-      EsOptions {
-        index_version: Some(IndexVersion::V4),
-        ..Default::default()
-      },
-    )
-    .await
-    .unwrap();
+    ElasticsearchProvider::new("http://url:9200", EsOptions { ..Default::default() }).await.unwrap();
 
     ElasticsearchProvider::new(
       "http://url:9200",
       EsOptions {
         auth: EsAuthMethod::Basic(u.clone(), p.clone()),
-        index_version: Some(IndexVersion::V4),
         ..Default::default()
       },
     )
@@ -147,7 +141,6 @@ mod tests {
       "http://url:9200",
       EsOptions {
         auth: EsAuthMethod::Bearer(p.clone()),
-        index_version: Some(IndexVersion::V4),
         ..Default::default()
       },
     )
@@ -158,7 +151,6 @@ mod tests {
       "http://url:9200",
       EsOptions {
         auth: EsAuthMethod::ApiKey(u.clone(), p.clone()),
-        index_version: Some(IndexVersion::V4),
         ..Default::default()
       },
     )
@@ -169,7 +161,6 @@ mod tests {
       "http://url:9200",
       EsOptions {
         auth: EsAuthMethod::EncodedApiKey(p.clone()),
-        index_version: Some(IndexVersion::V4),
         ..Default::default()
       },
     )
@@ -181,7 +172,6 @@ mod tests {
       EsOptions {
         auth: EsAuthMethod::Basic(u.clone(), p.clone()),
         tls: &EsTlsVerification::SkipVerify,
-        index_version: Some(IndexVersion::V4),
         ..Default::default()
       },
     )
@@ -193,7 +183,6 @@ mod tests {
       EsOptions {
         auth: EsAuthMethod::Basic(u.clone(), p.clone()),
         tls: &EsTlsVerification::CaCertChain(cert.as_bytes().to_vec()),
-        index_version: Some(IndexVersion::V4),
         ..Default::default()
       },
     )
@@ -203,19 +192,11 @@ mod tests {
 
   #[tokio::test]
   async fn es_builder_default_index_name() {
-    let provider = ElasticsearchProvider::new(
-      "http://url:9200",
-      EsOptions {
-        index_version: Some(IndexVersion::V4),
-        ..Default::default()
-      },
-    )
-    .await
-    .unwrap();
+    let provider = ElasticsearchProvider::new("http://url:9200", EsOptions { ..Default::default() }).await.unwrap();
 
     assert_eq!(provider.index_prefix, "yente");
     assert_eq!(provider.main_index, "yente-entities");
-    assert_eq!(provider.scoped_index, None);
+    assert_eq!(provider.state.read().unwrap().scoped_index, None);
   }
 
   #[tokio::test]
@@ -224,7 +205,6 @@ mod tests {
       "http://url:9200",
       EsOptions {
         index_name: Some("custom".to_string()),
-        index_version: Some(IndexVersion::V4),
         ..Default::default()
       },
     )
@@ -233,18 +213,25 @@ mod tests {
 
     assert_eq!(provider.index_prefix, "custom");
     assert_eq!(provider.main_index, "custom-entities");
-    assert_eq!(provider.scoped_index, None);
+    assert_eq!(provider.state.read().unwrap().scoped_index, None);
+  }
+
+  fn provider_with_prefix(prefix: &str) -> ElasticsearchProvider {
+    ElasticsearchProvider {
+      es: Elasticsearch::default(),
+      index_prefix: prefix.to_string(),
+      main_index: format!("{prefix}-entities"),
+      state: Arc::new(RwLock::new(IndexState {
+        ready: false,
+        index_version: IndexVersion::V4,
+        scoped_index: None,
+      })),
+    }
   }
 
   #[test]
   fn alias_names_use_prefix() {
-    let provider = ElasticsearchProvider {
-      es: Elasticsearch::default(),
-      index_version: IndexVersion::V4,
-      index_prefix: "mydata".to_string(),
-      main_index: "mydata-entities".to_string(),
-      scoped_index: None,
-    };
+    let provider = provider_with_prefix("mydata");
 
     assert_eq!(provider.main_index, "mydata-entities");
     assert_eq!(provider.scoped_alias_name(), "mydata-motiva-scoped-entities");
@@ -252,13 +239,7 @@ mod tests {
 
   #[test]
   fn alias_names_default_prefix() {
-    let provider = ElasticsearchProvider {
-      es: Elasticsearch::default(),
-      index_version: IndexVersion::V4,
-      index_prefix: "yente".to_string(),
-      main_index: "yente-entities".to_string(),
-      scoped_index: None,
-    };
+    let provider = provider_with_prefix("yente");
 
     assert_eq!(provider.main_index, "yente-entities");
     assert_eq!(provider.scoped_alias_name(), "yente-motiva-scoped-entities");

@@ -22,6 +22,8 @@ pub enum AppError {
   ResourceNotFound,
   #[error("server error, please check your logs for more information")]
   ServerError,
+  #[error("the index is not ready, please try again later")]
+  ServiceUnavailable,
   #[error(transparent)]
   OtherError(#[from] anyhow::Error),
 
@@ -39,6 +41,7 @@ impl From<MotivaError> for AppError {
     match value {
       MotivaError::ConfigError(err) => AppError::ConfigError(err),
       MotivaError::MissingIndex(_) => AppError::ServerError,
+      MotivaError::IndexUnavailable => AppError::ServiceUnavailable,
       MotivaError::IndexError(err) => AppError::IndexError(err.to_string()),
       MotivaError::InvalidSchema(_) => AppError::BadRequest,
       MotivaError::ResourceNotFound => AppError::ResourceNotFound,
@@ -61,6 +64,7 @@ impl From<&AppError> for ApiError {
       AppError::BadRequest => ApiError(StatusCode::BAD_REQUEST, value.to_string(), None),
       AppError::InvalidCredentials => ApiError(StatusCode::UNAUTHORIZED, value.to_string(), None),
       AppError::ResourceNotFound => ApiError(StatusCode::NOT_FOUND, value.to_string(), None),
+      AppError::ServiceUnavailable => ApiError(StatusCode::SERVICE_UNAVAILABLE, value.to_string(), None),
       AppError::IndexError(_) => ApiError(StatusCode::INTERNAL_SERVER_ERROR, value.to_string(), None),
       AppError::InvalidQuery(err) => ApiError(StatusCode::BAD_REQUEST, value.to_string(), Some(vec![err.to_string()])),
       AppError::OtherError(inner) if inner.is::<AppError>() => match inner.downcast_ref::<AppError>() {
@@ -120,6 +124,7 @@ mod tests {
         "error from indexer: index error",
       ),
       (MotivaError::InvalidSchema("invalid schema".into()), StatusCode::BAD_REQUEST, "bad request"),
+      (MotivaError::IndexUnavailable, StatusCode::SERVICE_UNAVAILABLE, "the index is not ready, please try again later"),
       (MotivaError::OtherError(anyhow::anyhow!("any error")), StatusCode::INTERNAL_SERVER_ERROR, "any error"),
     ];
 
@@ -156,6 +161,7 @@ mod tests {
       (AppError::IndexError("index error".into()), StatusCode::INTERNAL_SERVER_ERROR, "error from indexer: index error"),
       (AppError::ConfigError("config error".into()), StatusCode::INTERNAL_SERVER_ERROR, "invalid configuration: config error"),
       (AppError::ServerError, StatusCode::INTERNAL_SERVER_ERROR, "server error, please check your logs for more information"),
+      (AppError::ServiceUnavailable, StatusCode::SERVICE_UNAVAILABLE, "the index is not ready, please try again later"),
       (AppError::OtherError(anyhow::anyhow!("any error")), StatusCode::INTERNAL_SERVER_ERROR, "any error"),
     ];
 
