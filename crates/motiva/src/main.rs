@@ -31,7 +31,6 @@ async fn main() -> anyhow::Result<()> {
     auth: config.index_auth_method.clone(),
     tls: &config.index_tls_verification,
     index_name: config.index_name.clone(),
-    ..Default::default()
   };
 
   let provider = ElasticsearchProvider::new(&config.index_url, options).await?;

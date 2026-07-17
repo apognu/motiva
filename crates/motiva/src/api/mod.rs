@@ -4,6 +4,7 @@ use axum::{
   Router, middleware,
   routing::{get, post},
 };
+use jiff::ToSpan;
 use libmotiva::prelude::*;
 use metrics_exporter_prometheus::PrometheusHandle;
 use reqwest::StatusCode;
@@ -39,13 +40,23 @@ pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: Config, fetcher
 
   tokio::spawn({
     let motiva = motiva.clone();
-    let interval = config.catalog_refresh_interval.try_into().unwrap();
+    let readiness_interval = 15.seconds().try_into().unwrap();
+    let refresh_interval = config.catalog_refresh_interval.try_into().unwrap();
 
     async move {
-      loop {
-        tokio::time::sleep(interval).await;
+      while !motiva.ready() {
+        motiva.refresh().await;
 
+        if motiva.ready() {
+          break;
+        }
+
+        tokio::time::sleep(readiness_interval).await;
+      }
+
+      loop {
         motiva.refresh_catalog().await;
+        tokio::time::sleep(refresh_interval).await;
       }
     }
   });

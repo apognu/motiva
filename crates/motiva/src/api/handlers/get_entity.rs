@@ -17,6 +17,10 @@ pub async fn get_entity<F: CatalogFetcher, P: IndexProvider>(
   Path(id): Path<String>,
   Query(params): Query<GetEntityParams>,
 ) -> Result<impl IntoResponse, AppError> {
+  if !state.motiva.ready() {
+    return Err(AppError::ServiceUnavailable);
+  }
+
   let behavior = if params.nested { GetEntityBehavior::FetchNestedEntity } else { GetEntityBehavior::RootOnly };
   let limit = GetEntityLimits::new(state.config.enrichment_max_recursion, state.config.enrichment_query_limit);
 
@@ -61,6 +65,22 @@ mod tests {
 
     assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
     assert_eq!(response.headers().get("location").unwrap().to_str().unwrap(), "/entities/canonical");
+  }
+
+  #[tokio::test]
+  async fn get_entity_not_ready_returns_503() {
+    let index = MockedElasticsearch::builder().ready(false).build();
+    let state = AppState {
+      config: Arc::new(Config::default()),
+      prometheus: None,
+      motiva: Motiva::test(index).fetcher(TestFetcher::default()).build().await.unwrap(),
+    };
+
+    let response = super::get_entity(State(state), Auth::noop(), Path("some-id".to_string()), Query(GetEntityParams { nested: false }))
+      .await
+      .into_response();
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
   }
 
   #[tokio::test]

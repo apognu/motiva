@@ -4,6 +4,8 @@ pub enum MotivaError {
   ConfigError(String),
   #[error("missing index: {0}, make sure you ran the indexer")]
   MissingIndex(String),
+  #[error("index is not ready")]
+  IndexUnavailable,
   #[error("resource not found")]
   ResourceNotFound,
   #[error("invalid schema: {0}")]
