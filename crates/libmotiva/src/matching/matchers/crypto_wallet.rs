@@ -2,14 +2,14 @@ use bumpalo::Bump;
 use libmotiva_macros::scoring_feature;
 
 use crate::{
-  matching::{Detail, Feature},
+  matching::{Detail, Feature, ScoreResult},
   model::{Entity, HasProperties, SearchEntity},
 };
 
 #[scoring_feature(CryptoWalletMatch, name = "crypto_wallet_match")]
-fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   if !lhs.schema.is_a("CryptoWallet") || !rhs.schema.is_a("CryptoWallet") {
-    return (0.0, explain.then_some(Detail::Note("not a crypto wallet")));
+    return (0.0, explain.then_some(Detail::Note("not a crypto wallet"))).into();
   }
 
   let lhs_props = lhs.props(&["publicKey"]);
@@ -21,13 +21,13 @@ fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -
     if a.len() > 10 {
       for b in bigger.iter() {
         if b.len() > 10 && a == b {
-          return (1.0, explain.then(|| Detail::Labeled("matched public key", a.as_str().into())));
+          return (1.0, explain.then(|| Detail::Labeled("matched public key", a.as_str().into()))).into();
         }
       }
     }
   }
 
-  (0.0, explain.then_some(Detail::Note("no matching public key")))
+  (0.0, explain.then_some(Detail::Note("no matching public key"))).into()
 }
 
 #[cfg(test)]

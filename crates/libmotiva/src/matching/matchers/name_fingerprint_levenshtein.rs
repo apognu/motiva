@@ -5,7 +5,7 @@ use libmotiva_macros::scoring_feature;
 
 use crate::{
   matching::{
-    Detail, Feature,
+    Detail, Feature, ScoreResult,
     comparers::{default_levenshtein_similarity, levenshtein_similarity},
     extractors::{clean_names, tokenize_clean_names},
     replacers::{self, company_types::ORG_TYPES, stopwords::STOPWORDS},
@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[scoring_feature(NameFingerprintLevenshtein, name = "name_fingerprint_levenshtein")]
-fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   let (score, best) = name_fingerprint_levenshtein(lhs, rhs, explain);
 
   let detail = explain.then(|| match best {
@@ -24,7 +24,7 @@ fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -
     None => Detail::Note("no name fingerprint match"),
   });
 
-  (score, detail)
+  (score, detail).into()
 }
 
 fn fingerprint_name(name: &str) -> String {

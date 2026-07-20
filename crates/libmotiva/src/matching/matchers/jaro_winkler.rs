@@ -9,7 +9,7 @@ use strsim::jaro_winkler;
 
 use crate::{
   matching::{
-    Detail, Feature,
+    Detail, Feature, ScoreResult,
     comparers::{align_name_parts, is_levenshtein_plausible},
     extractors,
     matchers::NO_DATA,
@@ -18,15 +18,15 @@ use crate::{
 };
 
 #[scoring_feature(JaroNameParts, name = "jaro_name_parts")]
-fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   if lhs.name_parts_flat.is_empty() {
-    return (0.0, explain.then_some(Detail::Note(NO_DATA)));
+    return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
   }
 
   let rhs_parts = extractors::name_parts_flat(rhs.prop_group("name", PropertyFilter::All).iter()).collect_in::<Vec<_>>(bump);
 
   if rhs_parts.is_empty() {
-    return (0.0, explain.then_some(Detail::Note(NO_DATA)));
+    return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
   }
 
   let mut similarities = Vec::with_capacity_in(lhs.name_parts_flat.len(), bump);
@@ -73,7 +73,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     None => Detail::Note("no matching name parts"),
   });
 
-  (score, detail)
+  (score, detail).into()
 }
 
 pub struct PersonNameJaroWinkler;
@@ -84,9 +84,9 @@ impl Feature for PersonNameJaroWinkler {
   }
 
   #[tracing::instrument(level = "trace", name = "person_name_jaro_winkler", skip_all, fields(feature = "person_name_jaro_winkler", entity_id = rhs.id))]
-  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
     if !lhs.schema.is_a("Person") && !rhs.schema.is_a("Person") {
-      return (0.0, explain.then_some(Detail::Note("not a person")));
+      return (0.0, explain.then_some(Detail::Note("not a person"))).into();
     }
 
     let lhs_names = &lhs.name_parts;
@@ -135,7 +135,7 @@ impl Feature for PersonNameJaroWinkler {
       None => Detail::Note(NO_DATA),
     });
 
-    (score, detail)
+    (score, detail).into()
   }
 }
 

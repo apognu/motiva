@@ -10,7 +10,7 @@ use libmotiva_macros::scoring_feature;
 
 use crate::{
   matching::{
-    Detail, Feature,
+    Detail, Feature, ScoreResult,
     comparers::levenshtein_similarity,
     extractors,
     replacers::{self, addresses::ADDRESS_FORMS, ordinals::ORDINALS},
@@ -19,14 +19,14 @@ use crate::{
 };
 
 #[scoring_feature(AddressEntityMatch, name = "address_entity_match")]
-fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   #[inline]
   fn overlap_detail(overlap: &[&String]) -> Detail {
     Detail::Labeled("address overlap", overlap.iter().map(|token| token.as_str()).sorted().join(", ").into())
   }
 
   if !lhs.schema.is_a("Address") || !rhs.schema.is_a("Address") {
-    return (0.0, explain.then_some(Detail::Note("not an address")));
+    return (0.0, explain.then_some(Detail::Note("not an address"))).into();
   }
 
   let lhs_props = lhs.props(&["full"]);
@@ -59,7 +59,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     let overlap_size = overlap.len();
 
     if overlap_size == lhs.len() || overlap_size == rhs.len() {
-      return (1.0, explain.then(|| overlap_detail(&overlap)));
+      return (1.0, explain.then(|| overlap_detail(&overlap))).into();
     }
 
     let lhs_remainder: std::vec::Vec<_> = lhs.iter().filter(|word| !overlap.contains(word)).sorted().collect();
@@ -74,7 +74,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     let score = (overlap.len() as f64 + (remainder_len as f64 * score)) / (remainder_len + overlap.len()) as f64;
 
     if score >= 1.0 {
-      return (1.0, explain.then(|| overlap_detail(&overlap)));
+      return (1.0, explain.then(|| overlap_detail(&overlap))).into();
     }
 
     if score > max_score {
@@ -88,7 +88,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
 
   let detail = explain.then(|| best_overlap.unwrap_or(Detail::Note("no address overlap")));
 
-  (max_score, detail)
+  (max_score, detail).into()
 }
 
 #[cfg(test)]

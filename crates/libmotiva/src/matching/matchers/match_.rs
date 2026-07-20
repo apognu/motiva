@@ -8,7 +8,7 @@ use itertools::Itertools;
 use libmotiva_macros::scoring_feature;
 
 use crate::{
-  matching::{Detail, Feature, extractors, matchers::NO_DATA},
+  matching::{Detail, Feature, ScoreResult, extractors, matchers::NO_DATA},
   model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
@@ -30,12 +30,12 @@ impl<'e> Feature for SimpleMatch<'e> {
     self.name
   }
 
-  fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+  fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
     let lhs_names = (self.extractor)(lhs);
     let rhs_names = (self.extractor)(rhs);
 
     if lhs_names.is_empty() || rhs_names.is_empty() {
-      return (0.0, explain.then_some(Detail::Note(NO_DATA)));
+      return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
     }
 
     let matched = lhs_names.iter().any(|value| rhs_names.contains(value));
@@ -50,22 +50,22 @@ impl<'e> Feature for SimpleMatch<'e> {
       Detail::Labeled("matched", shared.into())
     });
 
-    (if matched { 1.0 } else { 0.0 }, detail)
+    (if matched { 1.0 } else { 0.0 }, detail).into()
   }
 }
 
 #[scoring_feature(WeakAliasMatch, name = "weak_alias_match")]
-fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   let lhs_names = extractors::clean_names_light(lhs.prop_group("name", PropertyFilter::All).iter()).collect_in::<Vec<_>>(bump);
   let rhs_names = extractors::clean_names_light(rhs.props(&["weakAlias", "abbreviation"]).iter()).collect_in::<Vec<_>>(bump);
 
   if lhs_names.is_empty() || rhs_names.is_empty() {
-    return (0.0, explain.then_some(Detail::Note(NO_DATA)));
+    return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
   }
 
   match lhs_names.iter().find(|name| rhs_names.contains(name)) {
-    Some(alias) => (1.0, explain.then(|| Detail::Labeled("matched weak alias", alias.as_str().into()))),
-    None => (0.0, explain.then_some(Detail::Note("no weak alias match"))),
+    Some(alias) => (1.0, explain.then(|| Detail::Labeled("matched weak alias", alias.as_str().into()))).into(),
+    None => (0.0, explain.then_some(Detail::Note("no weak alias match"))).into(),
   }
 }
 
@@ -75,7 +75,10 @@ mod tests {
 
   use crate::{
     Entity, Feature, SearchEntity,
-    matching::matchers::match_::{SimpleMatch, WeakAliasMatch},
+    matching::{
+      ScoreResult,
+      matchers::match_::{SimpleMatch, WeakAliasMatch},
+    },
   };
 
   #[test]
@@ -135,7 +138,7 @@ mod tests {
     let lhs = SearchEntity::builder("Company").properties(&[("id", &["a", "b", "c"])]).build();
     let rhs = Entity::builder("Company").properties(&[("id", &["b", "c", "d"])]).build();
 
-    let (score, detail) = matcher.score(&Bump::new(), &lhs, &rhs, true);
+    let ScoreResult(score, detail) = matcher.score(&Bump::new(), &lhs, &rhs, true);
     assert_eq!(score, 1.0);
     assert_eq!(detail.unwrap().to_string(), "matched: b, c");
   }

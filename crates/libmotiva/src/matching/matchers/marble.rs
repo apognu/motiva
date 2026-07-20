@@ -6,7 +6,7 @@ use libmotiva_macros::scoring_feature;
 use crate::{
   Entity, HasProperties, SearchEntity,
   matching::{
-    Detail, Feature, extractors,
+    Detail, Feature, ScoreResult, extractors,
     replacers::{self, company_types::ORG_TYPES, stopwords::STOPWORDS},
   },
   model::{PropertyFilter, format_score},
@@ -20,7 +20,7 @@ fn fingerprint_name(name: &str) -> String {
 }
 
 #[scoring_feature(LongestCommonSubsequence, name = "longest_common_subsequence")]
-fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   #[inline]
   fn coverage(matched: &str, full: &str) -> f64 {
     let full = full.chars().count();
@@ -66,13 +66,13 @@ fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -
     None => Detail::Note("no common subsequence"),
   });
 
-  (max, detail)
+  (max, detail).into()
 }
 
 #[cfg(test)]
 mod tests {
   use crate::{
-    matching::{Feature, matchers::jaro_winkler::PersonNameJaroWinkler},
+    matching::{Feature, ScoreResult, matchers::jaro_winkler::PersonNameJaroWinkler},
     model::{Entity, SearchEntity},
   };
 
@@ -93,7 +93,7 @@ mod tests {
     let lhs = SearchEntity::builder("Person").properties(&[("name", &["Samir Kamil AlAssad"])]).build();
     let rhs = Entity::builder("Person").properties(&[("name", &["Samer Kamel Al Asad"])]).build();
 
-    let (score, detail) = super::LongestCommonSubsequence.score(&Bump::new(), &lhs, &rhs, true);
+    let ScoreResult(score, detail) = super::LongestCommonSubsequence.score(&Bump::new(), &lhs, &rhs, true);
     let detail = detail.unwrap().to_string();
 
     assert!(score > 0.8 && score < 1.0, "score={score}");

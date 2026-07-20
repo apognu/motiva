@@ -9,7 +9,7 @@ use strsim::levenshtein;
 
 use crate::{
   matching::{
-    Detail, Feature,
+    Detail, Feature, ScoreResult,
     comparers::is_disjoint,
     extractors::{self},
     matchers::NO_DATA,
@@ -18,32 +18,32 @@ use crate::{
 };
 
 #[scoring_feature(OrgIdMismatch, name = "orgid_disjoint")]
-fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   if !lhs.schema.is_a("Organization") || !rhs.schema.is_a("Organization") {
-    return (0.0, explain.then_some(Detail::Note("not an organization")));
+    return (0.0, explain.then_some(Detail::Note("not an organization"))).into();
   }
 
   let lhs = lhs.props(&["registrationNumber", "taxNumber", "leiCode", "innCode", "bicCode", "ogrnCode"]);
 
   if lhs.is_empty() {
-    return (0.0, explain.then_some(Detail::Note("no organization identifiers to compare")));
+    return (0.0, explain.then_some(Detail::Note("no organization identifiers to compare"))).into();
   }
 
   let rhs = rhs.props(&["registrationNumber", "taxNumber", "leiCode", "innCode", "bicCode", "orgnCode"]);
 
   if rhs.is_empty() {
-    return (0.0, explain.then_some(Detail::Note("no organization identifiers to compare")));
+    return (0.0, explain.then_some(Detail::Note("no organization identifiers to compare"))).into();
   }
 
   let lhs = extractors::normalize_identifiers(lhs.iter()).collect_in::<Vec<_>>(bump);
   let rhs = extractors::normalize_identifiers(rhs.iter()).collect_in::<Vec<_>>(bump);
 
   if lhs.is_empty() || rhs.is_empty() {
-    return (0.0, explain.then_some(Detail::Note(NO_DATA)));
+    return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
   }
 
   if !is_disjoint(&lhs, &rhs) {
-    return (0.0, explain.then_some(Detail::Note("organization identifiers overlap")));
+    return (0.0, explain.then_some(Detail::Note("organization identifiers overlap"))).into();
   }
 
   let mut best_ratio = 0.0f64;
@@ -72,7 +72,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     _ => Detail::Note("organization identifiers are disjoint"),
   });
 
-  (1.0 - best_ratio, detail)
+  (1.0 - best_ratio, detail).into()
 }
 
 #[cfg(test)]

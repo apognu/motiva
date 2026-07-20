@@ -11,7 +11,7 @@ use tracing::instrument;
 
 use crate::{
   matching::{
-    Detail, Feature,
+    Detail, Feature, ScoreResult,
     comparers::{is_disjoint, is_disjoint_chars},
     extractors::{self, extract_numbers},
     matchers::{NO_DATA, match_::MatchExtractor},
@@ -39,17 +39,17 @@ impl<'e> Feature for SimpleMismatch<'e> {
   }
 
   #[instrument(level = "trace", name = "simple_mismatch", skip_all, fields(entity_id = rhs.id, mismatch = self.name))]
-  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
     let lhs = (self.extractor)(lhs);
 
     if lhs.is_empty() {
-      return (0.0, explain.then_some(Detail::Note(NO_DATA)));
+      return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
     }
 
     let rhs = (self.extractor)(rhs);
 
     if rhs.is_empty() {
-      return (0.0, explain.then_some(Detail::Note(NO_DATA)));
+      return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
     }
 
     let score = match self.matcher {
@@ -63,12 +63,12 @@ impl<'e> Feature for SimpleMismatch<'e> {
 
     let detail = explain.then(|| if score > 0.0 { Detail::Note("mismatch detected") } else { Detail::Note("no mismatch") });
 
-    (score, detail)
+    (score, detail).into()
   }
 }
 
 #[scoring_feature(NumbersMismatch, name = "numbers_mismatch")]
-fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   let (lhs_numbers, rhs_numbers) = match lhs.schema.is_a("Address") {
     true => (
       HashSet::<String>::from_iter(extract_numbers(lhs.props(&["full"]).iter()).map(ToOwned::to_owned)),
@@ -97,7 +97,7 @@ fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -
     }
   });
 
-  (score, detail)
+  (score, detail).into()
 }
 
 pub(crate) fn dob_year_disjoint<S: AsRef<str>>(bump: &Bump, lhs: &[S], rhs: &[S]) -> f64 {
