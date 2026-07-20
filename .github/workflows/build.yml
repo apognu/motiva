@@ -15,7 +15,7 @@ jobs:
         with:
           submodules: true
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -54,9 +54,9 @@ jobs:
         with:
           submodules: true
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97
         with:
-          components: clippy
+          components: clippy, rustfmt
 
       - name: Cache build artifacts
         id: build-artifacts
@@ -95,7 +95,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97
         with:
           components: llvm-tools-preview
 
@@ -208,7 +208,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97
 
       - name: Cache build artifacts
         id: build-artifacts
