@@ -24,7 +24,7 @@ anyhow = "1.0.98"
 bon = { version = "3.6.5" }
 bumpalo = { version = "3.19.0", features = ["collections"] }
 celes = "2.8.2"
-compact_str = "0.9.0"
+compact_str = "0.10.0"
 elasticsearch = { version = "9.1.0-alpha.1", default-features = false, features = [
     "rustls-tls",
 ] }
