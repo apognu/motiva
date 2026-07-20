@@ -9,14 +9,14 @@ use libmotiva_macros::scoring_feature;
 use rphonetic::{Encoder, Soundex};
 
 use crate::{
-  matching::{CodedPair, Detail, Feature, extractors},
+  matching::{CodedPair, Detail, Feature, ScoreResult, extractors},
   model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
 static SOUNDEX: LazyLock<Soundex> = LazyLock::new(Soundex::default);
 
 #[scoring_feature(SoundexNameParts, name = "soundex_name_parts")]
-fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   let mut similarities = Vec::with_capacity_in(lhs.name_parts_flat.len(), bump);
 
   let rhs_soundexes = extractors::name_parts_flat(rhs.prop_group("name", PropertyFilter::All).iter())
@@ -55,7 +55,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     None => Detail::Note("no soundex match"),
   });
 
-  (score, detail)
+  (score, detail).into()
 }
 
 #[cfg(test)]

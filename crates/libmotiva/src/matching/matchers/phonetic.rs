@@ -6,14 +6,14 @@ use itertools::Itertools;
 use libmotiva_macros::scoring_feature;
 
 use crate::{
-  matching::{CodedPair, Detail, Feature, comparers::compare_name_phonetic_tuples, extractors},
+  matching::{CodedPair, Detail, Feature, ScoreResult, comparers::compare_name_phonetic_tuples, extractors},
   model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
 #[scoring_feature(PersonNamePhoneticMatch, name = "person_name_phonetic_match")]
-fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   if !lhs.schema.is_a("Person") && !rhs.schema.is_a("Person") {
-    return (0.0, explain.then_some(Detail::Note("not a person")));
+    return (0.0, explain.then_some(Detail::Note("not a person"))).into();
   }
 
   let lhs_names = &lhs.clean_names;
@@ -73,7 +73,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     }
   });
 
-  (score, detail)
+  (score, detail).into()
 }
 
 #[cfg(test)]

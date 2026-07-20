@@ -7,7 +7,7 @@ use itertools::Itertools;
 
 use crate::{
   matching::{
-    Detail, Feature,
+    Detail, Feature, ScoreResult,
     extractors::{self},
   },
   model::{Entity, HasProperties, PropertyFilter, SearchEntity},
@@ -27,13 +27,13 @@ impl Feature for NameLiteralMatch {
   }
 
   #[tracing::instrument(level = "trace", name = "name_literal_match", skip_all, fields(feature = "name_literal_match", entity_id = rhs.id))]
-  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
     let lhs_names = extractors::clean_literal_names(lhs.prop_group("name", PropertyFilter::All).iter()).unique().collect_in::<Vec<_>>(bump);
     let rhs_names = extractors::clean_literal_names(rhs.prop_group("name", PropertyFilter::All).iter()).unique().collect_in::<Vec<_>>(bump);
 
     match Self::shared_name(&lhs_names, &rhs_names) {
-      Some(name) => (1.0, explain.then(|| Detail::Equal(CompactString::from(name.as_str()), CompactString::from(name.as_str())))),
-      None => (0.0, explain.then_some(Detail::Note("no literal name match"))),
+      Some(name) => (1.0, explain.then(|| Detail::Equal(CompactString::from(name.as_str()), CompactString::from(name.as_str())))).into(),
+      None => (0.0, explain.then_some(Detail::Note("no literal name match"))).into(),
     }
   }
 }

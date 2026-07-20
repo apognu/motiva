@@ -61,6 +61,26 @@ impl Algorithm {
   }
 }
 
+pub struct ScoreResult(pub f64, pub Option<Detail>);
+
+impl From<ScoreResult> for f64 {
+  fn from(result: ScoreResult) -> Self {
+    result.0
+  }
+}
+
+impl From<f64> for ScoreResult {
+  fn from(score: f64) -> Self {
+    Self(score, None)
+  }
+}
+
+impl From<(f64, Option<Detail>)> for ScoreResult {
+  fn from(result: (f64, Option<Detail>)) -> Self {
+    Self(result.0, result.1)
+  }
+}
+
 /// Algorithm used to score a SearchEntity against an Entity
 pub trait MatchingAlgorithm {
   /// Readable name of the matching algorithm.
@@ -84,11 +104,11 @@ pub trait Feature: Send + Sync {
   /// When `explain` is set, the feature also returns a structured [`Detail`]
   /// describing how it scored, computed in the same pass as the score. When it
   /// is not set, the feature returns `None` and does no explanation work at all.
-  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>);
+  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult;
 
   /// Convenience for callers (mostly tests) that only need the raw score.
   fn score_scalar(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity) -> f64 {
-    self.score(bump, lhs, rhs, false).0
+    self.score(bump, lhs, rhs, false).into()
   }
 }
 
@@ -177,7 +197,7 @@ where
     let then = Instant::now();
     // The detail is only built when explanations are requested; otherwise the
     // feature returns `None` and does no explanation work at all.
-    let (feature_score, detail) = func.score(bump, lhs, rhs, config.explain);
+    let ScoreResult(feature_score, detail) = func.score(bump, lhs, rhs, config.explain);
 
     let weighted = feature_score * weight;
 

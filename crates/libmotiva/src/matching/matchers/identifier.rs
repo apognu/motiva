@@ -7,7 +7,7 @@ use itertools::Itertools;
 use tracing::instrument;
 
 use crate::{
-  matching::{Detail, Feature},
+  matching::{Detail, Feature, ScoreResult},
   model::{Entity, HasProperties, Schema, SearchEntity},
   schemas::{FtmProperty, SCHEMAS},
 };
@@ -91,7 +91,7 @@ impl<'p> Feature for IdentifierMatch<'p> {
   }
 
   #[instrument(level = "trace", name = "identifier_match", skip_all, fields(entity_id = rhs.id, identifier = ?self.properties))]
-  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<Detail>) {
+  fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
     let matched = self.properties.iter().find_map(|property| {
       self
         .match_property(bump, &lhs.schema, lhs, rhs, property)
@@ -99,8 +99,8 @@ impl<'p> Feature for IdentifierMatch<'p> {
     });
 
     match matched {
-      Some(code) => (1.0, explain.then(|| Detail::Labeled("matched identifier", code))),
-      None => (0.0, explain.then_some(Detail::Note("no match on identifiers"))),
+      Some(code) => (1.0, explain.then(|| Detail::Labeled("matched identifier", code))).into(),
+      None => (0.0, explain.then_some(Detail::Note("no match on identifiers"))).into(),
     }
   }
 }

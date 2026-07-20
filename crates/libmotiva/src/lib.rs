@@ -57,7 +57,10 @@ mod testing {
 
   use crate::{
     Entity, Feature, SearchEntity,
-    matching::replacers::{addresses::ADDRESS_FORMS, company_types::ORG_TYPES, ordinals::ORDINALS},
+    matching::{
+      ScoreResult,
+      replacers::{addresses::ADDRESS_FORMS, company_types::ORG_TYPES, ordinals::ORDINALS},
+    },
     schemas::SCHEMAS,
   };
 
@@ -76,8 +79,8 @@ mod testing {
   }
 
   #[scoring_feature(TestFeature, name = "test_feature")]
-  fn score(&self, _: &Bump, _: &SearchEntity, rhs: &Entity, _explain: bool) -> (f64, Option<crate::matching::Detail>) {
-    (42.0, None)
+  fn score(&self, _: &Bump, _: &SearchEntity, rhs: &Entity, _explain: bool) -> ScoreResult {
+    (42.0, None).into()
   }
 
   #[test]
