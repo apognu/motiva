@@ -71,6 +71,17 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
       let state = Arc::clone(&state);
 
       async move {
+        if entity.properties.is_empty() {
+          return (
+            id,
+            MatchResults {
+              status: 200,
+              total: Some(MatchTotal { relation: "eq", value: 0 }),
+              results: vec![],
+            },
+          );
+        }
+
         let hits = match state.motiva.search(&entity, &query).await {
           Ok(hits) => hits,
 
