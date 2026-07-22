@@ -124,7 +124,6 @@ pub struct PayloadParams {
 #[derive(Clone, Debug, Deserialize, Serialize, Validate)]
 pub struct SearchEntity {
   pub schema: Schema,
-  #[validate(length(min = 1, message = "at least one property must be given"))]
   pub properties: HashMap<String, Vec<String>, RandomState>,
 
   #[serde(default)]
@@ -202,7 +201,9 @@ impl SearchEntity {
       names
     };
 
-    self.properties.entry("alias".into()).or_default().extend(aliases);
+    if !aliases.is_empty() {
+      self.properties.entry("alias".into()).or_default().extend(aliases);
+    }
   }
 
   pub fn pick_names(&self, count: usize) -> Cow<'_, [String]> {

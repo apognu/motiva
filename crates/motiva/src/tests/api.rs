@@ -244,32 +244,3 @@ async fn api_unparsable_payload() {
 
   assert_eq!(response.status_code(), 400);
 }
-
-#[tokio::test]
-async fn api_invalid_payload() {
-  let index = MockedElasticsearch::builder().healthy(false).build();
-
-  let state = AppState {
-    config: Arc::new(Config::default()),
-    prometheus: None,
-    motiva: Motiva::test(index).build().await.unwrap(),
-  };
-
-  let app = Router::new().route("/match/{scope}", post(handlers::match_entities)).with_state(state);
-  let server = TestServer::new(app);
-
-  let response = server
-    .post("/match/default")
-    .json(&json!({
-        "queries": {}
-    }))
-    .await;
-
-  assert_eq!(response.status_code(), 422);
-
-  response.assert_json_contains(&json!({
-      "details": [
-          "queries: at least one query must be provided"
-      ]
-  }));
-}
