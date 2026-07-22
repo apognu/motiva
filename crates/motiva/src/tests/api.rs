@@ -269,7 +269,7 @@ async fn api_invalid_payload() {
 
   response.assert_json_contains(&json!({
       "details": [
-          "at least one query must be provided"
+          "queries: at least one query must be provided"
       ]
   }));
 }

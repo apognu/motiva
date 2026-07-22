@@ -134,11 +134,14 @@ rusty_fork_test! {
 
             let lines = buf.lock().unwrap().clone();
 
-            assert_eq!(lines.len(), 1);
-            assert!(lines[0].contains("POST /match/default"));
-            assert!(lines[0].contains("request_id="));
-            assert!(lines[0].contains("trace_id=0af7651916cd43dd8448eb211c80319c"));
-            assert!(lines[0].contains(r#"remote="-" method=POST path="/match/default" status=415"#));
+            assert_eq!(lines.len(), 2);
+            assert!(lines[0].contains("WARN"));
+            assert!(lines[0].contains("invalid media type"));
+            assert!(lines[1].contains("POST /match/default"));
+            assert!(lines[1].contains("status=415"));
+            assert!(lines[1].contains("request_id="));
+            assert!(lines[1].contains("trace_id=0af7651916cd43dd8448eb211c80319c"));
+            assert!(lines[1].contains(r#"remote="-" method=POST path="/match/default" status=415"#));
         });
     }
 

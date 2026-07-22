@@ -12,7 +12,7 @@ use jiff::Timestamp;
 use libmotiva::prelude::*;
 use opentelemetry::{TraceId, global, trace::TraceContextExt};
 use tokio::time::Instant;
-use tracing::Span;
+use tracing::{Instrument, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::api::{AppState, config::Config};
@@ -37,27 +37,31 @@ where
   };
 
   let then = Instant::now();
-  let response = next.run(Request::from_parts(parts, body)).await;
-
-  global::meter("motiva").f64_histogram("request_latency").build().record(then.elapsed().as_secs_f64() * 1000.0, &[]);
 
   let span = add_trace_id(&state.config, trace_id);
-  let _guard = span.enter();
 
-  tracing::info!(
-    time = time,
-    remote = ip,
-    method = %method,
-    path = uri.path(),
-    status = response.status().as_u16(),
-    latency = then.elapsed().as_millis(),
-    size = response.size_hint().exact().unwrap_or(0),
-    "{} {}",
-    method,
-    uri,
-  );
+  async move {
+    let response = next.run(Request::from_parts(parts, body)).await;
 
-  Ok(response)
+    global::meter("motiva").f64_histogram("request_latency").build().record(then.elapsed().as_secs_f64() * 1000.0, &[]);
+
+    tracing::info!(
+      time = time,
+      remote = ip,
+      method = %method,
+      path = uri.path(),
+      status = response.status().as_u16(),
+      latency = then.elapsed().as_millis(),
+      size = response.size_hint().exact().unwrap_or(0),
+      "{} {}",
+      method,
+      uri,
+    );
+
+    Ok(response)
+  }
+  .instrument(span)
+  .await
 }
 
 fn add_trace_id(config: &Config, trace_id: TraceId) -> Span {
