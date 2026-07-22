@@ -24,5 +24,4 @@ jobs:
           make_latest: ${{ !contains(inputs.tag, '-rc.') }}
           generate_release_notes: true
           prerelease: ${{ contains(inputs.tag, '-rc.') }}
-          files: |
-            motiva
+          files: ${{ case(contains(inputs.tag, '-rc.'), 'motiva', '') }}
