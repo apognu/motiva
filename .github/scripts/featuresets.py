@@ -1,7 +1,7 @@
 import json
 import itertools
 
-FEATURES = ["gcp", "icu"]
+FEATURES = ["gcp"]
 
 combinations: list[dict] = []
 

@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -18,10 +20,16 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: motiva
+
+      - name: Attest
+        uses: actions/attest@v4
+        with:
+          subject-path: ${{ github.workspace }}/motiva
+
       - uses: softprops/action-gh-release@v3
         with:
           name: motiva ${{ inputs.tag }}
           make_latest: ${{ !contains(inputs.tag, '-rc.') }}
           generate_release_notes: true
           prerelease: ${{ contains(inputs.tag, '-rc.') }}
-          files: ${{ !case(contains(inputs.tag, '-rc.'), 'motiva', '') }}
+          files: ${{ case(contains(inputs.tag, '-rc.'), '', 'motiva') }}
