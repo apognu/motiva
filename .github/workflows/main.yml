@@ -7,12 +7,16 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
+  attestations: write
 
 jobs:
   test:
     uses: ./.github/workflows/build.yml
     permissions:
       contents: read
+      id-token: write
+      attestations: write
     secrets: inherit
 
   docker:
@@ -21,6 +25,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     secrets: inherit
     with:
       tag: latest
