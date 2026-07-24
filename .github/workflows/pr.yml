@@ -12,3 +12,4 @@ jobs:
     permissions:
       contents: read
     secrets: inherit
+
