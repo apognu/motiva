@@ -10,6 +10,8 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
+  attestations: write
 
 jobs:
   generate-matrix:
@@ -68,6 +70,7 @@ jobs:
       - uses: docker/setup-buildx-action@v4
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -80,5 +83,23 @@ jobs:
             "BASE=${{ matrix.combination.base }}"
             ${{ matrix.combination.features != '' && format('CARGO_ARGS=--features {0}', matrix.combination.features) || '' }}
           push: true
+          provenance: mode=max
           cache-from: type=gha,scope=features${{ matrix.combination.suffix}}
           cache-to: type=gha,mode=max,scope=features${{ matrix.combination.suffix }}
+
+      - name: Attest GHCR
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/apognu/motiva
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest GH
+        uses: actions/attest@v4
+        with:
+          subject-name: docker.io/apognu/motiva
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
