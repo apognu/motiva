@@ -216,7 +216,7 @@ async fn api_invalid_query() {
 
   assert_eq!(response.status_code(), 400);
 
-  response.assert_text_contains("failed to parse year in date");
+  response.assert_text_contains("failed to parse four digit integer as year");
 }
 
 #[tokio::test]
