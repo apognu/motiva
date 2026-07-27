@@ -15,6 +15,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      PRERELEASE: ${{ contains(inputs.tag, '-rc.') }}
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v8
@@ -26,10 +28,20 @@ jobs:
         with:
           subject-path: ${{ github.workspace }}/motiva
 
-      - uses: softprops/action-gh-release@v3
+      - name: Create release
+        uses: softprops/action-gh-release@v3
         with:
           name: motiva ${{ inputs.tag }}
-          make_latest: ${{ !contains(inputs.tag, '-rc.') }}
           generate_release_notes: true
-          prerelease: ${{ contains(inputs.tag, '-rc.') }}
-          files: ${{ case(contains(inputs.tag, '-rc.'), '', 'motiva') }}
+          make_latest: ${{ env.PRERELEASE == 'false' }}
+          draft: ${{ env.PRERELEASE == 'true' }}
+          prerelease: ${{ env.PRERELEASE == 'true' }}
+          files: |
+            motiva
+
+      - name: Publish prerelease
+        uses: softprops/action-gh-release@v3
+        if: ${{ env.PRERELEASE == 'true' }}
+        with:
+          name: motiva ${{ inputs.tag }}
+          draft: false
