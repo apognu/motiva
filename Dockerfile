@@ -4,10 +4,6 @@ ARG BASE=native
 FROM lukemathwalker/cargo-chef:latest-rust-1.93.0-slim-bookworm AS base-native
 RUN apt update && apt install -y pkg-config libssl-dev
 
-# Install build environment, header files and libraries if building libicu
-FROM lukemathwalker/cargo-chef:latest-rust-1.93.0-slim-bookworm AS base-icu
-RUN apt update && apt install -y pkg-config libssl-dev libclang-dev libicu72 libicu-dev
-
 FROM base-${BASE} AS planner
 
 WORKDIR /app
@@ -36,8 +32,6 @@ LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.description="Sanctions screening tool"
 
 COPY --from=builder /app/target/release/motiva /motiva
-# Fallible step, will only copy libicu files if they exist
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libicu* /usr/lib/x86_64-linux-gnu/
 
 ENTRYPOINT [ "/motiva" ]
 CMD []
