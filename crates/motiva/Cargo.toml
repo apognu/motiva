@@ -9,7 +9,6 @@ homepage = "https://github.com/apognu/motiva"
 repository = "https://github.com/apognu/motiva"
 
 [features]
-icu = ["libmotiva/icu"]
 gcp = ["gcp_auth", "opentelemetry-gcloud-trace"]
 benchmarks = []
 

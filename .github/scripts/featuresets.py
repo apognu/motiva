@@ -1,5 +1,5 @@
-import json
 import itertools
+import json
 
 FEATURES = ["gcp"]
 
@@ -13,9 +13,6 @@ for i in range(len(FEATURES) + 1):
 
         if combo:
             suffix = "-" + "-".join(combo)
-
-        if "icu" in combo:
-            base = "icu"
 
         combinations.append(
             {

@@ -18,17 +18,15 @@ Note that this piece of software requires Yente to run beside it, including Elas
 
 Not all of Yente is going to be implemented here. Notably, none of the index updates feature are going to their way into this repository. We will focus on the request part (search and matching).
 
-Even through we will strive to produce matching scores in the vicinity of those of Yente, exact scores are not a goal. In particular, the Rust implementations of some algorithms will produce slightly different results, resulting in different overall scores. This is, for example, the case of the algorithm transliterating scripts into latin, which do not use `libicu` by default, and might therefore produce slightly different results <sup>[1]</sup>.
+Even through we will strive to produce matching scores in the vicinity of those of Yente, exact scores are not a goal. In particular, the Rust implementations of some algorithms will produce slightly different results, resulting in different overall scores.
 
 All implemented algorithms will feature an integration test comparing Motiva's score with Yente's and check they are within a _reasonable_ epsilon of each other.
 
-If at all possible, this project will try to use only Rust-native dependencies, and stay clear of integrating with C libraries through FFI <sup>[2]</sup>.
+If at all possible, this project will try to use only Rust-native dependencies, and stay clear of integrating with C libraries through FFI <sup>[1]</sup>.
 
 Some liberty was taken to adapt some logic and algorithms from Yente, so do not expect fully-compliant API or behavior.
 
-<sup>[1]</sup>: Motiva can be compiled with the `icu` feature to use the same transliteration library as yente. This will require `libicu` development headers and shared libraries.
-
-<sup>[2]</sup>: With the default features configuration.
+<sup>[1]</sup>: With the default features configuration.
 
 ### Implementation matrix
 
@@ -137,13 +135,8 @@ The inner arrays are merged with a boolean `OR`, whereas the outer one and `AND`
         "name": ["..."]
       },
       "filters": {
-        "topics": [
-          ["wanted", "crime"],
-          ["role.pol"]
-        ],
-        "properties.citizenship": [
-          ["ru"]
-        ]
+        "topics": [["wanted", "crime"], ["role.pol"]],
+        "properties.citizenship": [["ru"]]
       }
     }
   }
@@ -152,9 +145,9 @@ The inner arrays are merged with a boolean `OR`, whereas the outer one and `AND`
 
 This query will perform the usual matching in Elasticsearch, but only return those entities which:
 
- - Have either the `wanted` **OR** `crime` topic
- - **AND** have the `role.pol` topic
- - **AND** have the `ru` citizenship
+- Have either the `wanted` **OR** `crime` topic
+- **AND** have the `role.pol` topic
+- **AND** have the `ru` citizenship
 
 ### Scoped index
 
@@ -222,8 +215,6 @@ $ cd motiva
 ```bash
 # Standard build
 $ cargo build
-# Build with libicu support (requires libicu-dev)
-$ cargo build --release --features icu
 # Build with GCP tracing support
 $ cargo build --release --features gcp
 ```
@@ -233,12 +224,10 @@ $ cargo build --release --features gcp
 Pre-built images are available in this repositor's packages section, at `ghcr.io/apognu/motiva`, for each combination of features. Alternatively, you can build the image thus:
 
 ```bash
-# Build without libicu
+# Build without optional features
 $ docker build -t motiva .
-# Build without standalone features
+# Build with GCP tracing support
 $ docker build --build-arg CARGO_ARGS="--features gcp" -t motiva:gcp .
-# Build with libicu support
-$ docker build --build-arg BASE=icu --build-arg CARGO_ARGS="--features icu" -t motiva:icu .
 ```
 
 ### Test suite
