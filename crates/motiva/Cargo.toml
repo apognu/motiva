@@ -29,7 +29,7 @@ metrics = "0.24.2"
 metrics-exporter-prometheus = { version = "0.18.1", default-features = false, features = ["http-listener"] }
 mimalloc = { version = "0.1.52" }
 opentelemetry = { version = "0.32", features = ["trace"] }
-opentelemetry-gcloud-trace = { version = "0.24", optional = true }
+opentelemetry-gcloud-trace = { version = "0.25", optional = true }
 opentelemetry-http = "0.32"
 opentelemetry-otlp = { version = "0.32", features = [
     "grpc-tonic",
