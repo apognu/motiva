@@ -11,7 +11,7 @@ pub enum MotivaError {
   #[error("invalid schema: {0}")]
   InvalidSchema(String),
   #[error(transparent)]
-  IndexError(#[from] elasticsearch::Error),
+  IndexError(#[from] opensearch::Error),
   #[error(transparent)]
   OtherError(#[from] anyhow::Error),
 }

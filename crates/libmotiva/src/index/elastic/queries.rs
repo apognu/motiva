@@ -5,9 +5,9 @@ use std::{
 
 use ahash::RandomState;
 use anyhow::Context;
-use elasticsearch::{SearchParts, cluster::ClusterHealthParts, indices::IndicesGetAliasParts, params::SearchType};
 use itertools::Itertools;
 use metrics::{counter, histogram};
+use opensearch::{SearchParts, cluster::ClusterHealthParts, indices::IndicesGetAliasParts, params::SearchType};
 use opentelemetry::global;
 use reqwest::StatusCode;
 
@@ -957,7 +957,7 @@ mod tests {
     };
 
     let provider = ElasticsearchProvider {
-      es: elasticsearch::Elasticsearch::default(),
+      es: opensearch::OpenSearch::default(),
       index_prefix: "yente".to_string(),
       main_index: "yente-entities".to_string(),
       state: Arc::new(std::sync::RwLock::new(IndexState {

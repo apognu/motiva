@@ -5,11 +5,11 @@ use crate::index::elastic::config::EsOptions;
 use crate::index::elastic::{DEFAULT_INDEX_PREFIX, IndexState, SCOPED_INDEX_SUFFIX};
 use crate::{error::MotivaError, index::elastic::config::IndexVersion, prelude::ElasticsearchProvider};
 use anyhow::Context;
-use elasticsearch::cert::{Certificate, CertificateValidation};
-use elasticsearch::http::Url;
-use elasticsearch::http::transport::{SingleNodeConnectionPool, TransportBuilder};
-use elasticsearch::indices::IndicesGetAliasParts;
-use elasticsearch::{Elasticsearch, auth::Credentials};
+use opensearch::cert::{Certificate, CertificateValidation};
+use opensearch::http::Url;
+use opensearch::http::transport::{SingleNodeConnectionPool, TransportBuilder};
+use opensearch::indices::IndicesGetAliasParts;
+use opensearch::{OpenSearch, auth::Credentials};
 use reqwest::StatusCode;
 
 impl ElasticsearchProvider {
@@ -24,17 +24,16 @@ impl ElasticsearchProvider {
         EsTlsVerification::CaCertChain(pem) => transport_builder.cert_validation(CertificateValidation::Full(Certificate::from_pem(pem)?)),
       };
 
+      let transport = match options.auth {
+        EsAuthMethod::Basic(username, password) => transport.auth(Credentials::Basic(username, password)),
+        EsAuthMethod::Bearer(token) => transport.auth(Credentials::Bearer(token)),
+        EsAuthMethod::ApiKey(client_id, client_secret) => transport.auth(Credentials::ApiKey(client_id, client_secret)),
+        _ => transport,
+      };
+
       let transport = transport.build().context("could not build index client")?;
 
-      match options.auth {
-        EsAuthMethod::Basic(username, password) => transport.set_auth(Credentials::Basic(username, password)),
-        EsAuthMethod::Bearer(token) => transport.set_auth(Credentials::Bearer(token)),
-        EsAuthMethod::ApiKey(client_id, client_secret) => transport.set_auth(Credentials::ApiKey(client_id, client_secret)),
-        EsAuthMethod::EncodedApiKey(api_key) => transport.set_auth(Credentials::EncodedApiKey(api_key)),
-        _ => {}
-      }
-
-      Elasticsearch::new(transport)
+      OpenSearch::new(transport)
     };
 
     let index_prefix = options.index_name.unwrap_or_else(|| DEFAULT_INDEX_PREFIX.to_string());
@@ -86,8 +85,6 @@ pub enum EsAuthMethod {
   Bearer(String),
   /// API key (client ID and API key)
   ApiKey(String, String),
-  /// API key
-  EncodedApiKey(String),
 }
 
 /// TLS certificate method to use when using an HTTPS URL
@@ -118,7 +115,7 @@ mod tests {
     index::elastic::{IndexState, config::IndexVersion},
     prelude::{ElasticsearchProvider, EsAuthMethod},
   };
-  use elasticsearch::Elasticsearch;
+  use opensearch::OpenSearch;
 
   #[tokio::test]
   async fn es_builder() {
@@ -151,16 +148,6 @@ mod tests {
       "http://url:9200",
       EsOptions {
         auth: EsAuthMethod::ApiKey(u.clone(), p.clone()),
-        ..Default::default()
-      },
-    )
-    .await
-    .unwrap();
-
-    ElasticsearchProvider::new(
-      "http://url:9200",
-      EsOptions {
-        auth: EsAuthMethod::EncodedApiKey(p.clone()),
         ..Default::default()
       },
     )
@@ -218,7 +205,7 @@ mod tests {
 
   fn provider_with_prefix(prefix: &str) -> ElasticsearchProvider {
     ElasticsearchProvider {
-      es: Elasticsearch::default(),
+      es: OpenSearch::default(),
       index_prefix: prefix.to_string(),
       main_index: format!("{prefix}-entities"),
       state: Arc::new(RwLock::new(IndexState {
