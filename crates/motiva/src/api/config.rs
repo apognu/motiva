@@ -12,6 +12,9 @@ use jiff::Span;
 use libmotiva::{EsTlsVerification, GetEntityLimits, prelude::EsAuthMethod};
 use tokio::net::TcpListener;
 
+#[cfg(feature = "aws")]
+use libmotiva::prelude::AwsService;
+
 use crate::api::errors::AppError;
 
 #[derive(Default, Debug)]
@@ -116,6 +119,11 @@ impl FromStr for WrappedEsAuthMethod {
 
         EsAuthMethod::ApiKey(client_id, client_secret)
       }
+
+      #[cfg(feature = "aws")]
+      "aws-iam-service" => EsAuthMethod::AwsIam(AwsService::Service),
+      #[cfg(feature = "aws")]
+      "aws-iam-serverless" => EsAuthMethod::AwsIam(AwsService::Serverless),
 
       "basic" | "bearer" | "api_key" | "encoded_api_key" => Err(AppError::ConfigError("chosen index authentication method is missing a credential setting".into()))?,
 
@@ -307,6 +315,32 @@ mod tests {
       env::remove_var("INDEX_AUTH_METHOD");
       env::remove_var("INDEX_CLIENT_ID");
       env::remove_var("INDEX_CLIENT_SECRET");
+    }
+  }
+
+  #[cfg(feature = "aws")]
+  #[tokio::test]
+  async fn aws_iam() {
+    use libmotiva::AwsService;
+
+    unsafe {
+      env::set_var("INDEX_AUTH_METHOD", "aws-iam-serverless");
+    }
+
+    let config = Config::from_env().await.unwrap();
+
+    assert_eq!(config.index_auth_method, EsAuthMethod::AwsIam(AwsService::Serverless));
+
+    unsafe {
+      env::set_var("INDEX_AUTH_METHOD", "aws-iam-service");
+    }
+
+    let config = Config::from_env().await.unwrap();
+
+    assert_eq!(config.index_auth_method, EsAuthMethod::AwsIam(AwsService::Service));
+
+    unsafe {
+      env::remove_var("INDEX_AUTH_METHOD");
     }
   }
 

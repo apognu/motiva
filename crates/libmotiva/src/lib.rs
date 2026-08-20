@@ -37,6 +37,10 @@ pub mod prelude {
     EntityHandle, IndexProvider,
     elastic::{ElasticsearchProvider, builder::EsAuthMethod, builder::EsTlsVerification, config::EsOptions, scoped::create_scoped_index},
   };
+
+  #[cfg(feature = "aws")]
+  pub use crate::index::elastic::builder::AwsService;
+
   pub use crate::matching::{Algorithm, Feature, MatchParams, MatchingAlgorithm, logic_v1::LogicV1, marble_v0::MarbleV0, name_based::NameBased, name_qualified::NameQualified};
   pub use crate::model::{Entity, HasProperties, SearchEntity, format_score};
   pub use crate::scoring::ScoringOptions;

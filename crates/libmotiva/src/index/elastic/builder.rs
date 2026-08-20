@@ -28,6 +28,21 @@ impl ElasticsearchProvider {
         EsAuthMethod::Basic(username, password) => transport.auth(Credentials::Basic(username, password)),
         EsAuthMethod::Bearer(token) => transport.auth(Credentials::Bearer(token)),
         EsAuthMethod::ApiKey(client_id, client_secret) => transport.auth(Credentials::ApiKey(client_id, client_secret)),
+
+        #[cfg(feature = "aws")]
+        EsAuthMethod::AwsIam(service) => {
+          use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
+
+          let region = RegionProviderChain::default_provider().or_else("us-east-1");
+          let iam = aws_config::defaults(BehaviorVersion::latest()).region(region).load().await.clone();
+          let transport = transport.auth(iam.try_into()?);
+
+          match service {
+            AwsService::Service => transport.service_name("es"),
+            AwsService::Serverless => transport.service_name("aoss"),
+          }
+        }
+
         _ => transport,
       };
 
@@ -85,6 +100,20 @@ pub enum EsAuthMethod {
   Bearer(String),
   /// API key (client ID and API key)
   ApiKey(String, String),
+
+  #[cfg(feature = "aws")]
+  /// AWS IAM
+  AwsIam(AwsService),
+}
+
+#[cfg(feature = "aws")]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum AwsService {
+  /// Amazon OpenSearch
+  #[default]
+  Service,
+  /// Amazon OpenSearch Serverless
+  Serverless,
 }
 
 /// TLS certificate method to use when using an HTTPS URL
@@ -170,6 +199,17 @@ mod tests {
       EsOptions {
         auth: EsAuthMethod::Basic(u.clone(), p.clone()),
         tls: &EsTlsVerification::CaCertChain(cert.as_bytes().to_vec()),
+        ..Default::default()
+      },
+    )
+    .await
+    .unwrap();
+
+    #[cfg(feature = "aws")]
+    ElasticsearchProvider::new(
+      "http://url:9200",
+      EsOptions {
+        auth: EsAuthMethod::AwsIam(super::AwsService::Serverless),
         ..Default::default()
       },
     )
