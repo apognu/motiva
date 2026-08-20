@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::Context;
-use elasticsearch::indices::{IndicesCreateParts, IndicesDeleteParts, IndicesGetAliasParts, IndicesGetParts};
+use opensearch::indices::{IndicesCreateParts, IndicesDeleteParts, IndicesGetAliasParts, IndicesGetParts};
 use rand::distr::{Alphanumeric, SampleString};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};

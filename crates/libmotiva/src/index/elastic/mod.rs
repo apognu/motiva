@@ -11,8 +11,8 @@ use std::{
 };
 
 use ahash::RandomState;
-use elasticsearch::Elasticsearch;
 use jiff::civil::DateTime;
+use opensearch::OpenSearch;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -35,7 +35,7 @@ pub(crate) struct IndexState {
 /// Main index provider using Elasticsearch
 #[derive(Clone)]
 pub struct ElasticsearchProvider {
-  pub es: Elasticsearch,
+  pub es: OpenSearch,
   pub(crate) index_prefix: String,
   pub(crate) main_index: String,
   pub(crate) state: Arc<RwLock<IndexState>>,
@@ -178,7 +178,7 @@ pub(crate) struct EsEntitySource {
 mod tests {
   use std::collections::HashMap;
 
-  use elasticsearch::Elasticsearch;
+  use opensearch::OpenSearch;
 
   use crate::{
     ElasticsearchProvider,
@@ -216,7 +216,7 @@ mod tests {
     use crate::index::elastic::IndexState;
 
     let p = ElasticsearchProvider {
-      es: Elasticsearch::default(),
+      es: OpenSearch::default(),
       index_prefix: "myprefix".to_string(),
       main_index: "myprefix-entities".to_string(),
       state: Arc::new(RwLock::new(IndexState {
