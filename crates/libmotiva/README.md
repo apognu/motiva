@@ -49,29 +49,31 @@ Before v0.5.0, motiva is only compatible with data indexer with Yente v4.x. Star
 
 Motiva is configured via environment variables. The following variables are supported:
 
-| Variable                   | Description                                                                            | Default / Example         |
-| -------------------------- | -------------------------------------------------------------------------------------- | ------------------------- |
-| `ENV`                      | Environment (`dev` or `production`)                                                    | `dev`                     |
-| `LISTEN_ADDR`              | Address to bind the API server                                                         | `0.0.0.0:8000`            |
-| `API_KEY`                  | Bearer token used to authenticate requests                                             | _(none)_                  |
-| `INDEX_URL`                | Elasticsearch URL                                                                      | `http://localhost:9200`   |
-| `INDEX_AUTH_METHOD`        | Elasticsearch authentication (`none`, `basic`, `bearer`, `api_key`, `encoded_api_key`) | `none`                    |
-| `INDEX_CLIENT_ID`          | Elasticsearch client ID (required for `basic` or `api_key`)                            | _(none)_                  |
-| `INDEX_CLIENT_SECRET`      | Elasticsearch client secret (required for `basic`, `api_key` or `encoded_api_key`)     | _(none)_                  |
-| `INDEX_TLS_CA_CERT`        | Path to a PEM-encoded certificate chain to use for TLS validation                      | _(none)_                  |
-| `INDEX_TLS_SKIP_VERIFY`    | If `1`, do not validate the TLS certificate served by the Elasticsearch cluster        | `0`                       |
-| `INDEX_NAME`               | Index prefix under which data was indexed (suffixed by `-entities`)                    | `yente`                   |
-| `MANIFEST_URL`             | Optional URL to a custom manifest JSON file                                            | _(none)_                  |
-| `CATALOG_REFRESH_INTERVAL` | Interval at which to pull the manifest and catalogs                                    | _1h_                      |
-| `MATCH_CANDIDATES`         | Number of candidates to consider for matching                                          | `10`                      |
-| `WEIGHT_<FEATURE_NAME>`    | Custom weight for a given feature (e.g. `WEIGHT_PERSON_NAME_JARO_WINKLER`)             | _(none)_                  |
-| `ENRICHMENT_MAX_RECURSION` | Maximum recursion levels when enriching entities with relations                        | `2`                       |
-| `ENRICHMENT_QUERY_LIMIT`   | Maximum relation documents to fetch from Elasticsearch when building relation graphs   | `200`                     |
-| `ENABLE_PROMETHEUS`        | Enable Prometheus metrics collection and /metrics endpoint                             | `0`                       |
-| `ENABLE_TRACING`           | Set to `1` to enable tracing                                                           | _(none)_                  |
-| `TRACING_EXPORTER`         | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)            | `otlp`                    |
-| `REQUEST_TIMEOUT`          | Maximum duration for a match request                                                   | _10s_                     |
-| `SCOPED_INDEX_QUERY`       | Query used to scope down the index used for match queries                              | [see here](#scoped-index) |
+| Variable                   | Description                                                                                                        | Default / Example         |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| `ENV`                      | Environment (`dev` or `production`)                                                                                | `dev`                     |
+| `LISTEN_ADDR`              | Address to bind the API server                                                                                     | `0.0.0.0:8000`            |
+| `API_KEY`                  | Bearer token used to authenticate requests                                                                         | _(none)_                  |
+| `INDEX_URL`                | Elasticsearch URL                                                                                                  | `http://localhost:9200`   |
+| `INDEX_AUTH_METHOD`        | Elasticsearch authentication (`none`, `basic`, `bearer`, `api_key`, `encoded_api_key`, `aws-iam-*` <sup>[1]</sup>) | `none`                    |
+| `INDEX_CLIENT_ID`          | Elasticsearch client ID (required for `basic` or `api_key`)                                                        | _(none)_                  |
+| `INDEX_CLIENT_SECRET`      | Elasticsearch client secret (required for `basic`, `api_key` or `encoded_api_key`)                                 | _(none)_                  |
+| `INDEX_TLS_CA_CERT`        | Path to a PEM-encoded certificate chain to use for TLS validation                                                  | _(none)_                  |
+| `INDEX_TLS_SKIP_VERIFY`    | If `1`, do not validate the TLS certificate served by the Elasticsearch cluster                                    | `0`                       |
+| `INDEX_NAME`               | Index prefix under which data was indexed (suffixed by `-entities`)                                                | `yente`                   |
+| `MANIFEST_URL`             | Optional URL to a custom manifest JSON file                                                                        | _(none)_                  |
+| `CATALOG_REFRESH_INTERVAL` | Interval at which to pull the manifest and catalogs                                                                | _1h_                      |
+| `MATCH_CANDIDATES`         | Number of candidates to consider for matching                                                                      | `10`                      |
+| `WEIGHT_<FEATURE_NAME>`    | Custom weight for a given feature (e.g. `WEIGHT_PERSON_NAME_JARO_WINKLER`)                                         | _(none)_                  |
+| `ENRICHMENT_MAX_RECURSION` | Maximum recursion levels when enriching entities with relations                                                    | `2`                       |
+| `ENRICHMENT_QUERY_LIMIT`   | Maximum relation documents to fetch from Elasticsearch when building relation graphs                               | `200`                     |
+| `ENABLE_PROMETHEUS`        | Enable Prometheus metrics collection and /metrics endpoint                                                         | `0`                       |
+| `ENABLE_TRACING`           | Set to `1` to enable tracing                                                                                       | _(none)_                  |
+| `TRACING_EXPORTER`         | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)                                        | `otlp`                    |
+| `REQUEST_TIMEOUT`          | Maximum duration for a match request                                                                               | _10s_                     |
+| `SCOPED_INDEX_QUERY`       | Query used to scope down the index used for match queries                                                          | [see here](#scoped-index) |
+
+<sup>[1]</sup>: See section [**OpenSearch AWS IAM authentication**](#opensearch-aws-iam-authentication).
 
 Setting `MANIFEST_FILE` is required if you use a customized dataset list and would like your own manifest to be used for catalog generation. If omitted, the default manifest provided by Yente will be used. It requires either an HTTP URL or a local file path ending in `.json`, `.yml` or `.yaml`.
 
@@ -193,6 +195,14 @@ The default scoped query is listed below, but can be customized through `SCOPED_
 The scoped index is not kept automatically in sync with the full index, you would need to run `motiva create-scoped-index` again when you need to update it. We suggest running it after your regular indexing operations.
 
 Once your scoped index is created, you can perform a `/match` request with the Motiva-specific `?index_type=scoped` parameters for the new index to be used.
+
+## OpenSearch AWS IAM authentication
+
+If running with the `aws` feature, authenticating to both versions of AWS's managed OpenSearch is possible by using `INDEX_AUTH_METHOD=aws-iam-service` for OpenSearch Service and `INDEX_AUTH_METHOD=aws-iam-serverless` for OpenSearch Serverless.
+
+When used, the usual credential providers will be used (environment variables, profile, web identity, ECS container, IMDSv2), in order, to load credentials used to sign requests to the OpenSearch cluster.
+
+The region used will be determined on a best-effort basis (through environment variables, profile, then IMDSv2) depending on where motiva runs. If running outside AWS or if your OpenSearch instance lives in another region, you may specify it through the usual `AWS_REGION`.
 
 ## Run
 
