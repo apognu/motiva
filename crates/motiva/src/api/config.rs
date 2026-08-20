@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::Context;
+use base64::Engine;
 use jiff::Span;
 use libmotiva::{EsTlsVerification, GetEntityLimits, prelude::EsAuthMethod};
 use tokio::net::TcpListener;
@@ -109,13 +110,29 @@ impl FromStr for WrappedEsAuthMethod {
       "basic" if client_id.is_some() && client_secret.is_some() => EsAuthMethod::Basic(client_id.unwrap(), client_secret.unwrap()),
       "bearer" if client_secret.is_some() => EsAuthMethod::Bearer(client_secret.unwrap()),
       "api_key" if client_id.is_some() && client_secret.is_some() => EsAuthMethod::ApiKey(client_id.unwrap(), client_secret.unwrap()),
-      "encoded_api_key" if client_secret.is_some() => EsAuthMethod::EncodedApiKey(client_secret.unwrap()),
+
+      "encoded_api_key" if client_secret.is_some() => {
+        let (client_id, client_secret) = encoded_api_key(&client_secret.unwrap())?;
+
+        EsAuthMethod::ApiKey(client_id, client_secret)
+      }
 
       "basic" | "bearer" | "api_key" | "encoded_api_key" => Err(AppError::ConfigError("chosen index authentication method is missing a credential setting".into()))?,
 
       _ => Err(AppError::ConfigError("invalid elasticsearch authentication method".into()))?,
     }))
   }
+}
+
+fn encoded_api_key(value: &str) -> anyhow::Result<(String, String)> {
+  use base64::engine::general_purpose::STANDARD;
+
+  let value = STANDARD.decode(value)?;
+  let value = String::from_utf8(value)?;
+
+  let (username, password) = value.split_once(':').ok_or(anyhow::anyhow!("invalid shape for encoded api key"))?;
+
+  Ok((username.to_string(), password.to_string()))
 }
 
 #[derive(Clone, Debug, Default)]
@@ -224,7 +241,7 @@ mod tests {
       env::set_var("YENTE_URL", "http://yente");
       env::set_var("INDEX_URL", "http://index");
       env::set_var("INDEX_AUTH_METHOD", "encoded_api_key");
-      env::set_var("INDEX_CLIENT_SECRET", "secret");
+      env::set_var("INDEX_CLIENT_SECRET", "dXNlcm5hbWU6cGFzc3dvcmQ=");
       env::set_var("ENABLE_TRACING", "1");
     }
 
@@ -234,7 +251,7 @@ mod tests {
     assert_eq!(config.listen_addr, "0.0.0.0:8080");
     assert_eq!(config.match_candidates, 3);
     assert_eq!(config.index_url, "http://index");
-    assert_eq!(config.index_auth_method, EsAuthMethod::EncodedApiKey("secret".to_string()));
+    assert_eq!(config.index_auth_method, EsAuthMethod::ApiKey("username".to_string(), "password".to_string()));
     assert!(config.enable_tracing);
 
     unsafe {
@@ -333,7 +350,12 @@ mod tests {
     assert!(matches!("basic".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::Basic(_, _)))));
     assert!(matches!("bearer".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::Bearer(_)))));
     assert!(matches!("api_key".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::ApiKey(_, _)))));
-    assert!(matches!("encoded_api_key".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::EncodedApiKey(_)))));
+
+    unsafe {
+      env::set_var("INDEX_CLIENT_SECRET", "dXNlcm5hbWU6cGFzc3dvcmQ=");
+    }
+
+    assert!(matches!("encoded_api_key".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::ApiKey(_, _)))));
 
     assert!("other".parse::<WrappedEsAuthMethod>().is_err());
 
