@@ -2822,6 +2822,9 @@ dependencies = [
  "any_ascii",
  "anyhow",
  "aws-config",
+ "aws-credential-types",
+ "aws-sigv4",
+ "aws-smithy-runtime-api",
  "bon",
  "bumpalo",
  "celes",
@@ -2852,6 +2855,7 @@ dependencies = [
  "shellexpand",
  "std-macro-extensions",
  "strsim 0.11.1",
+ "temp-env",
  "thiserror",
  "tokio",
  "tokio-test",
@@ -3132,6 +3136,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "shadow-rs",
+ "temp-env",
  "thiserror",
  "tokio",
  "tower-http 0.7.0",
@@ -4969,6 +4974,16 @@ name = "target-lexicon"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
+
+[[package]]
+name = "temp-env"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96374855068f47402c3121c6eed88d29cb1de8f3ab27090e273e420bdabcf050"
+dependencies = [
+ "futures",
+ "parking_lot",
+]
 
 [[package]]
 name = "tempfile"
