@@ -18,15 +18,16 @@ jobs:
     env:
       PRERELEASE: ${{ contains(inputs.tag, '-rc.') }}
     steps:
-      - name: Download artifact
+      - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
-          name: motiva
+          pattern: motiva*
+          merge-multiple: true
 
       - name: Attest
         uses: actions/attest@v4
         with:
-          subject-path: ${{ github.workspace }}/motiva
+          subject-path: ${{ github.workspace }}/motiva*
 
       - name: Create release
         uses: softprops/action-gh-release@v3
@@ -36,8 +37,7 @@ jobs:
           make_latest: ${{ env.PRERELEASE == 'false' }}
           draft: ${{ env.PRERELEASE == 'true' }}
           prerelease: ${{ env.PRERELEASE == 'true' }}
-          files: |
-            motiva
+          files: motiva*
 
       - name: Publish prerelease
         uses: softprops/action-gh-release@v3

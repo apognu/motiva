@@ -197,9 +197,27 @@ jobs:
         env:
           INDEX_URL: http://localhost:9200
 
+  generate-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.generate.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Generate feature combinations
+        id: generate
+        run: |
+          combinations=$(python .github/scripts/featuresets.py)
+          echo "matrix=$combinations" >> $GITHUB_OUTPUT
+
   build:
     runs-on: ubuntu-latest
-    needs: [check, lint]
+    needs: [check, lint, generate-matrix]
+    strategy:
+      matrix:
+        combination: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -220,22 +238,28 @@ jobs:
             ~/.cargo/bin
             ~/.cargo/registry
             ~/.cargo/git
-          key: "build-${{ github.job }}-${{hashFiles('Cargo.lock', 'pyproject.toml')}}"
+          key: "build-${{ github.job }}${{ matrix.combination.suffix }}-${{hashFiles('Cargo.lock', 'pyproject.toml')}}"
           restore-keys: |
+            build-${{ github.job }}${{ matrix.combination.suffix }}-
             build-${{ github.job }}-
             build-
             check-${{ github.job }}-
             check-
 
       - name: Build
-        run: cargo build --locked --release --all-features
+        run: cargo build --locked --release ${{ matrix.combination.features != '' && format('--features {0}', matrix.combination.features) || '' }}
 
       - name: Print version
-        run: cargo run --release --all-features -- version
+        run: cargo run --release ${{ matrix.combination.features != '' && format('--features {0}', matrix.combination.features) || '' }} -- version
+
+      - name: Stage binary
+        run: |
+          mkdir -p dist
+          cp target/release/motiva dist/motiva${{ matrix.combination.suffix }}
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: motiva
-          path: target/release/motiva
+          name: motiva${{ matrix.combination.suffix }}
+          path: dist/motiva${{ matrix.combination.suffix }}
           retention-days: 7
