@@ -75,6 +75,7 @@ nix = { version = "0.31.2", features = ["signal"] }
 rusty-fork = "0.3.1"
 serde-json-assert = "0.4.0"
 serial_test = "4.0"
+temp-env = { version = "0.3.6", features = ["async_closure"] }
 
 [lints]
 workspace = true
