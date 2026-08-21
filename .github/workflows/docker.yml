@@ -21,6 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
       - name: Generate feature combinations
         id: generate
         run: |
@@ -80,7 +82,6 @@ jobs:
             apognu/motiva:${{ inputs.tag }}${{ matrix.combination.suffix }}
             ghcr.io/apognu/motiva:${{ inputs.tag }}${{ matrix.combination.suffix }}
           build-args: |
-            "BASE=${{ matrix.combination.base }}"
             ${{ matrix.combination.features != '' && format('CARGO_ARGS=--features {0}', matrix.combination.features) || '' }}
           push: true
           provenance: mode=max
@@ -102,4 +103,3 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
           create-storage-record: false
-
