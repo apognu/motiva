@@ -230,10 +230,7 @@ async fn detect_gcp_project_id() -> String {
 
 #[cfg(test)]
 mod tests {
-  use std::{
-    env,
-    net::{IpAddr, Ipv4Addr},
-  };
+  use std::net::{IpAddr, Ipv4Addr};
 
   use crate::api::config::WrappedEsAuthMethod;
 
@@ -242,128 +239,87 @@ mod tests {
   #[serial_test::serial]
   #[tokio::test]
   async fn parse_config_from_env() {
-    unsafe {
-      env::set_var("ENV", "production");
-      env::set_var("LISTEN_ADDR", "0.0.0.0:8080");
-      env::set_var("MATCH_CANDIDATES", "3");
-      env::set_var("YENTE_URL", "http://yente");
-      env::set_var("INDEX_URL", "http://index");
-      env::set_var("INDEX_AUTH_METHOD", "encoded_api_key");
-      env::set_var("INDEX_CLIENT_SECRET", "dXNlcm5hbWU6cGFzc3dvcmQ=");
-      env::set_var("ENABLE_TRACING", "1");
-    }
+    let vars = [
+      ("ENV", Some("production")),
+      ("LISTEN_ADDR", Some("0.0.0.0:8080")),
+      ("MATCH_CANDIDATES", Some("3")),
+      ("YENTE_URL", Some("http://yente")),
+      ("INDEX_URL", Some("http://index")),
+      ("INDEX_AUTH_METHOD", Some("encoded_api_key")),
+      ("INDEX_CLIENT_SECRET", Some("dXNlcm5hbWU6cGFzc3dvcmQ=")),
+      ("ENABLE_TRACING", Some("1")),
+    ];
 
-    let config = Config::from_env().await.unwrap();
+    temp_env::async_with_vars(vars, async {
+      let config = Config::from_env().await.unwrap();
 
-    assert_eq!(config.env, Env::Production);
-    assert_eq!(config.listen_addr, "0.0.0.0:8080");
-    assert_eq!(config.match_candidates, 3);
-    assert_eq!(config.index_url, "http://index");
-    assert_eq!(config.index_auth_method, EsAuthMethod::ApiKey("username".to_string(), "password".to_string()));
-    assert!(config.enable_tracing);
-
-    unsafe {
-      env::remove_var("ENV");
-      env::remove_var("LISTEN_ADDR");
-      env::remove_var("MATCH_CANDIDATES");
-      env::remove_var("YENTE_URL");
-      env::remove_var("INDEX_URL");
-      env::remove_var("INDEX_AUTH_METHOD");
-      env::remove_var("INDEX_CLIENT_SECRET");
-      env::remove_var("ENABLE_TRACING");
-    }
+      assert_eq!(config.env, Env::Production);
+      assert_eq!(config.listen_addr, "0.0.0.0:8080");
+      assert_eq!(config.match_candidates, 3);
+      assert_eq!(config.index_url, "http://index");
+      assert_eq!(config.index_auth_method, EsAuthMethod::ApiKey("username".to_string(), "password".to_string()));
+      assert!(config.enable_tracing);
+    })
+    .await;
   }
 
   #[tokio::test]
   #[serial_test::serial]
   async fn invalid_es_auth_method_combination() {
-    unsafe {
-      env::set_var("INDEX_AUTH_METHOD", "basic");
-      env::set_var("INDEX_CLIENT_SECRET", "secret");
+    for method in ["basic", "api_key"] {
+      temp_env::async_with_vars([("INDEX_AUTH_METHOD", Some(method)), ("INDEX_CLIENT_ID", None), ("INDEX_CLIENT_SECRET", Some("secret"))], async {
+        assert!(Config::from_env().await.is_err());
+      })
+      .await;
     }
 
-    assert!(Config::from_env().await.is_err());
+    temp_env::async_with_vars(
+      [("INDEX_AUTH_METHOD", Some("basic")), ("INDEX_CLIENT_ID", Some("secret")), ("INDEX_CLIENT_SECRET", Some("secret"))],
+      async {
+        let config = Config::from_env().await.unwrap();
 
-    unsafe {
-      env::set_var("INDEX_AUTH_METHOD", "api_key");
-      env::set_var("INDEX_CLIENT_SECRET", "secret");
-    }
+        assert_eq!(config.index_auth_method, EsAuthMethod::Basic("secret".to_string(), "secret".to_string()));
+      },
+    )
+    .await;
 
-    assert!(Config::from_env().await.is_err());
+    temp_env::async_with_vars(
+      [("INDEX_AUTH_METHOD", Some("api_key")), ("INDEX_CLIENT_ID", Some("secret")), ("INDEX_CLIENT_SECRET", Some("secret"))],
+      async {
+        let config = Config::from_env().await.unwrap();
 
-    unsafe {
-      env::set_var("INDEX_AUTH_METHOD", "basic");
-      env::set_var("INDEX_CLIENT_ID", "secret");
-      env::set_var("INDEX_CLIENT_SECRET", "secret");
-    }
-
-    let config = Config::from_env().await.unwrap();
-
-    assert_eq!(config.index_auth_method, EsAuthMethod::Basic("secret".to_string(), "secret".to_string()));
-
-    unsafe {
-      env::set_var("INDEX_AUTH_METHOD", "api_key");
-      env::set_var("INDEX_CLIENT_ID", "secret");
-      env::set_var("INDEX_CLIENT_SECRET", "secret");
-    }
-
-    let config = Config::from_env().await.unwrap();
-
-    assert_eq!(config.index_auth_method, EsAuthMethod::ApiKey("secret".to_string(), "secret".to_string()));
-
-    unsafe {
-      env::remove_var("INDEX_AUTH_METHOD");
-      env::remove_var("INDEX_CLIENT_ID");
-      env::remove_var("INDEX_CLIENT_SECRET");
-    }
+        assert_eq!(config.index_auth_method, EsAuthMethod::ApiKey("secret".to_string(), "secret".to_string()));
+      },
+    )
+    .await;
   }
 
   #[cfg(feature = "aws")]
   #[tokio::test]
+  #[serial_test::serial]
   async fn aws_iam() {
     use libmotiva::AwsService;
 
-    unsafe {
-      env::set_var("INDEX_AUTH_METHOD", "aws-iam-serverless");
-    }
+    for (value, expected) in [("aws-iam-serverless", AwsService::Serverless), ("aws-iam-service", AwsService::Service)] {
+      temp_env::async_with_vars([("INDEX_AUTH_METHOD", Some(value))], async {
+        let config = Config::from_env().await.unwrap();
 
-    let config = Config::from_env().await.unwrap();
-
-    assert_eq!(config.index_auth_method, EsAuthMethod::AwsIam(AwsService::Serverless));
-
-    unsafe {
-      env::set_var("INDEX_AUTH_METHOD", "aws-iam-service");
-    }
-
-    let config = Config::from_env().await.unwrap();
-
-    assert_eq!(config.index_auth_method, EsAuthMethod::AwsIam(AwsService::Service));
-
-    unsafe {
-      env::remove_var("INDEX_AUTH_METHOD");
+        assert_eq!(config.index_auth_method, EsAuthMethod::AwsIam(expected));
+      })
+      .await;
     }
   }
 
   #[test]
   #[serial_test::serial]
   fn parse_env() {
-    unsafe {
-      env::set_var("INT", "42");
-      env::set_var("BOOL", "true");
-      env::set_var("IP", "1.2.3.4");
-    }
+    temp_env::with_vars([("INT", Some("42")), ("BOOL", Some("true")), ("IP", Some("1.2.3.4"))], || {
+      assert_eq!(super::parse_env::<u32>("INT", 0).unwrap(), 42);
+      assert!(super::parse_env::<bool>("BOOL", true).unwrap());
+      assert_eq!(super::parse_env::<IpAddr>("IP", IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4))).unwrap(), IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)));
 
-    assert_eq!(super::parse_env::<u32>("INT", 0).unwrap(), 42);
-    assert!(super::parse_env::<bool>("BOOL", true).unwrap());
-    assert_eq!(super::parse_env::<IpAddr>("IP", IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4))).unwrap(), IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)));
-
-    assert!(super::parse_env::<u32>("BOOL", 0).is_err());
-
-    unsafe {
-      env::remove_var("INT");
-      env::remove_var("BOOL");
-      env::remove_var("IP");
-    }
+      assert!(super::parse_env::<u32>("BOOL", 0).is_err());
+    });
   }
 
   #[test]
@@ -375,28 +331,18 @@ mod tests {
   #[test]
   #[serial_test::serial]
   fn tracing_exporter_from_str() {
-    unsafe {
-      env::set_var("INDEX_CLIENT_ID", "secret");
-      env::set_var("INDEX_CLIENT_SECRET", "secret");
-    }
+    temp_env::with_vars([("INDEX_CLIENT_ID", Some("secret")), ("INDEX_CLIENT_SECRET", Some("secret"))], || {
+      assert!(matches!("none".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::None))));
+      assert!(matches!("basic".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::Basic(_, _)))));
+      assert!(matches!("bearer".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::Bearer(_)))));
+      assert!(matches!("api_key".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::ApiKey(_, _)))));
 
-    assert!(matches!("none".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::None))));
-    assert!(matches!("basic".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::Basic(_, _)))));
-    assert!(matches!("bearer".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::Bearer(_)))));
-    assert!(matches!("api_key".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::ApiKey(_, _)))));
+      assert!("other".parse::<WrappedEsAuthMethod>().is_err());
+    });
 
-    unsafe {
-      env::set_var("INDEX_CLIENT_SECRET", "dXNlcm5hbWU6cGFzc3dvcmQ=");
-    }
-
-    assert!(matches!("encoded_api_key".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::ApiKey(_, _)))));
-
-    assert!("other".parse::<WrappedEsAuthMethod>().is_err());
-
-    unsafe {
-      env::remove_var("INDEX_CLIENT_ID");
-      env::remove_var("INDEX_CLIENT_SECRET");
-    }
+    temp_env::with_vars([("INDEX_CLIENT_ID", Some("secret")), ("INDEX_CLIENT_SECRET", Some("dXNlcm5hbWU6cGFzc3dvcmQ="))], || {
+      assert!(matches!("encoded_api_key".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::ApiKey(_, _)))));
+    });
   }
 
   #[test]
@@ -412,75 +358,65 @@ mod tests {
   fn parse_index_tls() {
     use libmotiva::EsTlsVerification;
 
-    unsafe { env::set_var("INDEX_TLS_SKIP_VERIFY", "1") };
-    assert_eq!(super::parse_index_tls_verification().unwrap(), EsTlsVerification::SkipVerify);
-    unsafe { env::remove_var("INDEX_TLS_SKIP_VERIFY") };
+    temp_env::with_vars([("INDEX_TLS_SKIP_VERIFY", Some("1")), ("INDEX_TLS_CA_CERT", None)], || {
+      assert_eq!(super::parse_index_tls_verification().unwrap(), EsTlsVerification::SkipVerify);
+    });
 
-    unsafe { env::set_var("INDEX_TLS_CA_CERT", "Cargo.toml") };
-    assert!(matches!(super::parse_index_tls_verification().unwrap(), EsTlsVerification::CaCertChain(_)));
-    unsafe { env::remove_var("INDEX_TLS_CA_CERT") };
+    temp_env::with_vars([("INDEX_TLS_SKIP_VERIFY", None), ("INDEX_TLS_CA_CERT", Some("Cargo.toml"))], || {
+      assert!(matches!(super::parse_index_tls_verification().unwrap(), EsTlsVerification::CaCertChain(_)));
+    });
 
-    unsafe { env::set_var("INDEX_TLS_CA_CERT", "") };
-    assert_eq!(super::parse_index_tls_verification().unwrap(), EsTlsVerification::Default);
-    unsafe { env::remove_var("INDEX_TLS_CA_CERT") };
+    temp_env::with_vars([("INDEX_TLS_SKIP_VERIFY", None), ("INDEX_TLS_CA_CERT", Some(""))], || {
+      assert_eq!(super::parse_index_tls_verification().unwrap(), EsTlsVerification::Default);
+    });
 
-    assert_eq!(super::parse_index_tls_verification().unwrap(), EsTlsVerification::Default);
+    temp_env::with_vars_unset(["INDEX_TLS_SKIP_VERIFY", "INDEX_TLS_CA_CERT"], || {
+      assert_eq!(super::parse_index_tls_verification().unwrap(), EsTlsVerification::Default);
+    });
 
-    unsafe { env::set_var("INDEX_TLS_CA_CERT", "/nonexistent/path/to/cert.pem") };
-    assert!(super::parse_index_tls_verification().is_err());
-    unsafe { env::remove_var("INDEX_TLS_CA_CERT") };
+    temp_env::with_vars([("INDEX_TLS_SKIP_VERIFY", None), ("INDEX_TLS_CA_CERT", Some("/nonexistent/path/to/cert.pem"))], || {
+      assert!(super::parse_index_tls_verification().is_err());
+    });
   }
 
   #[test]
   #[serial_test::serial]
   fn parse_env_empty_returns_default() {
-    unsafe { env::set_var("MOTIVA_TEST_EMPTY", "") };
-    assert_eq!(super::parse_env::<u32>("MOTIVA_TEST_EMPTY", 7).unwrap(), 7);
-    unsafe { env::remove_var("MOTIVA_TEST_EMPTY") };
+    temp_env::with_var("MOTIVA_TEST_EMPTY", Some(""), || {
+      assert_eq!(super::parse_env::<u32>("MOTIVA_TEST_EMPTY", 7).unwrap(), 7);
+    });
   }
 
   #[test]
   #[serial_test::serial]
   fn es_auth_method_missing_credentials() {
-    unsafe {
-      env::remove_var("INDEX_CLIENT_ID");
-      env::remove_var("INDEX_CLIENT_SECRET");
-    }
-
-    assert!("bearer".parse::<WrappedEsAuthMethod>().is_err());
-    assert!("encoded_api_key".parse::<WrappedEsAuthMethod>().is_err());
+    temp_env::with_vars_unset(["INDEX_CLIENT_ID", "INDEX_CLIENT_SECRET"], || {
+      assert!("bearer".parse::<WrappedEsAuthMethod>().is_err());
+      assert!("encoded_api_key".parse::<WrappedEsAuthMethod>().is_err());
+    });
   }
 
   #[test]
   #[serial_test::serial]
   fn parse_weights() {
-    unsafe {
-      env::set_var("WEIGHT_POSITIVE", "0.1");
-      env::set_var("WEIGHT_NEGATIVE", "-0.7");
-      env::set_var("WEIGHT_LOWER_CLAMPED", "-2.0");
-      env::set_var("WEIGHT_HIGHER_CLAMPED", "2.0");
-    }
+    let weights = [
+      ("WEIGHT_POSITIVE", Some("0.1")),
+      ("WEIGHT_NEGATIVE", Some("-0.7")),
+      ("WEIGHT_LOWER_CLAMPED", Some("-2.0")),
+      ("WEIGHT_HIGHER_CLAMPED", Some("2.0")),
+    ];
 
-    let weights = super::parse_weights_from_env().unwrap();
+    temp_env::with_vars(weights, || {
+      let weights = super::parse_weights_from_env().unwrap();
 
-    assert!(matches!(weights.get("positive"), Some(0.1)));
-    assert!(matches!(weights.get("negative"), Some(-0.7)));
-    assert!(matches!(weights.get("lower_clamped"), Some(-1.0)));
-    assert!(matches!(weights.get("higher_clamped"), Some(1.0)));
+      assert!(matches!(weights.get("positive"), Some(0.1)));
+      assert!(matches!(weights.get("negative"), Some(-0.7)));
+      assert!(matches!(weights.get("lower_clamped"), Some(-1.0)));
+      assert!(matches!(weights.get("higher_clamped"), Some(1.0)));
+    });
 
-    unsafe {
-      env::remove_var("WEIGHT_POSITIVE");
-      env::remove_var("WEIGHT_NEGATIVE");
-      env::remove_var("WEIGHT_LOWER_CLAMPED");
-      env::remove_var("WEIGHT_HIGHER_CLAMPED");
-
-      env::set_var("WEIGHT_NAN", "nan");
-    }
-
-    assert!(super::parse_weights_from_env().is_err());
-
-    unsafe {
-      env::remove_var("WEIGHT_NAN");
-    }
+    temp_env::with_var("WEIGHT_NAN", Some("nan"), || {
+      assert!(super::parse_weights_from_env().is_err());
+    });
   }
 }
