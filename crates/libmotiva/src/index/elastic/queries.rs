@@ -5,9 +5,13 @@ use std::{
 
 use ahash::RandomState;
 use anyhow::Context;
-use elasticsearch::{SearchParts, cluster::ClusterHealthParts, indices::IndicesGetAliasParts, params::SearchType};
 use itertools::Itertools;
 use metrics::{counter, histogram};
+use opensearch::{
+  SearchParts,
+  indices::{IndicesExistsParts, IndicesGetAliasParts},
+  params::SearchType,
+};
 use opentelemetry::global;
 use reqwest::StatusCode;
 
@@ -21,7 +25,7 @@ use crate::{
   error::MotivaError,
   index::{
     EntityHandle, IndexProvider,
-    elastic::{EsEntity, EsErrorResponse, EsHealth, EsResponse, config::IndexVersion},
+    elastic::{EsEntity, EsErrorResponse, EsResponse, config::IndexVersion},
   },
   matching::{MatchParams, extractors},
   model::{Entity, ResolveSchemaLevel, SearchEntity},
@@ -56,8 +60,8 @@ impl IndexProvider for ElasticsearchProvider {
   async fn health(&self) -> Result<bool, MotivaError> {
     let Ok(health) = self
       .es
-      .cluster()
-      .health(ClusterHealthParts::Index(&[&self.main_index]))
+      .indices()
+      .exists(IndicesExistsParts::Index(&[&self.main_index]))
       .send()
       .await
       .context("could not get cluster health")
@@ -65,14 +69,7 @@ impl IndexProvider for ElasticsearchProvider {
       return Ok(false);
     };
 
-    let Ok(health): Result<EsHealth, _> = health.json().await.context("could not deserialize cluster health") else {
-      return Ok(false);
-    };
-
-    match health.status.as_str() {
-      "green" | "yellow" => Ok(true),
-      _ => Ok(false),
-    }
+    Ok(health.status_code() == StatusCode::OK)
   }
 
   /// Search for candidate entities matching input parameters.
@@ -957,7 +954,7 @@ mod tests {
     };
 
     let provider = ElasticsearchProvider {
-      es: elasticsearch::Elasticsearch::default(),
+      es: opensearch::OpenSearch::default(),
       index_prefix: "yente".to_string(),
       main_index: "yente-entities".to_string(),
       state: Arc::new(std::sync::RwLock::new(IndexState {

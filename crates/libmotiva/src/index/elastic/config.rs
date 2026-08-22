@@ -1,7 +1,7 @@
 use std::{fmt::Display, sync::PoisonError};
 
 use ahash::HashMap;
-use elasticsearch::indices::IndicesGetMappingParts;
+use opensearch::indices::IndicesGetMappingParts;
 use reqwest::StatusCode;
 use serde::Deserialize;
 
@@ -107,8 +107,8 @@ impl ElasticsearchProvider {
 
 #[cfg(test)]
 mod tests {
-  use elasticsearch::{
-    Elasticsearch,
+  use opensearch::{
+    OpenSearch,
     http::{
       Url,
       transport::{SingleNodeConnectionPool, TransportBuilder},
@@ -138,7 +138,7 @@ mod tests {
     let transport = TransportBuilder::new(SingleNodeConnectionPool::new(url)).build().unwrap();
 
     ElasticsearchProvider {
-      es: Elasticsearch::new(transport),
+      es: OpenSearch::new(transport),
       index_prefix: "yente".to_string(),
       main_index: "yente-entities".to_string(),
       state: Arc::new(RwLock::new(IndexState {
@@ -206,8 +206,8 @@ mod tests {
       .mount(&server)
       .await;
 
-    Mock::given(method("GET"))
-      .and(path("/_cluster/health/yente-entities"))
+    Mock::given(method("HEAD"))
+      .and(path("/yente-entities"))
       .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "status": "yellow" })))
       .mount(&server)
       .await;
@@ -233,8 +233,8 @@ mod tests {
       .mount(&server)
       .await;
 
-    Mock::given(method("GET"))
-      .and(path("/_cluster/health/yente-entities"))
+    Mock::given(method("HEAD"))
+      .and(path("/yente-entities"))
       .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "status": "green" })))
       .mount(&server)
       .await;

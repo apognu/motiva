@@ -1,18 +1,14 @@
-ARG BASE=native
-
-# Distroless image if not building native dependencies
-FROM lukemathwalker/cargo-chef:latest-rust-1.93.0-slim-bookworm AS base-native
+FROM lukemathwalker/cargo-chef:latest-rust-1.98.0-slim-bookworm AS base
 RUN apt update && apt install -y pkg-config libssl-dev
 
-FROM base-${BASE} AS planner
+FROM base AS planner
 
 WORKDIR /app
 
 COPY . .
 RUN cargo chef prepare --bin motiva --recipe-path recipe.json
 
-# Fork base layer depending on whether we build native dependencies
-FROM base-${BASE} AS builder
+FROM base AS builder
 ARG CARGO_ARGS=""
 
 WORKDIR /app
