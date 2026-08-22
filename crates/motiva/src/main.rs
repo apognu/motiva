@@ -27,6 +27,8 @@ async fn main() -> anyhow::Result<()> {
 
   let config = Config::from_env().await?;
 
+  let _guards = trace::init_tracing(&config, std::io::stdout()).await;
+
   let options = EsOptions {
     auth: config.index_auth_method.clone(),
     tls: &config.index_tls_verification,
@@ -36,8 +38,6 @@ async fn main() -> anyhow::Result<()> {
   let provider = ElasticsearchProvider::new(&config.index_url, options).await?;
 
   if let Some(cmd) = std::env::args().nth(1) {
-    let _guards = trace::init_tracing(&config, std::io::stdout()).await;
-
     match cmd.as_str() {
       "create-scoped-index" => oneoff::create_scoped_index(&provider).await?,
       _ => anyhow::bail!("unsupported command `{cmd}`"),
@@ -50,8 +50,6 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run<P: IndexProvider>(mut config: Config, provider: P) -> anyhow::Result<()> {
-  let _guards = trace::init_tracing(&config, std::io::stdout()).await;
-
   let listener = match config.listener {
     Some(_) => config.listener.take().unwrap(),
     None => tokio::net::TcpListener::bind(&config.listen_addr).await.expect("could not create listener"),

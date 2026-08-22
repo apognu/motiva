@@ -206,8 +206,8 @@ mod tests {
       .mount(&server)
       .await;
 
-    Mock::given(method("GET"))
-      .and(path("/_cluster/health/yente-entities"))
+    Mock::given(method("HEAD"))
+      .and(path("/yente-entities"))
       .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "status": "yellow" })))
       .mount(&server)
       .await;
@@ -233,8 +233,8 @@ mod tests {
       .mount(&server)
       .await;
 
-    Mock::given(method("GET"))
-      .and(path("/_cluster/health/yente-entities"))
+    Mock::given(method("HEAD"))
+      .and(path("/yente-entities"))
       .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "status": "green" })))
       .mount(&server)
       .await;

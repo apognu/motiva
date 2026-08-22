@@ -57,11 +57,6 @@ impl ElasticsearchProvider {
 }
 
 #[derive(Deserialize)]
-struct EsHealth {
-  status: String,
-}
-
-#[derive(Deserialize)]
 struct EsErrorResponse {
   error: EsError,
 }
