@@ -37,7 +37,6 @@ Some liberty was taken to adapt some logic and algorithms from Yente, so do not 
 - [x] name-based
 - [x] name-qualified
 - [x] logic-v1 <sup>[1]</sup>
-- [ ] logic-v2
 
 <sup>[1]</sup>: Features that are disabled by default were omited for now.
 
@@ -49,31 +48,36 @@ Before v0.5.0, motiva is only compatible with data indexer with Yente v4.x. Star
 
 Motiva is configured via environment variables. The following variables are supported:
 
-| Variable                   | Description                                                                                                        | Default / Example         |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------- |
-| `ENV`                      | Environment (`dev` or `production`)                                                                                | `dev`                     |
-| `LISTEN_ADDR`              | Address to bind the API server                                                                                     | `0.0.0.0:8000`            |
-| `API_KEY`                  | Bearer token used to authenticate requests                                                                         | _(none)_                  |
-| `INDEX_URL`                | Elasticsearch URL                                                                                                  | `http://localhost:9200`   |
-| `INDEX_AUTH_METHOD`        | Elasticsearch authentication (`none`, `basic`, `bearer`, `api_key`, `encoded_api_key`, `aws-iam-*` <sup>[1]</sup>) | `none`                    |
-| `INDEX_CLIENT_ID`          | Elasticsearch client ID (required for `basic` or `api_key`)                                                        | _(none)_                  |
-| `INDEX_CLIENT_SECRET`      | Elasticsearch client secret (required for `basic`, `api_key` or `encoded_api_key`)                                 | _(none)_                  |
-| `INDEX_TLS_CA_CERT`        | Path to a PEM-encoded certificate chain to use for TLS validation                                                  | _(none)_                  |
-| `INDEX_TLS_SKIP_VERIFY`    | If `1`, do not validate the TLS certificate served by the Elasticsearch cluster                                    | `0`                       |
-| `INDEX_NAME`               | Index prefix under which data was indexed (suffixed by `-entities`)                                                | `yente`                   |
-| `MANIFEST_URL`             | Optional URL to a custom manifest JSON file                                                                        | _(none)_                  |
-| `CATALOG_REFRESH_INTERVAL` | Interval at which to pull the manifest and catalogs                                                                | _1h_                      |
-| `MATCH_CANDIDATES`         | Number of candidates to consider for matching                                                                      | `10`                      |
-| `WEIGHT_<FEATURE_NAME>`    | Custom weight for a given feature (e.g. `WEIGHT_PERSON_NAME_JARO_WINKLER`)                                         | _(none)_                  |
-| `ENRICHMENT_MAX_RECURSION` | Maximum recursion levels when enriching entities with relations                                                    | `2`                       |
-| `ENRICHMENT_QUERY_LIMIT`   | Maximum relation documents to fetch from Elasticsearch when building relation graphs                               | `200`                     |
-| `ENABLE_PROMETHEUS`        | Enable Prometheus metrics collection and /metrics endpoint                                                         | `0`                       |
-| `ENABLE_TRACING`           | Set to `1` to enable tracing                                                                                       | _(none)_                  |
-| `TRACING_EXPORTER`         | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)                                        | `otlp`                    |
-| `REQUEST_TIMEOUT`          | Maximum duration for a match request                                                                               | _10s_                     |
-| `SCOPED_INDEX_QUERY`       | Query used to scope down the index used for match queries                                                          | [see here](#scoped-index) |
+| Variable                   | Description                                                                                          | Default / Example         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------- |
+| `ENV`                      | Environment (`dev` or `production`)                                                                  | `dev`                     |
+| `LISTEN_ADDR`              | Address to bind the API server                                                                       | `0.0.0.0:8000`            |
+| `API_KEY`                  | Bearer token used to authenticate requests                                                           | _(none)_                  |
+| `INDEX_URL`                | Elasticsearch URL                                                                                    | `http://localhost:9200`   |
+| `INDEX_AUTH_METHOD`        | Index authentication (`none`, `basic`, `bearer`, `api_key`, `api_token`, `aws-iam-*` <sup>[1]</sup>) | `none`                    |
+| `INDEX_CLIENT_ID`          | Elasticsearch client ID (required for `basic` or `api_key`)                                          | _(none)_                  |
+| `INDEX_CLIENT_SECRET`      | Client secret (required for `basic`, `api_key`, `encoded_api_key` or `api_token`)                    | _(none)_                  |
+| `INDEX_TLS_CA_CERT`        | Path to a PEM-encoded certificate chain to use for TLS validation                                    | _(none)_                  |
+| `INDEX_TLS_SKIP_VERIFY`    | If `1`, do not validate the TLS certificate served by the Elasticsearch cluster                      | `0`                       |
+| `INDEX_NAME`               | Index prefix under which data was indexed (suffixed by `-entities`)                                  | `yente`                   |
+| `MANIFEST_URL`             | Optional URL to a custom manifest JSON file                                                          | _(none)_                  |
+| `CATALOG_REFRESH_INTERVAL` | Interval at which to pull the manifest and catalogs                                                  | _1h_                      |
+| `MATCH_CANDIDATES`         | Number of candidates to consider for matching                                                        | `10`                      |
+| `WEIGHT_<FEATURE_NAME>`    | Custom weight for a given feature (e.g. `WEIGHT_PERSON_NAME_JARO_WINKLER`)                           | _(none)_                  |
+| `ENRICHMENT_MAX_RECURSION` | Maximum recursion levels when enriching entities with relations                                      | `2`                       |
+| `ENRICHMENT_QUERY_LIMIT`   | Maximum relation documents to fetch from Elasticsearch when building relation graphs                 | `200`                     |
+| `ENABLE_PROMETHEUS`        | Enable Prometheus metrics collection and /metrics endpoint                                           | `0`                       |
+| `ENABLE_TRACING`           | Set to `1` to enable tracing                                                                         | _(none)_                  |
+| `TRACING_EXPORTER`         | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)                          | `otlp`                    |
+| `REQUEST_TIMEOUT`          | Maximum duration for a match request                                                                 | _10s_                     |
+| `SCOPED_INDEX_QUERY`       | Query used to scope down the index used for match queries                                            | [see here](#scoped-index) |
 
 <sup>[1]</sup>: See section [**OpenSearch AWS IAM authentication**](#opensearch-aws-iam-authentication).
+
+Note that `api_key` and `api_token` are two different schemes, despite both being sent under the `ApiKey` HTTP authorization scheme:
+
+- `api_key` (and `encoded_api_key`) is Elasticsearch's two-part credential, a client ID and a secret, transmitted as `ApiKey base64(id:secret)`. Set both `INDEX_CLIENT_ID` and `INDEX_CLIENT_SECRET` (or, for `encoded_api_key`, put the already-base64-encoded `id:secret` in `INDEX_CLIENT_SECRET` alone).
+- `api_token` is OpenSearch's own single opaque token, transmitted verbatim as `ApiKey <token>`. Put the whole token in `INDEX_CLIENT_SECRET` and leave `INDEX_CLIENT_ID` unset.
 
 Setting `MANIFEST_FILE` is required if you use a customized dataset list and would like your own manifest to be used for catalog generation. If omitted, the default manifest provided by Yente will be used. It requires either an HTTP URL or a local file path ending in `.json`, `.yml` or `.yaml`.
 

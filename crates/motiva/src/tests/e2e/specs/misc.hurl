@@ -14,9 +14,9 @@ HTTP 200
 
 [Asserts]
 jsonpath "$.algorithms" isCollection
-jsonpath "$.algorithms[*].name" includes "logic-v1"
-jsonpath "$.algorithms[*].name" includes "name-based"
-jsonpath "$.algorithms[*].name" includes "name-qualified"
+jsonpath "$.algorithms[*].name" contains "logic-v1"
+jsonpath "$.algorithms[*].name" contains "name-based"
+jsonpath "$.algorithms[*].name" contains "name-qualified"
 jsonpath "$.best" == "logic-v1"
 jsonpath "$.default" == "logic-v1"
 
