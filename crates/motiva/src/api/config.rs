@@ -113,6 +113,7 @@ impl FromStr for WrappedEsAuthMethod {
       "basic" if client_id.is_some() && client_secret.is_some() => EsAuthMethod::Basic(client_id.unwrap(), client_secret.unwrap()),
       "bearer" if client_secret.is_some() => EsAuthMethod::Bearer(client_secret.unwrap()),
       "api_key" if client_id.is_some() && client_secret.is_some() => EsAuthMethod::ApiKey(client_id.unwrap(), client_secret.unwrap()),
+      "api_token" if client_secret.is_some() => EsAuthMethod::ApiToken(client_secret.unwrap()),
 
       "encoded_api_key" if client_secret.is_some() => {
         let (client_id, client_secret) = encoded_api_key(&client_secret.unwrap())?;
@@ -125,7 +126,7 @@ impl FromStr for WrappedEsAuthMethod {
       #[cfg(feature = "aws")]
       "aws-iam-serverless" => EsAuthMethod::AwsIam(AwsService::Serverless),
 
-      "basic" | "bearer" | "api_key" | "encoded_api_key" => Err(AppError::ConfigError("chosen index authentication method is missing a credential setting".into()))?,
+      "basic" | "bearer" | "api_key" | "encoded_api_key" | "api_token" => Err(AppError::ConfigError("chosen index authentication method is missing a credential setting".into()))?,
 
       _ => Err(AppError::ConfigError("invalid elasticsearch authentication method".into()))?,
     }))
@@ -336,6 +337,7 @@ mod tests {
       assert!(matches!("basic".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::Basic(_, _)))));
       assert!(matches!("bearer".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::Bearer(_)))));
       assert!(matches!("api_key".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::ApiKey(_, _)))));
+      assert!(matches!("api_token".parse::<WrappedEsAuthMethod>(), Ok(WrappedEsAuthMethod(EsAuthMethod::ApiToken(_)))));
 
       assert!("other".parse::<WrappedEsAuthMethod>().is_err());
     });
@@ -393,6 +395,7 @@ mod tests {
     temp_env::with_vars_unset(["INDEX_CLIENT_ID", "INDEX_CLIENT_SECRET"], || {
       assert!("bearer".parse::<WrappedEsAuthMethod>().is_err());
       assert!("encoded_api_key".parse::<WrappedEsAuthMethod>().is_err());
+      assert!("api_token".parse::<WrappedEsAuthMethod>().is_err());
     });
   }
 

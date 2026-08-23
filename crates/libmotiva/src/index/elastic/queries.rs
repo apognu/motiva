@@ -4,7 +4,6 @@ use std::{
 };
 
 use ahash::RandomState;
-use anyhow::Context;
 use itertools::Itertools;
 use metrics::{counter, histogram};
 use opensearch::{
@@ -38,7 +37,11 @@ impl IndexProvider for ElasticsearchProvider {
   fn after_init(&self) {
     let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
 
-    tracing::info!(version = ?state.index_version, scoped_index = ?state.scoped_index, main_index = self.main_index, ready = state.ready, "detected yente version and index name");
+    if state.ready {
+      tracing::info!(version = ?state.index_version, scoped_index = ?state.scoped_index, main_index = self.main_index, "detected yente version and index name");
+    } else {
+      tracing::warn!(main_index = self.main_index, "index not ready at startup, deferring version detection and catalog initialization");
+    }
   }
 
   fn index_version(&self) -> IndexVersion {
@@ -64,12 +67,17 @@ impl IndexProvider for ElasticsearchProvider {
       .exists(IndicesExistsParts::Index(&[&self.main_index]))
       .send()
       .await
-      .context("could not get cluster health")
+      .inspect_err(|err| tracing::warn!(error = %err, index = self.main_index, "could not reach index to check its health"))
     else {
       return Ok(false);
     };
 
-    Ok(health.status_code() == StatusCode::OK)
+    if health.status_code() != StatusCode::OK {
+      tracing::warn!(status = %health.status_code(), index = self.main_index, "index health check returned an unexpected status code");
+      return Ok(false);
+    }
+
+    Ok(true)
   }
 
   /// Search for candidate entities matching input parameters.

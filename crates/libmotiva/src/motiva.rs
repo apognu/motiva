@@ -96,6 +96,10 @@ pub struct Motiva<P: IndexProvider, F: CatalogFetcher = HttpCatalogFetcher> {
 /// aborting startup. The background refresh loop recovers it once the index and
 /// upstream become available.
 async fn init_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F, provider: &P, outdated_grace: Span) -> Catalog {
+  if !provider.ready() {
+    return Catalog::default();
+  }
+
   match get_merged_catalog(fetcher, provider, outdated_grace).await {
     Ok(catalog) => catalog,
 
@@ -204,7 +208,13 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
   /// Meant to be called periodically from a background task so the index can
   /// recover once it becomes available.
   pub async fn refresh(&self) {
+    let was_ready = self.index.ready();
+
     self.index.refresh().await;
+
+    if !was_ready && self.index.ready() {
+      self.refresh_catalog().await;
+    }
   }
 
   /// Get the detected index version.
@@ -360,5 +370,101 @@ mod tests {
     let motiva = Motiva::test(index).build().await.unwrap();
 
     assert!(motiva.get_catalog(false).await.unwrap().datasets.is_empty());
+  }
+
+  #[tokio::test]
+  async fn refresh_synchronously_rebuilds_catalog_on_recovery() {
+    use std::sync::{Arc, RwLock};
+
+    use opensearch::{
+      OpenSearch,
+      http::{
+        Url,
+        transport::{SingleNodeConnectionPool, TransportBuilder},
+      },
+    };
+    use serde_json::json;
+    use wiremock::{
+      Mock, MockServer, ResponseTemplate,
+      matchers::{method, path},
+    };
+
+    use crate::{
+      ElasticsearchProvider,
+      index::elastic::{IndexState, config::IndexVersion},
+    };
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("HEAD")).and(path("/yente-entities")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+
+    Mock::given(method("GET"))
+      .and(path("/yente-entities/_mapping"))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+          "yente-entities": { "mappings": { "_source": { "excludes": ["name_keys"] } } }
+      })))
+      .mount(&server)
+      .await;
+
+    Mock::given(method("GET"))
+      .and(path("/_alias/yente-entities"))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+      .mount(&server)
+      .await;
+
+    let url = Url::parse(&server.uri()).unwrap();
+    let transport = TransportBuilder::new(SingleNodeConnectionPool::new(url)).build().unwrap();
+
+    let provider = ElasticsearchProvider {
+      es: OpenSearch::new(transport),
+      index_prefix: "yente".to_string(),
+      main_index: "yente-entities".to_string(),
+      state: Arc::new(RwLock::new(IndexState {
+        ready: false,
+        index_version: IndexVersion::V4,
+        scoped_index: None,
+      })),
+    };
+
+    let mut catalogs = HashMap::default();
+    catalogs.insert(
+      "dummyurl".to_string(),
+      Catalog {
+        datasets: vec![CatalogDataset {
+          name: "dataset1".to_string(),
+          ..Default::default()
+        }],
+        ..Default::default()
+      },
+    );
+
+    let fetcher = TestFetcher {
+      manifest: Manifest {
+        catalogs: vec![ManifestCatalog {
+          url: "dummyurl".to_string(),
+          ..Default::default()
+        }],
+        ..Default::default()
+      },
+      catalogs,
+    };
+
+    // The provider starts not-ready, so the initial synchronous catalog build
+    // at construction time is skipped, without ever hitting the mock server.
+    let motiva = Motiva::custom(provider).fetcher(fetcher).build().await.unwrap();
+
+    assert!(!motiva.ready());
+    assert!(motiva.get_catalog(false).await.is_err());
+
+    // A single refresh() call both detects recovery and, in the same call,
+    // synchronously rebuilds the catalog -- no separate refresh_catalog() needed.
+    motiva.refresh().await;
+
+    assert!(motiva.ready());
+
+    let catalog = motiva.get_catalog(false).await.unwrap();
+
+    assert_eq!(catalog.datasets.len(), 1);
+    assert!(catalog.datasets.iter().any(|ds| ds.name == "dataset1"));
   }
 }

@@ -51,19 +51,24 @@ pub(crate) struct MappingIndexSource {
 
 impl ElasticsearchProvider {
   pub(crate) async fn refresh_index_state(&self) {
-    let (ready, version, scoped_index) = match self.detect_index_version().await {
-      Ok(version) => {
-        let healthy = self.health().await.unwrap_or(false);
-        let scoped_index = if healthy { self.detect_scoped_index().await } else { None };
+    let (ready, version, scoped_index) = if self.health().await.unwrap_or(false) {
+      match self.detect_index_version().await {
+        Ok(version) => {
+          let scoped_index = self.detect_scoped_index().await;
 
-        (healthy, version, scoped_index)
+          (true, version, scoped_index)
+        }
+
+        Err(err) => {
+          tracing::warn!(error = err.to_string(), index = self.main_index, "index is not ready");
+
+          (false, self.index_version(), None)
+        }
       }
+    } else {
+      tracing::warn!(index = self.main_index, "index is not healthy");
 
-      Err(err) => {
-        tracing::warn!(error = err.to_string(), index = self.main_index, "index is not ready");
-
-        (false, self.index_version(), None)
-      }
+      (false, self.index_version(), None)
     };
 
     {
@@ -82,13 +87,24 @@ impl ElasticsearchProvider {
   }
 
   pub(crate) async fn detect_index_version(&self) -> Result<IndexVersion, MotivaError> {
-    let mappings = self.es.indices().get_mapping(IndicesGetMappingParts::Index(&[&self.main_index])).send().await?;
+    let mappings = self
+      .es
+      .indices()
+      .get_mapping(IndicesGetMappingParts::Index(&[&self.main_index]))
+      .send()
+      .await
+      .inspect_err(|err| tracing::warn!(error = %err, index = self.main_index, "could not fetch index mapping"))?;
 
     if mappings.status_code() != StatusCode::OK {
+      tracing::warn!(status = %mappings.status_code(), index = self.main_index, "index mapping request returned an unexpected status code");
+
       Err(MotivaError::MissingIndex(self.main_index.to_string()))?
     }
 
-    let mappings: HashMap<String, MappingIndex> = mappings.json().await?;
+    let mappings: HashMap<String, MappingIndex> = mappings
+      .json()
+      .await
+      .inspect_err(|err| tracing::warn!(error = %err, index = self.main_index, "could not parse index mapping response"))?;
 
     for (_, index) in mappings {
       if index.mappings.source.excludes.contains(&"name_symbols".to_string()) {
@@ -100,6 +116,8 @@ impl ElasticsearchProvider {
         return Ok(IndexVersion::V4);
       }
     }
+
+    tracing::warn!(index = self.main_index, "index has an unrecognized mapping");
 
     Err(MotivaError::OtherError(anyhow::anyhow!("index {} has an unrecognized mapping", self.main_index)))
   }
@@ -257,14 +275,8 @@ mod tests {
   async fn refresh_index_state_not_ready() {
     let server = MockServer::start().await;
 
-    // Missing index: the mapping probe returns 404, so we never reach the health
-    // check and the provider stays not-ready.
-    Mock::given(method("GET"))
-      .and(path("/yente-entities/_mapping"))
-      .respond_with(ResponseTemplate::new(404))
-      .mount(&server)
-      .await;
-
+    // Missing index: the health check (HEAD) has no matching mock, so wiremock
+    // returns 404, health() reports unhealthy, and we never reach mapping detection.
     let provider = provider(&server);
     provider.refresh_index_state().await;
 

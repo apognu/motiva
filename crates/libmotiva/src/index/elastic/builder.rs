@@ -11,6 +11,7 @@ use opensearch::http::transport::{SingleNodeConnectionPool, TransportBuilder};
 use opensearch::indices::IndicesGetAliasParts;
 use opensearch::{OpenSearch, auth::Credentials};
 use reqwest::StatusCode;
+use reqwest::header::{AUTHORIZATION, HeaderValue};
 
 impl ElasticsearchProvider {
   pub async fn new<'o>(url: &str, options: EsOptions<'o>) -> Result<ElasticsearchProvider, MotivaError> {
@@ -28,6 +29,7 @@ impl ElasticsearchProvider {
         EsAuthMethod::Basic(username, password) => transport.auth(Credentials::Basic(username, password)),
         EsAuthMethod::Bearer(token) => transport.auth(Credentials::Bearer(token)),
         EsAuthMethod::ApiKey(client_id, client_secret) => transport.auth(Credentials::ApiKey(client_id, client_secret)),
+        EsAuthMethod::ApiToken(token) => transport.header(AUTHORIZATION, HeaderValue::from_str(&format!("ApiKey {token}")).context("invalid index API token")?),
 
         #[cfg(feature = "aws")]
         EsAuthMethod::AwsIam(service) => {
@@ -77,6 +79,7 @@ impl ElasticsearchProvider {
       .get_alias(IndicesGetAliasParts::Index(&[&self.scoped_alias_name()]))
       .send()
       .await
+      .inspect_err(|err| tracing::warn!(error = %err, index = self.scoped_alias_name(), "could not check for scoped index alias"))
       .map(|resp| resp.status_code())
       .unwrap_or(StatusCode::NOT_FOUND);
 
@@ -98,8 +101,10 @@ pub enum EsAuthMethod {
   Basic(String, String),
   /// Bearer token
   Bearer(String),
-  /// API key (client ID and API key)
+  /// Elasticsearch API key (client ID and API key)
   ApiKey(String, String),
+  /// A single opaque OpenSearch API token.
+  ApiToken(String),
 
   #[cfg(feature = "aws")]
   /// AWS IAM
@@ -145,6 +150,55 @@ mod tests {
     prelude::{ElasticsearchProvider, EsAuthMethod},
   };
   use opensearch::OpenSearch;
+
+  async fn captured_authorization(auth: EsAuthMethod) -> String {
+    use serde_json::json;
+    use wiremock::{
+      Mock, MockServer, ResponseTemplate,
+      matchers::{method, path},
+    };
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("HEAD")).and(path("/yente-entities")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+
+    Mock::given(method("GET"))
+      .and(path("/yente-entities/_mapping"))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+          "yente-entities": { "mappings": { "_source": { "excludes": ["name_keys"] } } }
+      })))
+      .mount(&server)
+      .await;
+
+    ElasticsearchProvider::new(&server.uri(), EsOptions { auth, ..Default::default() }).await.unwrap();
+
+    let request = server.received_requests().await.unwrap().into_iter().next().expect("no request reached the mock server");
+
+    request.headers.get("authorization").expect("no authorization header was sent").to_str().unwrap().to_string()
+  }
+
+  #[tokio::test]
+  async fn basic() {
+    assert_eq!(
+      captured_authorization(EsAuthMethod::Basic("username".to_string(), "password".to_string())).await,
+      "Basic dXNlcm5hbWU6cGFzc3dvcmQ="
+    );
+  }
+
+  #[tokio::test]
+  async fn bearer() {
+    assert_eq!(captured_authorization(EsAuthMethod::Bearer("key".to_string())).await, "Bearer key");
+  }
+
+  #[tokio::test]
+  async fn api_key() {
+    assert_eq!(captured_authorization(EsAuthMethod::ApiKey("id".to_string(), "key".to_string())).await, "ApiKey aWQ6a2V5");
+  }
+
+  #[tokio::test]
+  async fn api_token() {
+    assert_eq!(captured_authorization(EsAuthMethod::ApiToken("os_test_token".to_string())).await, "ApiKey os_test_token");
+  }
 
   #[tokio::test]
   async fn es_builder() {
@@ -302,6 +356,8 @@ mod tests {
     async fn request(service: AwsService) -> (String, Request) {
       let server = MockServer::start().await;
 
+      Mock::given(method("HEAD")).and(path("/yente-entities")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+
       Mock::given(method("GET"))
         .and(path("/yente-entities/_mapping"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -401,13 +457,13 @@ mod tests {
 
     #[tokio::test]
     #[serial_test::serial]
-    async fn signs_requests_for_managed_service() {
+    async fn aws_sigv4_opensearch_service() {
       temp_env::async_with_vars(AWS_ENV, assert_request_is_signed(AwsService::Service, "es")).await;
     }
 
     #[tokio::test]
     #[serial_test::serial]
-    async fn signs_requests_for_serverless() {
+    async fn aws_sigv4_opensearch_serverless() {
       temp_env::async_with_vars(AWS_ENV, assert_request_is_signed(AwsService::Serverless, "aoss")).await;
     }
   }
