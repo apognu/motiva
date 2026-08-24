@@ -54,7 +54,7 @@ Motiva is configured via environment variables. The following variables are supp
 | `LISTEN_ADDR`              | Address to bind the API server                                                                       | `0.0.0.0:8000`            |
 | `API_KEY`                  | Bearer token used to authenticate requests                                                           | _(none)_                  |
 | `INDEX_URL`                | Elasticsearch URL                                                                                    | `http://localhost:9200`   |
-| `INDEX_AUTH_METHOD`        | Index authentication (`none`, `basic`, `bearer`, `api_key`, `api_token`, `aws-iam-*` <sup>[1]</sup>) | `none`                    |
+| `INDEX_AUTH_METHOD`        | Index authentication (`none`, `basic`, `bearer`, `api_key`, `api_token`, `aws_iam_*` <sup>[1]</sup>) | `none`                    |
 | `INDEX_CLIENT_ID`          | Elasticsearch client ID (required for `basic` or `api_key`)                                          | _(none)_                  |
 | `INDEX_CLIENT_SECRET`      | Client secret (required for `basic`, `api_key`, `encoded_api_key` or `api_token`)                    | _(none)_                  |
 | `INDEX_TLS_CA_CERT`        | Path to a PEM-encoded certificate chain to use for TLS validation                                    | _(none)_                  |
@@ -72,7 +72,7 @@ Motiva is configured via environment variables. The following variables are supp
 | `REQUEST_TIMEOUT`          | Maximum duration for a match request                                                                 | _10s_                     |
 | `SCOPED_INDEX_QUERY`       | Query used to scope down the index used for match queries                                            | [see here](#scoped-index) |
 
-<sup>[1]</sup>: See section [**OpenSearch AWS IAM authentication**](#opensearch-aws-iam-authentication).
+<sup>[1]</sup>: Only available with the `aws` feature. See section [**OpenSearch AWS IAM authentication**](#opensearch-aws-iam-authentication).
 
 Note that `api_key` and `api_token` are two different schemes, despite both being sent under the `ApiKey` HTTP authorization scheme:
 
@@ -202,7 +202,7 @@ Once your scoped index is created, you can perform a `/match` request with the M
 
 ## OpenSearch AWS IAM authentication
 
-If running with the `aws` feature, authenticating to both versions of AWS's managed OpenSearch is possible by using `INDEX_AUTH_METHOD=aws-iam-service` for OpenSearch Service and `INDEX_AUTH_METHOD=aws-iam-serverless` for OpenSearch Serverless.
+If running with the `aws` feature, authenticating to both versions of AWS's managed OpenSearch is possible by using `INDEX_AUTH_METHOD=aws_iam_service` for OpenSearch Service and `INDEX_AUTH_METHOD=aws_iam_serverless` for OpenSearch Serverless.
 
 When used, the usual credential providers will be used (environment variables, profile, web identity, ECS container, IMDSv2), in order, to load credentials used to sign requests to the OpenSearch cluster.
 

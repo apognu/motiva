@@ -164,6 +164,8 @@ mod tests {
         index_version: IndexVersion::V4,
         scoped_index: None,
       })),
+      #[cfg(feature = "aws")]
+      serverless: false,
     }
   }
 
@@ -224,8 +226,8 @@ mod tests {
       .mount(&server)
       .await;
 
-    Mock::given(method("HEAD"))
-      .and(path("/yente-entities"))
+    Mock::given(method("GET"))
+      .and(path("/_cluster/health/yente-entities"))
       .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "status": "yellow" })))
       .mount(&server)
       .await;
@@ -251,8 +253,8 @@ mod tests {
       .mount(&server)
       .await;
 
-    Mock::given(method("HEAD"))
-      .and(path("/yente-entities"))
+    Mock::given(method("GET"))
+      .and(path("/_cluster/health/yente-entities"))
       .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "status": "green" })))
       .mount(&server)
       .await;
@@ -273,14 +275,65 @@ mod tests {
 
   #[tokio::test]
   async fn refresh_index_state_not_ready() {
+    // Missing index (empty mock).
     let server = MockServer::start().await;
-
-    // Missing index: the health check (HEAD) has no matching mock, so wiremock
-    // returns 404, health() reports unhealthy, and we never reach mapping detection.
     let provider = provider(&server);
+
     provider.refresh_index_state().await;
 
     assert!(!provider.ready());
     assert_eq!(provider.state.read().unwrap().scoped_index, None);
+  }
+
+  #[tokio::test]
+  async fn refresh_index_state_red_index() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+      .and(path("/yente-entities/_mapping"))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+          "yente-entities": { "mappings": { "_source": { "excludes": ["name_keys"] } } }
+      })))
+      .mount(&server)
+      .await;
+
+    Mock::given(method("HEAD")).and(path("/yente-entities")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+
+    Mock::given(method("GET"))
+      .and(path("/_cluster/health/yente-entities"))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "status": "red" })))
+      .mount(&server)
+      .await;
+
+    let provider = provider(&server);
+    provider.refresh_index_state().await;
+
+    assert!(!provider.ready());
+  }
+
+  #[cfg(feature = "aws")]
+  #[tokio::test]
+  async fn refresh_index_state_serverless_uses_index_exists() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+      .and(path("/yente-entities/_mapping"))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+          "yente-entities": { "mappings": { "_source": { "excludes": ["name_keys"] } } }
+      })))
+      .mount(&server)
+      .await;
+
+    Mock::given(method("HEAD")).and(path("/yente-entities")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+
+    let provider = ElasticsearchProvider {
+      serverless: true,
+      ..provider(&server)
+    };
+
+    provider.refresh_index_state().await;
+
+    assert!(provider.ready());
+    assert_eq!(provider.index_version(), IndexVersion::V4);
   }
 }

@@ -45,17 +45,20 @@ pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: Config, fetcher
 
     async move {
       while !motiva.ready() {
-        motiva.refresh().await;
-
-        if motiva.ready() {
-          break;
-        }
-
         tokio::time::sleep(readiness_interval).await;
+
+        motiva.refresh().await;
       }
 
+      let mut due = !motiva.has_catalog().await;
+
       loop {
-        motiva.refresh_catalog().await;
+        if due {
+          motiva.refresh_catalog().await;
+        }
+
+        due = true;
+
         tokio::time::sleep(refresh_interval).await;
       }
     }
