@@ -13,8 +13,14 @@ use opensearch::{OpenSearch, auth::Credentials};
 use reqwest::StatusCode;
 use reqwest::header::{AUTHORIZATION, HeaderValue};
 
+#[cfg(feature = "aws")]
+const DEFAULT_AWS_REGION: &str = "us-east-1";
+
 impl ElasticsearchProvider {
   pub async fn new<'o>(url: &str, options: EsOptions<'o>) -> Result<ElasticsearchProvider, MotivaError> {
+    #[cfg(feature = "aws")]
+    let serverless = matches!(options.auth, EsAuthMethod::AwsIam(AwsService::Serverless));
+
     let es = {
       let parsed_url = Url::parse(url).context("invalid index URL")?;
       let transport_builder = TransportBuilder::new(SingleNodeConnectionPool::new(parsed_url));
@@ -33,9 +39,21 @@ impl ElasticsearchProvider {
 
         #[cfg(feature = "aws")]
         EsAuthMethod::AwsIam(service) => {
-          use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
+          use aws_config::{BehaviorVersion, Region, meta::region::RegionProviderChain};
 
-          let region = RegionProviderChain::default_provider().or_else("us-east-1");
+          let region = match RegionProviderChain::default_provider().region().await {
+            Some(region) => region,
+
+            None => {
+              tracing::warn!(
+                region = DEFAULT_AWS_REGION,
+                "could not detect an AWS region, falling back to a default, set AWS_REGION if your cluster lives elsewhere"
+              );
+
+              Region::new(DEFAULT_AWS_REGION)
+            }
+          };
+
           let iam = aws_config::defaults(BehaviorVersion::latest()).region(region).load().await;
           let transport = transport.auth(iam.try_into()?);
 
@@ -64,6 +82,8 @@ impl ElasticsearchProvider {
         index_version: IndexVersion::V4,
         scoped_index: None,
       })),
+      #[cfg(feature = "aws")]
+      serverless,
     };
 
     let _ = tokio::time::timeout(Duration::from_secs(5), provider.refresh_index_state()).await;
@@ -160,7 +180,11 @@ mod tests {
 
     let server = MockServer::start().await;
 
-    Mock::given(method("HEAD")).and(path("/yente-entities")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+    Mock::given(method("GET"))
+      .and(path("/_cluster/health/yente-entities"))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "status": "green" })))
+      .mount(&server)
+      .await;
 
     Mock::given(method("GET"))
       .and(path("/yente-entities/_mapping"))
@@ -296,6 +320,8 @@ mod tests {
         index_version: IndexVersion::V4,
         scoped_index: None,
       })),
+      #[cfg(feature = "aws")]
+      serverless: false,
     }
   }
 
@@ -357,6 +383,12 @@ mod tests {
       let server = MockServer::start().await;
 
       Mock::given(method("HEAD")).and(path("/yente-entities")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+
+      Mock::given(method("GET"))
+        .and(path("/_cluster/health/yente-entities"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "status": "green" })))
+        .mount(&server)
+        .await;
 
       Mock::given(method("GET"))
         .and(path("/yente-entities/_mapping"))

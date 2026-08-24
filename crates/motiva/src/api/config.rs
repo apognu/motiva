@@ -122,9 +122,9 @@ impl FromStr for WrappedEsAuthMethod {
       }
 
       #[cfg(feature = "aws")]
-      "aws-iam-service" => EsAuthMethod::AwsIam(AwsService::Service),
+      "aws_iam_service" => EsAuthMethod::AwsIam(AwsService::Service),
       #[cfg(feature = "aws")]
-      "aws-iam-serverless" => EsAuthMethod::AwsIam(AwsService::Serverless),
+      "aws_iam_serverless" => EsAuthMethod::AwsIam(AwsService::Serverless),
 
       "basic" | "bearer" | "api_key" | "encoded_api_key" | "api_token" => Err(AppError::ConfigError("chosen index authentication method is missing a credential setting".into()))?,
 
@@ -301,7 +301,7 @@ mod tests {
   async fn aws_iam() {
     use libmotiva::AwsService;
 
-    for (value, expected) in [("aws-iam-serverless", AwsService::Serverless), ("aws-iam-service", AwsService::Service)] {
+    for (value, expected) in [("aws_iam_serverless", AwsService::Serverless), ("aws_iam_service", AwsService::Service)] {
       temp_env::async_with_vars([("INDEX_AUTH_METHOD", Some(value))], async {
         let config = Config::from_env().await.unwrap();
 

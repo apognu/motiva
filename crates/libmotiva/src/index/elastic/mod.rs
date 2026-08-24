@@ -39,6 +39,8 @@ pub struct ElasticsearchProvider {
   pub(crate) index_prefix: String,
   pub(crate) main_index: String,
   pub(crate) state: Arc<RwLock<IndexState>>,
+  #[cfg(feature = "aws")]
+  pub(crate) serverless: bool,
 }
 
 impl ElasticsearchProvider {
@@ -54,6 +56,11 @@ impl ElasticsearchProvider {
       None => Cow::Borrowed(&self.main_index),
     }
   }
+}
+
+#[derive(Deserialize)]
+struct EsHealth {
+  status: String,
 }
 
 #[derive(Deserialize)]
@@ -219,6 +226,8 @@ mod tests {
         index_version: IndexVersion::V5,
         scoped_index: None,
       })),
+      #[cfg(feature = "aws")]
+      serverless: false,
     };
 
     assert_eq!(p.index_name(IndexType::Main), "myprefix-entities");

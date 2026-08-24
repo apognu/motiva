@@ -6,11 +6,7 @@ use std::{
 use ahash::RandomState;
 use itertools::Itertools;
 use metrics::{counter, histogram};
-use opensearch::{
-  SearchParts,
-  indices::{IndicesExistsParts, IndicesGetAliasParts},
-  params::SearchType,
-};
+use opensearch::{SearchParts, cluster::ClusterHealthParts, indices::IndicesGetAliasParts, params::SearchType};
 use opentelemetry::global;
 use reqwest::StatusCode;
 
@@ -24,7 +20,7 @@ use crate::{
   error::MotivaError,
   index::{
     EntityHandle, IndexProvider,
-    elastic::{EsEntity, EsErrorResponse, EsResponse, config::IndexVersion},
+    elastic::{EsEntity, EsErrorResponse, EsHealth, EsResponse, config::IndexVersion},
   },
   matching::{MatchParams, extractors},
   model::{Entity, ResolveSchemaLevel, SearchEntity},
@@ -61,23 +57,47 @@ impl IndexProvider for ElasticsearchProvider {
   /// The cluster will only be considered healthy if the index is `green` or `yellow`.
   #[instrument(skip_all)]
   async fn health(&self) -> Result<bool, MotivaError> {
+    #[cfg(feature = "aws")]
+    // OpenSearch Serverless does not expose the cluster health API, so collections
+    // fall back to probing the index's existence. That probe only reads cluster
+    // metadata, so a degraded index cannot be detected there.
+    if self.serverless {
+      return self.index_exists().await;
+    }
+
     let Ok(health) = self
       .es
-      .indices()
-      .exists(IndicesExistsParts::Index(&[&self.main_index]))
+      .cluster()
+      .health(ClusterHealthParts::Index(&[&self.main_index]))
       .send()
       .await
-      .inspect_err(|err| tracing::warn!(error = %err, index = self.main_index, "could not reach index to check its health"))
+      .inspect_err(|err| tracing::warn!(error = %err, index = self.main_index, "could not reach cluster to check index health"))
     else {
       return Ok(false);
     };
 
     if health.status_code() != StatusCode::OK {
-      tracing::warn!(status = %health.status_code(), index = self.main_index, "index health check returned an unexpected status code");
+      tracing::warn!(status = %health.status_code(), index = self.main_index, "cluster health request returned an unexpected status code");
       return Ok(false);
     }
 
-    Ok(true)
+    let Ok(health): Result<EsHealth, _> = health
+      .json()
+      .await
+      .inspect_err(|err| tracing::warn!(error = %err, index = self.main_index, "could not parse cluster health response"))
+    else {
+      return Ok(false);
+    };
+
+    match health.status.as_str() {
+      "green" | "yellow" => Ok(true),
+
+      status => {
+        tracing::warn!(status, index = self.main_index, "index is not in a healthy state");
+
+        Ok(false)
+      }
+    }
   }
 
   /// Search for candidate entities matching input parameters.
@@ -292,6 +312,32 @@ impl IndexProvider for ElasticsearchProvider {
         .map(|(field, values)| (field, values.buckets.iter().map(|bucket| bucket.key.to_string()).collect()))
         .collect(),
     )
+  }
+}
+
+impl ElasticsearchProvider {
+  #[cfg(feature = "aws")]
+  async fn index_exists(&self) -> Result<bool, MotivaError> {
+    use opensearch::indices::IndicesExistsParts;
+
+    let Ok(exists) = self
+      .es
+      .indices()
+      .exists(IndicesExistsParts::Index(&[&self.main_index]))
+      .send()
+      .await
+      .inspect_err(|err| tracing::warn!(error = %err, index = self.main_index, "could not reach index to check its health"))
+    else {
+      return Ok(false);
+    };
+
+    if exists.status_code() != StatusCode::OK {
+      tracing::warn!(status = %exists.status_code(), index = self.main_index, "index health check returned an unexpected status code");
+
+      return Ok(false);
+    }
+
+    Ok(true)
   }
 }
 
@@ -970,6 +1016,8 @@ mod tests {
         index_version: IndexVersion::V4,
         scoped_index: None,
       })),
+      #[cfg(feature = "aws")]
+      serverless: false,
     };
 
     let catalog = fake_catalog();

@@ -279,6 +279,11 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
     }
   }
 
+  /// Whether the locally cached catalog holds any dataset.
+  pub async fn has_catalog(&self) -> bool {
+    !self.catalog.read().await.datasets.is_empty()
+  }
+
   /// Return the merged catalog.
   ///
   /// By default, returns the cached merged dataset from the latest pull.
@@ -396,7 +401,11 @@ mod tests {
 
     let server = MockServer::start().await;
 
-    Mock::given(method("HEAD")).and(path("/yente-entities")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+    Mock::given(method("GET"))
+      .and(path("/_cluster/health/yente-entities"))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "status": "green" })))
+      .mount(&server)
+      .await;
 
     Mock::given(method("GET"))
       .and(path("/yente-entities/_mapping"))
@@ -424,6 +433,8 @@ mod tests {
         index_version: IndexVersion::V4,
         scoped_index: None,
       })),
+      #[cfg(feature = "aws")]
+      serverless: false,
     };
 
     let mut catalogs = HashMap::default();
