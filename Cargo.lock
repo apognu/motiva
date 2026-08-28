@@ -1855,15 +1855,15 @@ dependencies = [
 
 [[package]]
 name = "gcloud-sdk"
-version = "0.30.2"
+version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6199c9b08260f184baff83a5a61efc5533e69624ac5d49a76ef5f6afe0962347"
+checksum = "ae0e5ee4726919531561eadf5b9c560e1f3f7dcb4f6ea05996681d2fb6b7e2c5"
 dependencies = [
  "async-trait",
  "bytes",
- "chrono",
  "futures",
  "hyper",
+ "jiff",
  "jsonwebtoken",
  "once_cell",
  "prost",
@@ -2696,9 +2696,9 @@ dependencies = [
 
 [[package]]
 name = "jsonwebtoken"
-version = "10.4.0"
+version = "11.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eba32bfb4ffdeaca3e34431072faf01745c9b26d25504aa7a6cf5684334fc4fc"
+checksum = "881733cbc631fc9e472e24447ce32a64bedf2da498d6d8570b08edc87de71f65"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.2.17",
@@ -3409,9 +3409,9 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry-gcloud-trace"
-version = "0.24.0"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6ee135707a930dfed414518c414f814f41340aaaa5616e0bb9cff0ab648bda4"
+checksum = "531d19fb2ddfdda975a28a8a39e86319bbbd823af76f13a21d1b724923b51ea3"
 dependencies = [
  "async-trait",
  "futures",
