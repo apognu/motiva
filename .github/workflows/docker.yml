@@ -6,6 +6,9 @@ on:
       tag:
         type: string
         required: true
+      push:
+        type: boolean
+        required: true
 
 permissions:
   contents: read
@@ -83,13 +86,14 @@ jobs:
             ghcr.io/apognu/motiva:${{ inputs.tag }}${{ matrix.combination.suffix }}
           build-args: |
             ${{ matrix.combination.features != '' && format('CARGO_ARGS=--features {0}', matrix.combination.features) || '' }}
-          push: true
+          push: ${{ inputs.push }}
           provenance: mode=max
-          cache-from: type=gha,scope=features${{ matrix.combination.suffix}}
-          cache-to: type=gha,mode=max,scope=features${{ matrix.combination.suffix }}
+          cache-from: type=registry,ref=ghcr.io/apognu/motiva:buildcache${{ matrix.combination.suffix }}
+          cache-to: type=registry,ref=ghcr.io/apognu/motiva:buildcache${{ matrix.combination.suffix }},mode=max
 
       - name: Attest GHCR
         uses: actions/attest@v4
+        if: ${{ inputs.push }}
         with:
           subject-name: ghcr.io/apognu/motiva
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -98,6 +102,7 @@ jobs:
 
       - name: Attest GH
         uses: actions/attest@v4
+        if: ${{ inputs.push }}
         with:
           subject-name: docker.io/apognu/motiva
           subject-digest: ${{ steps.build.outputs.digest }}
