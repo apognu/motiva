@@ -6,11 +6,11 @@ HTTP 200
 
 [Asserts]
 jsonpath "$.id" == "Q7747"
-jsonpath "$.properties.ownershipOwner" count > 0
+jsonpath "$.properties.sanctions" count > 0
 
 # Request with a referent ID
 
-GET http://{{baseUrl}}/entities/ua-ws-person-880
+GET http://{{baseUrl}}/entities/eu-fsf-eu-7510-16
 
 HTTP 308
 
@@ -25,7 +25,7 @@ HTTP 200
 
 [Asserts]
 jsonpath "$.id" == "Q7747"
-jsonpath "$.properties.ownershipOwner" not exists
+jsonpath "$.properties.sanctions" not exists
 
 # Non-existent entity
 

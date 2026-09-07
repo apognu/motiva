@@ -37,4 +37,4 @@ HTTP 200
 
 [Asserts]
 jsonpath "$.datasets" count > 0
-jsonpath "$.datasets[*].name" contains "us_sanctions"
+jsonpath "$.datasets[*].name" contains "eu_fsf"

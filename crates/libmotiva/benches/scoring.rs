@@ -10,8 +10,7 @@ fn name_based(c: &mut Criterion) {
   let motiva = rt.block_on(async { Motiva::new(MockedElasticsearch::default()).build().await.unwrap() });
 
   let lhs = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
-  let rhs = std::iter::repeat(vec![Entity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build()])
-    .take(10)
+  let rhs = std::iter::repeat_n(vec![Entity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build()], 10)
     .flatten()
     .collect::<Vec<_>>();
 
@@ -23,8 +22,7 @@ fn name_qualified(c: &mut Criterion) {
   let motiva = rt.block_on(async { Motiva::new(MockedElasticsearch::default()).build().await.unwrap() });
 
   let lhs = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
-  let rhs = std::iter::repeat(vec![Entity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build()])
-    .take(10)
+  let rhs = std::iter::repeat_n(vec![Entity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build()], 10)
     .flatten()
     .collect::<Vec<_>>();
 
@@ -36,8 +34,7 @@ fn logic_v1(c: &mut Criterion) {
   let motiva = rt.block_on(async { Motiva::new(MockedElasticsearch::default()).build().await.unwrap() });
 
   let lhs = SearchEntity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build();
-  let rhs = std::iter::repeat(vec![Entity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build()])
-    .take(10)
+  let rhs = std::iter::repeat_n(vec![Entity::builder("Person").properties(&[("name", &["Vladimir Putin"])]).build()], 10)
     .flatten()
     .collect::<Vec<_>>();
 

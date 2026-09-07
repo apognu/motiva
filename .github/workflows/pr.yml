@@ -3,6 +3,10 @@ name: PR continuous testing
 on:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -12,4 +16,19 @@ jobs:
     permissions:
       contents: read
     secrets: inherit
+    with:
+      minimal: true
 
+  docker:
+    uses: ./.github/workflows/docker.yml
+    needs: [test]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    secrets: inherit
+    with:
+      tag: ${{ github.event.number }}
+      push: false
+      minimal: true

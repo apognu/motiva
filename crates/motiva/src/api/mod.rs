@@ -81,20 +81,6 @@ pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: Config, fetcher
   Ok(router(state))
 }
 
-#[cfg(test)]
-mod tests {
-  use std::time::Duration;
-
-  #[test]
-  fn catalog_refresh_delay_uses_retry_interval_after_failure() {
-    let refresh_interval = Duration::from_secs(3600);
-    let retry_interval = Duration::from_secs(15);
-
-    assert_eq!(super::next_catalog_refresh_delay(true, refresh_interval, retry_interval), refresh_interval);
-    assert_eq!(super::next_catalog_refresh_delay(false, refresh_interval, retry_interval), retry_interval);
-  }
-}
-
 pub(crate) fn router<F: CatalogFetcher, P: IndexProvider>(state: AppState<F, P>) -> Router {
   Router::new()
     .route("/catalog", get(handlers::get_catalog))
@@ -117,4 +103,18 @@ pub(crate) fn router<F: CatalogFetcher, P: IndexProvider>(state: AppState<F, P>)
     .route("/-/version", get(handlers::version))
     .layer(middleware::from_fn(middlewares::request_id))
     .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+  use std::time::Duration;
+
+  #[test]
+  fn catalog_refresh_delay_uses_retry_interval_after_failure() {
+    let refresh_interval = Duration::from_secs(3600);
+    let retry_interval = Duration::from_secs(15);
+
+    assert_eq!(super::next_catalog_refresh_delay(true, refresh_interval, retry_interval), refresh_interval);
+    assert_eq!(super::next_catalog_refresh_delay(false, refresh_interval, retry_interval), retry_interval);
+  }
 }

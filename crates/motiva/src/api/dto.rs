@@ -99,6 +99,13 @@ fn validate_weights(weights: &HashMap<String, f64>) -> Result<(), ValidationErro
   Ok(())
 }
 
+fn serialize_score<S>(score: &f64, serializer: S) -> Result<S::Ok, S::Error>
+where
+  S: Serializer,
+{
+  serializer.serialize_f64(format_score(*score))
+}
+
 #[cfg(test)]
 mod tests {
   use std::collections::HashMap;
@@ -117,11 +124,4 @@ mod tests {
 
     assert!(super::validate_weights(&weights).is_ok());
   }
-}
-
-fn serialize_score<S>(score: &f64, serializer: S) -> Result<S::Ok, S::Error>
-where
-  S: Serializer,
-{
-  serializer.serialize_f64(format_score(*score))
 }
