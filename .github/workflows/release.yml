@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       PRERELEASE: ${{ contains(inputs.tag, '-rc.') }}
     steps:

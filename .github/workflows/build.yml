@@ -2,52 +2,18 @@ name: Build and test
 
 on:
   workflow_call:
+    inputs:
+      minimal:
+        description: Only build the feature combination with all features, instead of every combination
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          submodules: true
-
-      - uses: dtolnay/rust-toolchain@1.98
-
-      - name: Install Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
-
-      - name: Cache build artifacts
-        id: build-artifacts
-        uses: actions/cache@v6
-        with:
-          path: |
-            .venv/
-            target/
-            ~/.cargo/bin
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: "check-${{ github.job }}-${{hashFiles('Cargo.lock', 'pyproject.toml')}}"
-          restore-keys: |
-            check-${{ github.job }}-
-            check-
-
-      - name: Install the Python dependencies
-        run: uv sync
-
-      - name: Check
-        run: cargo check --locked --all-features --all-targets
-
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -58,32 +24,20 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - name: Cache build artifacts
-        id: build-artifacts
-        uses: actions/cache@v6
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            .venv/
-            target/
-            ~/.cargo/bin
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: "lint-${{ github.job }}-${{hashFiles('Cargo.lock', 'pyproject.toml')}}"
-          restore-keys: |
-            lint-${{ github.job }}-
-            lint-
-            check-${{ github.job }}-
-            check-
-
-      - name: Lint
-        run: cargo clippy --locked --all-features -- -D warnings
+          shared-key: lint
+          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/faster' }} # TODO: drop ci/faster before merging
 
       - name: Format
         run: cargo fmt --check
 
+      - name: Lint
+        run: cargo clippy --locked --all-features --all-targets -- -D warnings
+
   test:
-    runs-on: ubuntu-latest
-    needs: [check, lint]
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -106,28 +60,15 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.1
-
-      - name: Cache build artifacts
-        id: build-artifacts
-        uses: actions/cache@v6
         with:
-          path: |
-            .venv/
-            target/
-            ~/.cargo/bin
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: "test-${{ github.job }}-${{hashFiles('Cargo.lock', 'pyproject.toml')}}"
-          restore-keys: |
-            test-${{ github.job }}-
-            test-
-            check-${{ github.job }}-
-            check-
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y libicu74 libicu-dev
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: test-cov
+          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/faster' }} # TODO: drop ci/faster before merging
 
       - name: Install the Python dependencies
         run: uv sync
@@ -138,8 +79,7 @@ jobs:
       - uses: coverallsapp/github-action@v2
 
   e2e:
-    runs-on: ubuntu-latest
-    needs: [check, lint]
+    runs-on: ubuntu-26.04
     services:
       elasticsearch:
         image: docker.elastic.co/elasticsearch/elasticsearch:9.3.2
@@ -166,31 +106,35 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Cache build artifacts
-        id: build-artifacts
-        uses: actions/cache@v6
-        with:
-          path: |
-            target/
-            ~/.cargo/bin
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.cache/pip
-          key: "test-${{ github.job }}-${{hashFiles('Cargo.lock', 'pyproject.toml')}}-${{env.yente-version}}"
-          restore-keys: |
-            e2e-${{ github.job }}-
-            e2e-
-            check-${{ github.job }}-
-            check-
+      - uses: dtolnay/rust-toolchain@1.98
 
-      - name: Yente indexer
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: e2e
+          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/faster' }} # TODO: drop ci/faster before merging
+
+      - name: Install Yente
+        run: |
+          echo '{ "catalogs": [{ "resource_name": "entities.ftm.json", "scope": "eu_fsf", "url": "https://data.opensanctions.org/datasets/latest/index.json" }] }' > /tmp/manifest.json
+          uv pip install --system yente==${{env.yente-version}}
+
+      # Indexing runs in the background while the tests compile.
+      - name: Index data and build E2E tests
         env:
           YENTE_INDEX_URL: http://localhost:9200
           YENTE_MANIFEST: /tmp/manifest.json
         run: |
-          echo '{ "catalogs": [{ "resource_name": "entities.ftm.json", "scope": "us_sanctions", "url": "https://data.opensanctions.org/datasets/latest/index.json" }] }' > /tmp/manifest.json
-          pip install yente==${{env.yente-version}}
-          yente reindex
+          yente reindex &
+          INDEXER=$!
+          cargo test --locked --no-run
+          wait $INDEXER
 
       - name: E2E tests
         run: cargo test --locked -- --include-ignored e2e
@@ -198,7 +142,7 @@ jobs:
           INDEX_URL: http://localhost:9200
 
   generate-matrix:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       matrix: ${{ steps.generate.outputs.matrix }}
     steps:
@@ -209,12 +153,13 @@ jobs:
       - name: Generate feature combinations
         id: generate
         run: |
-          combinations=$(python .github/scripts/featuresets.py)
+          combinations=$(python .github/scripts/featuresets.py ${{ inputs.minimal && '--minimal' || '' }})
           echo "matrix=$combinations" >> $GITHUB_OUTPUT
 
   build:
-    runs-on: ubuntu-latest
-    needs: [check, lint, generate-matrix]
+    runs-on: ubuntu-26.04
+    container: rust:1.98-trixie
+    needs: [generate-matrix]
     strategy:
       matrix:
         combination: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
@@ -226,31 +171,20 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - uses: dtolnay/rust-toolchain@1.98
+      - name: Mark repository as safe
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Cache build artifacts
-        id: build-artifacts
-        uses: actions/cache@v6
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            .venv/
-            target/
-            ~/.cargo/bin
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: "build-${{ github.job }}${{ matrix.combination.suffix }}-${{hashFiles('Cargo.lock', 'pyproject.toml')}}"
-          restore-keys: |
-            build-${{ github.job }}${{ matrix.combination.suffix }}-
-            build-${{ github.job }}-
-            build-
-            check-${{ github.job }}-
-            check-
+          shared-key: release${{ matrix.combination.suffix }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.head_ref == 'ci/faster' }} # TODO: drop ci/faster before merging
 
       - name: Build
         run: cargo build --locked --release ${{ matrix.combination.features != '' && format('--features {0}', matrix.combination.features) || '' }}
 
       - name: Print version
-        run: cargo run --release ${{ matrix.combination.features != '' && format('--features {0}', matrix.combination.features) || '' }} -- version
+        run: ./target/release/motiva version
 
       - name: Stage binary
         run: |

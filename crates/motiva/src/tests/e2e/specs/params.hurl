@@ -6,7 +6,7 @@ POST http://{{baseUrl}}/match/default?limit=1
         "test": {
             "schema": "Person",
             "properties": {
-                "name": ["Vladimir Putin"]
+                "name": ["Vladimir Vladimirovich Putin"]
             }
         }
     }
@@ -26,7 +26,7 @@ POST http://{{baseUrl}}/match/default?threshold=0.99
         "test": {
             "schema": "Person",
             "properties": {
-                "name": ["Vladimir Putin"]
+                "name": ["Vladimir Vladimirovich Putin"]
             }
         }
     }
@@ -35,4 +35,5 @@ POST http://{{baseUrl}}/match/default?threshold=0.99
 HTTP 200
 
 [Asserts]
-jsonpath "$.responses.test.results" count == 1
+jsonpath "$.responses.test.results[0].id" == "Q7747"
+jsonpath "$.responses.test.results[?(@.match == true)].id" == "Q7747"

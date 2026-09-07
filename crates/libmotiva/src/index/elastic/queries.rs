@@ -924,7 +924,7 @@ mod tests {
 
     let mut datasets = Vec::new();
 
-    let _ = super::build_datasets(&catalog, &mut datasets, &params).await.unwrap();
+    super::build_datasets(&catalog, &mut datasets, &params).await.unwrap();
 
     assert_eq!(datasets.len(), 1);
     assert_json_eq!(datasets[0], json!({ "terms": { "datasets": ["realdataset"] } }));
@@ -942,7 +942,7 @@ mod tests {
 
     let mut datasets = Vec::new();
 
-    let _ = super::build_datasets(&catalog, &mut datasets, &params).await.unwrap();
+    super::build_datasets(&catalog, &mut datasets, &params).await.unwrap();
 
     assert_eq!(datasets.len(), 1);
     assert_json_eq!(datasets[0], json!({ "terms": { "datasets": ["baredataset"] } }));

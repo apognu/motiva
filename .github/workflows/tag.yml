@@ -39,3 +39,4 @@ jobs:
     secrets: inherit
     with:
       tag: ${{ github.ref_name }}
+      push: true

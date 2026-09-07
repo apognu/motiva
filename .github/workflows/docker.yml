@@ -6,6 +6,13 @@ on:
       tag:
         type: string
         required: true
+      push:
+        type: boolean
+        required: true
+      minimal:
+        description: Only build the feature combination with all features, instead of every combination
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,7 +22,7 @@ permissions:
 
 jobs:
   generate-matrix:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       matrix: ${{ steps.generate.outputs.matrix }}
     steps:
@@ -26,11 +33,11 @@ jobs:
       - name: Generate feature combinations
         id: generate
         run: |
-          combinations=$(python .github/scripts/featuresets.py)
+          combinations=$(python .github/scripts/featuresets.py ${{ inputs.minimal && '--minimal' || '' }})
           echo "matrix=$combinations" >> $GITHUB_OUTPUT
 
   docker:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: generate-matrix
     strategy:
       fail-fast: false
@@ -40,10 +47,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Download binary
+        uses: actions/download-artifact@v8
         with:
-          submodules: true
-          fetch-depth: 0
-          fetch-tags: true
+          name: motiva${{ matrix.combination.suffix }}
+          path: dist
+
+      - name: Stage binary
+        run: |
+          mv dist/motiva${{ matrix.combination.suffix }} dist/motiva
+          chmod +x dist/motiva
+
+      - name: Check binary runs in the runtime image
+        run: docker run --rm -v "$PWD/dist:/dist:ro" --entrypoint /dist/motiva gcr.io/distroless/cc-debian13 version
 
       - name: Docker metadata
         id: meta
@@ -82,14 +99,13 @@ jobs:
             apognu/motiva:${{ inputs.tag }}${{ matrix.combination.suffix }}
             ghcr.io/apognu/motiva:${{ inputs.tag }}${{ matrix.combination.suffix }}
           build-args: |
-            ${{ matrix.combination.features != '' && format('CARGO_ARGS=--features {0}', matrix.combination.features) || '' }}
-          push: true
+            BINARY_SOURCE=prebuilt
+          push: ${{ inputs.push }}
           provenance: mode=max
-          cache-from: type=gha,scope=features${{ matrix.combination.suffix}}
-          cache-to: type=gha,mode=max,scope=features${{ matrix.combination.suffix }}
 
       - name: Attest GHCR
         uses: actions/attest@v4
+        if: ${{ inputs.push }}
         with:
           subject-name: ghcr.io/apognu/motiva
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -98,6 +114,7 @@ jobs:
 
       - name: Attest GH
         uses: actions/attest@v4
+        if: ${{ inputs.push }}
         with:
           subject-name: docker.io/apognu/motiva
           subject-digest: ${{ steps.build.outputs.digest }}
