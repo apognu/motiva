@@ -6,6 +6,10 @@ on:
 permissions:
   contents: read
 
+env:
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: sccache
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -24,27 +28,28 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
-      - name: Cache build artifacts
-        id: build-artifacts
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Cache Cargo dependencies
         uses: actions/cache@v6
         with:
           path: |
-            .venv/
-            target/
-            ~/.cargo/bin
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: "check-${{ github.job }}-${{hashFiles('Cargo.lock', 'pyproject.toml')}}"
-          restore-keys: |
-            check-${{ github.job }}-
-            check-
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-rust-1.98-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-rust-1.98-
 
       - name: Install the Python dependencies
         run: uv sync
 
       - name: Check
-        run: cargo check --locked --all-features --all-targets
+        run: cargo test --locked --all-features --no-run
 
   lint:
     runs-on: ubuntu-latest
@@ -58,22 +63,18 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - name: Cache build artifacts
-        id: build-artifacts
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Cache Cargo dependencies
         uses: actions/cache@v6
         with:
           path: |
-            .venv/
-            target/
-            ~/.cargo/bin
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: "lint-${{ github.job }}-${{hashFiles('Cargo.lock', 'pyproject.toml')}}"
-          restore-keys: |
-            lint-${{ github.job }}-
-            lint-
-            check-${{ github.job }}-
-            check-
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-rust-1.98-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-rust-1.98-
 
       - name: Lint
         run: cargo clippy --locked --all-features -- -D warnings
@@ -102,27 +103,28 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-llvm-cov
+          tool: |
+            cargo-llvm-cov
+            nextest
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
-      - name: Cache build artifacts
-        id: build-artifacts
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Cache Cargo dependencies
         uses: actions/cache@v6
         with:
           path: |
-            .venv/
-            target/
-            ~/.cargo/bin
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: "test-${{ github.job }}-${{hashFiles('Cargo.lock', 'pyproject.toml')}}"
-          restore-keys: |
-            test-${{ github.job }}-
-            test-
-            check-${{ github.job }}-
-            check-
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-rust-1.98-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-rust-1.98-
 
       - name: Install dependencies
         run: |
@@ -166,22 +168,24 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Cache build artifacts
-        id: build-artifacts
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Cache Cargo dependencies
         uses: actions/cache@v6
         with:
           path: |
-            target/
-            ~/.cargo/bin
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.cache/pip
-          key: "test-${{ github.job }}-${{hashFiles('Cargo.lock', 'pyproject.toml')}}-${{env.yente-version}}"
-          restore-keys: |
-            e2e-${{ github.job }}-
-            e2e-
-            check-${{ github.job }}-
-            check-
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-rust-1.98-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-rust-1.98-
 
       - name: Yente indexer
         env:
@@ -189,7 +193,7 @@ jobs:
           YENTE_MANIFEST: /tmp/manifest.json
         run: |
           echo '{ "catalogs": [{ "resource_name": "entities.ftm.json", "scope": "us_sanctions", "url": "https://data.opensanctions.org/datasets/latest/index.json" }] }' > /tmp/manifest.json
-          pip install yente==${{env.yente-version}}
+          uv pip install --system yente==${{env.yente-version}}
           yente reindex
 
       - name: E2E tests
@@ -228,29 +232,24 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@1.98
 
-      - name: Cache build artifacts
-        id: build-artifacts
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Cache Cargo dependencies
         uses: actions/cache@v6
         with:
           path: |
-            .venv/
-            target/
-            ~/.cargo/bin
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: "build-${{ github.job }}${{ matrix.combination.suffix }}-${{hashFiles('Cargo.lock', 'pyproject.toml')}}"
-          restore-keys: |
-            build-${{ github.job }}${{ matrix.combination.suffix }}-
-            build-${{ github.job }}-
-            build-
-            check-${{ github.job }}-
-            check-
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-rust-1.98-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-rust-1.98-
 
       - name: Build
         run: cargo build --locked --release ${{ matrix.combination.features != '' && format('--features {0}', matrix.combination.features) || '' }}
 
       - name: Print version
-        run: cargo run --release ${{ matrix.combination.features != '' && format('--features {0}', matrix.combination.features) || '' }} -- version
+        run: ./target/release/motiva version
 
       - name: Stage binary
         run: |
