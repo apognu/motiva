@@ -1888,9 +1888,9 @@ dependencies = [
 
 [[package]]
 name = "gcloud-sdk"
-version = "0.31.0"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae0e5ee4726919531561eadf5b9c560e1f3f7dcb4f6ea05996681d2fb6b7e2c5"
+checksum = "7d442bc60c24de35f93f06248ac436c71d276ed1ae804fa866e22d5f72ef1664"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3443,9 +3443,9 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry-gcloud-trace"
-version = "0.25.0"
+version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "531d19fb2ddfdda975a28a8a39e86319bbbd823af76f13a21d1b724923b51ea3"
+checksum = "b5aec978f3249b6427e8b658839665e9c9897870a9ef1ec2f76c3a504f8701e3"
 dependencies = [
  "async-trait",
  "futures",
@@ -3455,8 +3455,12 @@ dependencies = [
  "opentelemetry_sdk",
  "rsb_derive",
  "rvstruct",
+ "serde_json",
+ "time",
  "tokio-stream",
  "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
 ]
 
 [[package]]
