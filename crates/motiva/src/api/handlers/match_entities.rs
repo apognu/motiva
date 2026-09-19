@@ -17,6 +17,7 @@ use crate::api::{
   dto::{MatchHit, MatchResponse, MatchResults, MatchTotal, Payload},
   middlewares::types::TypedJson,
 };
+use crate::util::AVAILABLE_CORES;
 
 #[instrument(skip_all)]
 pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
@@ -93,49 +94,87 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
           }
         };
 
-        let scores = match query.algorithm {
-          Algorithm::NameBased => state.motiva.score::<NameBased>(&entity, hits, &options),
-          Algorithm::NameQualified => state.motiva.score::<NameQualified>(&entity, hits, &options),
-          Algorithm::MarbleV0 => state.motiva.score::<MarbleV0>(&entity, hits, &options),
-          Algorithm::LogicV1 | Algorithm::Best => state.motiva.score::<LogicV1>(&entity, hits, &options),
-        };
+        let scores = match *AVAILABLE_CORES {
+          n if n < 4 => {
+            let hit_count = hits.len();
+            let mut hits = hits.into_iter();
+            let mut scores = Vec::with_capacity(hit_count);
 
-        match scores {
-          Ok(scores) => {
-            let pre_cutoff_count = scores.len();
-            let post_threshold_count = scores.iter().filter(|(_, score)| score >= &query.threshold).count();
+            for _ in 0..hit_count.div_ceil(50) {
+              let chunk = hits.by_ref().take(50);
+              let results = match query.algorithm {
+                Algorithm::NameBased => state.motiva.score::<NameBased>(&entity, chunk, &options),
+                Algorithm::NameQualified => state.motiva.score::<NameQualified>(&entity, chunk, &options),
+                Algorithm::MarbleV0 => state.motiva.score::<MarbleV0>(&entity, chunk, &options),
+                Algorithm::LogicV1 | Algorithm::Best => state.motiva.score::<LogicV1>(&entity, chunk, &options),
+              };
 
-            let hits = scores
-              .into_iter()
-              .filter(|(_, score)| score >= &query.cutoff)
-              // Yente's implementation sorts by descending score, but let's order by (-score, id) so we get stable ordering
-              .sorted_by(|(lhs, lscore), (rhs, rscore)| lscore.total_cmp(rscore).reverse().then_with(|| lhs.id.cmp(&rhs.id)))
-              .take(query.limit)
-              .map(|(entity, score)| MatchHit {
-                entity,
-                score,
-                match_: score >= query.threshold,
-              })
-              .collect::<Vec<_>>();
+              let Ok(results) = results else {
+                return (id, MatchResults { status: 500, ..Default::default() });
+              };
 
-            histogram!("motiva_matches_above_cutoff_total").record(hits.len() as f64);
-            histogram!("motiva_matches_below_cutoff_total").record((pre_cutoff_count - hits.len()) as f64);
+              scores.extend(results);
 
-            (
-              id,
-              MatchResults {
-                status: 200,
-                total: Some(MatchTotal {
-                  relation: "eq",
-                  value: post_threshold_count,
-                }),
-                results: hits,
-              },
-            )
+              if scores.len() < hit_count {
+                tokio::task::consume_budget().await;
+              }
+            }
+
+            Ok(scores)
           }
 
-          Err(_) => (id, MatchResults { status: 500, ..Default::default() }),
-        }
+          _ => {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+
+            rayon::spawn(move || {
+              let scores = match query.algorithm {
+                Algorithm::NameBased => state.motiva.score::<NameBased>(&entity, hits, &options),
+                Algorithm::NameQualified => state.motiva.score::<NameQualified>(&entity, hits, &options),
+                Algorithm::MarbleV0 => state.motiva.score::<MarbleV0>(&entity, hits, &options),
+                Algorithm::LogicV1 | Algorithm::Best => state.motiva.score::<LogicV1>(&entity, hits, &options),
+              };
+
+              let _ = tx.send(scores);
+            });
+
+            rx.await.expect("Rayon task panicked or dropped")
+          }
+        };
+
+        let Ok(scores) = scores else {
+          return (id, MatchResults { status: 500, ..Default::default() });
+        };
+
+        let pre_cutoff_count = scores.len();
+        let post_threshold_count = scores.iter().filter(|(_, score)| score >= &query.threshold).count();
+
+        let hits = scores
+          .into_iter()
+          .filter(|(_, score)| score >= &query.cutoff)
+          // Yente's implementation sorts by descending score, but let's order by (-score, id) so we get stable ordering
+          .sorted_by(|(lhs, lscore), (rhs, rscore)| lscore.total_cmp(rscore).reverse().then_with(|| lhs.id.cmp(&rhs.id)))
+          .take(query.limit)
+          .map(|(entity, score)| MatchHit {
+            entity,
+            score,
+            match_: score >= query.threshold,
+          })
+          .collect::<Vec<_>>();
+
+        histogram!("motiva_matches_above_cutoff_total").record(hits.len() as f64);
+        histogram!("motiva_matches_below_cutoff_total").record((pre_cutoff_count - hits.len()) as f64);
+
+        (
+          id,
+          MatchResults {
+            status: 200,
+            total: Some(MatchTotal {
+              relation: "eq",
+              value: post_threshold_count,
+            }),
+            results: hits,
+          },
+        )
       }
       .in_current_span()
     })

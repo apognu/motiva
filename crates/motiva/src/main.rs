@@ -1,6 +1,7 @@
 mod api;
 mod oneoff;
 mod trace;
+mod util;
 
 #[cfg(test)]
 mod tests;
@@ -17,11 +18,32 @@ shadow!(build);
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+// fn main() {
+//   let rt = match util::runtime_thread_counts().expect("could not configure runtime thread pools") {
+//     (1, 0) => tokio::runtime::Builder::new_current_thread().enable_all().build(),
+//     (tthreads, 0) => tokio::runtime::Builder::new_multi_thread().worker_threads(tthreads).enable_all().build(),
+
+//     (tthreads, rthreads) => {
+//       rayon::ThreadPoolBuilder::new().num_threads(rthreads).build_global().expect("failed to initialize thread pool");
+
+//       tokio::runtime::Builder::new_multi_thread().worker_threads(tthreads).enable_all().build()
+//     }
+//   };
+
+//   rt.unwrap().block_on(run_main()).unwrap();
+// }
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
   if let Some("version") = std::env::args().nth(1).as_deref() {
     return oneoff::version(std::io::stdout());
   }
+
+  if let (_, rthreads) = util::runtime_thread_counts().unwrap()
+    && rthreads > 0
+  {
+    rayon::ThreadPoolBuilder::new().num_threads(rthreads).build_global().expect("failed to initialize thread pool");
+  };
 
   aws_lc_rs::default_provider().install_default().expect("could not install default cryptography provider");
 

@@ -34,6 +34,7 @@ metrics = "0.24.2"
 opensearch = { version = "2.4.0", default-features = false, features = ["rustls-tls"] }
 opentelemetry = { version = "0.32.0", features = ["trace"] }
 rand = "0.10.1"
+rayon = "1.12.0"
 regex = "1.11.1"
 reqwest = { version = "0.13.1", default-features = false, features = ["rustls", "json"] }
 rphonetic = "4.0.0"
@@ -67,11 +68,6 @@ std-macro-extensions = "^1"
 temp-env = { version = "0.3.6", features = ["async_closure"] }
 tokio-test = "0.4.4"
 wiremock = "0.6.5"
-
-[[bench]]
-name = "scoring"
-harness = false
-required-features = ["benchmarks"]
 
 [lints]
 workspace = true

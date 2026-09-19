@@ -27,11 +27,12 @@ impl ScoringOptions {
 }
 
 #[instrument(name = "compute_scores", skip_all, fields(algorithm = A::name()))]
-pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: Vec<Entity>, options: &ScoringOptions) -> anyhow::Result<Vec<(Entity, f64)>> {
+pub fn score<A: MatchingAlgorithm>(entity: &SearchEntity, hits: impl IntoIterator<Item = Entity>, options: &ScoringOptions) -> anyhow::Result<Vec<(Entity, f64)>> {
   let span = Span::current();
 
   let mut bump = Bump::with_capacity(1024);
-  let mut results = Vec::with_capacity(hits.len());
+  let hits = hits.into_iter();
+  let mut results = Vec::with_capacity(hits.size_hint().0);
   let then = Instant::now();
 
   let scores = hits.into_iter().map(|mut hit| {

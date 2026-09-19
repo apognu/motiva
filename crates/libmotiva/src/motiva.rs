@@ -261,7 +261,7 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
   }
 
   /// Perform the scoring of all candidates against the search parameters.
-  pub fn score<A: MatchingAlgorithm>(&self, entity: &SearchEntity, hits: Vec<Entity>, options: &ScoringOptions) -> anyhow::Result<Vec<(Entity, f64)>> {
+  pub fn score<A: MatchingAlgorithm>(&self, entity: &SearchEntity, hits: impl IntoIterator<Item = Entity>, options: &ScoringOptions) -> anyhow::Result<Vec<(Entity, f64)>> {
     scoring::score::<A>(entity, hits, options)
   }
 
