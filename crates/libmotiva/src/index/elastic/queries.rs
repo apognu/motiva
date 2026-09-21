@@ -386,7 +386,7 @@ async fn build_filters(catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, pa
   let mut filters = Vec::<serde_json::Value>::new();
 
   build_schemas(entity, &mut filters)?;
-  build_datasets(catalog, &mut filters, params).await;
+  build_datasets(catalog, &mut filters, params).await?;
   build_topics(entity, params, &mut filters);
   build_arbitrary_terms(entity, &mut filters);
 
@@ -420,18 +420,18 @@ fn build_schemas(entity: &SearchEntity, filters: &mut Vec<serde_json::Value>) ->
   Ok(())
 }
 
-async fn build_datasets(catalog: &Arc<RwLock<Catalog>>, filters: &mut Vec<serde_json::Value>, params: &MatchParams) {
+async fn build_datasets(catalog: &Arc<RwLock<Catalog>>, filters: &mut Vec<serde_json::Value>, params: &MatchParams) -> Result<(), MotivaError> {
   let scope = {
     let guard = catalog.read().await;
 
     guard
       .loaded_datasets
       .get(&params.scope)
+      .ok_or(MotivaError::ScopeNotFound(params.scope.clone()))
       .map(|dataset| match dataset._type.as_deref() {
         Some("collection") => dataset.datasets.clone(),
         _ => vec![dataset.name.clone()],
-      })
-      .unwrap_or_default()
+      })?
   };
 
   if !params.include_dataset.is_empty() {
@@ -447,6 +447,8 @@ async fn build_datasets(catalog: &Arc<RwLock<Catalog>>, filters: &mut Vec<serde_
 
     filters.push(json!({ "terms": { "datasets": datasets } }));
   }
+
+  Ok(())
 }
 
 fn build_topics(lhs: &SearchEntity, params: &MatchParams, filters: &mut Vec<serde_json::Value>) {
@@ -732,7 +734,12 @@ mod tests {
       ])
       .build();
 
-    super::build_query(&fake_catalog(), IndexVersion::V4, "yente-entities", &entity, &MatchParams::default()).await.unwrap();
+    let params = MatchParams {
+      scope: "myscope".into(),
+      ..Default::default()
+    };
+
+    super::build_query(&fake_catalog(), IndexVersion::V4, "yente-entities", &entity, &params).await.unwrap();
   }
 
   #[test]
@@ -917,7 +924,7 @@ mod tests {
 
     let mut datasets = Vec::new();
 
-    super::build_datasets(&catalog, &mut datasets, &params).await;
+    let _ = super::build_datasets(&catalog, &mut datasets, &params).await.unwrap();
 
     assert_eq!(datasets.len(), 1);
     assert_json_eq!(datasets[0], json!({ "terms": { "datasets": ["realdataset"] } }));
@@ -935,10 +942,23 @@ mod tests {
 
     let mut datasets = Vec::new();
 
-    super::build_datasets(&catalog, &mut datasets, &params).await;
+    let _ = super::build_datasets(&catalog, &mut datasets, &params).await.unwrap();
 
     assert_eq!(datasets.len(), 1);
     assert_json_eq!(datasets[0], json!({ "terms": { "datasets": ["baredataset"] } }));
+  }
+
+  #[tokio::test]
+  async fn build_datasets_rejects_unknown_scope() {
+    let catalog = fake_catalog();
+    let params = MatchParams {
+      scope: "unknown".to_string(),
+      ..Default::default()
+    };
+
+    let error = super::build_datasets(&catalog, &mut Vec::new(), &params).await.unwrap_err();
+
+    assert!(matches!(error, crate::MotivaError::ScopeNotFound(scope) if scope == "unknown"));
   }
 
   #[test]
@@ -962,6 +982,7 @@ mod tests {
     let entity = SearchEntity::builder("Person").properties(&[]).build();
 
     let params = MatchParams {
+      scope: "myscope".into(),
       changed_since: Some(jiff::Timestamp::UNIX_EPOCH),
       ..Default::default()
     };

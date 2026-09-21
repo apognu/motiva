@@ -42,6 +42,7 @@ impl From<MotivaError> for AppError {
       MotivaError::ConfigError(err) => AppError::ConfigError(err),
       MotivaError::MissingIndex(_) => AppError::ServerError,
       MotivaError::IndexUnavailable => AppError::ServiceUnavailable,
+      MotivaError::ScopeNotFound(_) => AppError::ResourceNotFound,
       MotivaError::IndexError(err) => AppError::IndexError(err.to_string()),
       MotivaError::InvalidSchema(_) => AppError::BadRequest,
       MotivaError::ResourceNotFound => AppError::ResourceNotFound,
@@ -118,6 +119,7 @@ mod tests {
         "invalid configuration: config error",
       ),
       (MotivaError::ResourceNotFound, StatusCode::NOT_FOUND, "missing resource"),
+      (MotivaError::ScopeNotFound("unknown".into()), StatusCode::NOT_FOUND, "missing resource"),
       (
         MotivaError::IndexError(io::Error::new(ErrorKind::AddrInUse, anyhow::anyhow!("index error")).into()),
         StatusCode::INTERNAL_SERVER_ERROR,
