@@ -9,7 +9,7 @@ use libmotiva_macros::scoring_feature;
 use rphonetic::{Encoder, Soundex};
 
 use crate::{
-  matching::{CodedPair, Detail, Feature, ScoreResult, extractors},
+  matching::{Candidate, CodedPair, Detail, Feature, ScoreResult, extractors},
   model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
@@ -19,25 +19,34 @@ static SOUNDEX: LazyLock<Soundex> = LazyLock::new(Soundex::default);
 fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   let mut similarities = Vec::with_capacity_in(lhs.name_parts_flat.len(), bump);
 
-  let rhs_soundexes = extractors::name_parts_flat(rhs.prop_group("name", PropertyFilter::All).iter())
-    .unique()
-    .map(|part| {
+  let rhs_soundexes = rhs
+    .prop_group("name", PropertyFilter::All)
+    .into_iter()
+    .flat_map(|value| {
+      let candidate = Candidate::new(value.field, value.value);
+      extractors::name_parts_flat(std::iter::once(&value))
+        .map(move |part| (candidate.clone(), part))
+        .collect::<std::vec::Vec<_>>()
+    })
+    .unique_by(|(_, part)| part.clone())
+    .map(|(candidate, part)| {
       let code = SOUNDEX.encode(&part);
-      (part, code)
+      (candidate, part, code)
     })
     .collect_in::<Vec<_>>(bump);
 
   let mut best_match: Option<CodedPair> = None;
+  let mut best_candidate = None;
 
   for part in &lhs.name_parts_flat {
     let lhs_soundex = SOUNDEX.encode(part);
-    let matched = rhs_soundexes.iter().find(|(_, code)| code == &lhs_soundex);
+    let matched = rhs_soundexes.iter().find(|(_, _, code)| code == &lhs_soundex);
 
     similarities.push(if matched.is_some() { 1.0 } else { 0.0 });
 
     if explain
       && best_match.is_none()
-      && let Some((rhs_part, rhs_code)) = matched
+      && let Some((candidate, rhs_part, rhs_code)) = matched
     {
       best_match = Some(CodedPair {
         lhs: part.as_str().into(),
@@ -45,6 +54,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
         rhs: rhs_part.as_str().into(),
         rhs_code: rhs_code.as_str().into(),
       });
+      best_candidate = Some(candidate.clone());
     }
   }
 
@@ -55,7 +65,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     None => Detail::Note("no soundex match"),
   });
 
-  (score, detail).into()
+  (score, detail, best_candidate).into()
 }
 
 #[cfg(test)]

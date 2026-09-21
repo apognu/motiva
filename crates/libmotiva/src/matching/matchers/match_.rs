@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use bumpalo::{
   Bump,
   collections::{CollectIn, Vec},
@@ -8,11 +6,11 @@ use itertools::Itertools;
 use libmotiva_macros::scoring_feature;
 
 use crate::{
-  matching::{Detail, Feature, ScoreResult, extractors, matchers::NO_DATA},
-  model::{Entity, HasProperties, PropertyFilter, SearchEntity},
+  matching::{Candidate, Detail, Feature, ScoreResult, extractors, matchers::NO_DATA},
+  model::{Entity, HasProperties, PropertyFilter, PropertyValue, SearchEntity},
 };
 
-pub(crate) type MatchExtractor<'e> = &'e (dyn Fn(&'_ dyn HasProperties) -> Cow<[String]> + Send + Sync);
+pub(crate) type MatchExtractor<'e> = &'e (dyn for<'a> Fn(&'a dyn HasProperties) -> std::vec::Vec<PropertyValue<'a>> + Send + Sync);
 
 pub(crate) struct SimpleMatch<'e> {
   name: &'static str,
@@ -38,33 +36,47 @@ impl<'e> Feature for SimpleMatch<'e> {
       return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
     }
 
-    let matched = lhs_names.iter().any(|value| rhs_names.contains(value));
+    let shared = rhs_names.iter().find(|value| lhs_names.contains(value));
+    let matched = shared.is_some();
+    let candidate = explain.then(|| shared.map(|value| Candidate::new(value.field, value.value))).flatten();
 
     let detail = explain.then(|| {
       if !matched {
         return Detail::Note("no match");
       }
 
-      let shared = lhs_names.iter().filter(|value| rhs_names.contains(value)).map(String::as_str).unique().join(", ");
+      let shared = lhs_names.iter().filter(|value| rhs_names.contains(value)).map(PropertyValue::as_str).unique().join(", ");
 
       Detail::Labeled("matched", shared.into())
     });
 
-    (if matched { 1.0 } else { 0.0 }, detail).into()
+    (if matched { 1.0 } else { 0.0 }, detail, candidate).into()
   }
 }
 
 #[scoring_feature(WeakAliasMatch, name = "weak_alias_match")]
 fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   let lhs_names = extractors::clean_names_light(lhs.prop_group("name", PropertyFilter::All).iter()).collect_in::<Vec<_>>(bump);
-  let rhs_names = extractors::clean_names_light(rhs.props(&["weakAlias", "abbreviation"]).iter()).collect_in::<Vec<_>>(bump);
+  let rhs_candidates = rhs.props(&["weakAlias", "abbreviation"]);
+  let rhs_names = rhs_candidates.iter().flat_map(|value| extractors::clean_names_light(std::iter::once(value))).collect_in::<Vec<_>>(bump);
 
   if lhs_names.is_empty() || rhs_names.is_empty() {
     return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
   }
 
   match lhs_names.iter().find(|name| rhs_names.contains(name)) {
-    Some(alias) => (1.0, explain.then(|| Detail::Labeled("matched weak alias", alias.as_str().into()))).into(),
+    Some(alias) => {
+      let candidate = explain
+        .then(|| {
+          rhs_candidates.iter().find_map(|value| {
+            extractors::clean_names_light(std::iter::once(value))
+              .any(|cleaned| cleaned == *alias)
+              .then(|| Candidate::new(value.field, value.value))
+          })
+        })
+        .flatten();
+      (1.0, explain.then(|| Detail::Labeled("matched weak alias", alias.as_str().into())), candidate).into()
+    }
     None => (0.0, explain.then_some(Detail::Note("no weak alias match"))).into(),
   }
 }
@@ -138,8 +150,9 @@ mod tests {
     let lhs = SearchEntity::builder("Company").properties(&[("id", &["a", "b", "c"])]).build();
     let rhs = Entity::builder("Company").properties(&[("id", &["b", "c", "d"])]).build();
 
-    let ScoreResult(score, detail) = matcher.score(&Bump::new(), &lhs, &rhs, true);
+    let ScoreResult(score, detail, candidate) = matcher.score(&Bump::new(), &lhs, &rhs, true);
     assert_eq!(score, 1.0);
     assert_eq!(detail.unwrap().to_string(), "matched: b, c");
+    assert_eq!(candidate.unwrap(), crate::matching::Candidate::new("id", "b"));
   }
 }

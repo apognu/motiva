@@ -6,7 +6,7 @@ use itertools::Itertools;
 use libmotiva_macros::scoring_feature;
 
 use crate::{
-  matching::{CodedPair, Detail, Feature, ScoreResult, comparers::compare_name_phonetic_tuples, extractors},
+  matching::{Candidate, CodedPair, Detail, Feature, ScoreResult, comparers::compare_name_phonetic_tuples, extractors},
   model::{Entity, HasProperties, PropertyFilter, SearchEntity},
 };
 
@@ -17,15 +17,22 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
   }
 
   let lhs_names = &lhs.clean_names;
-  let rhs_names = extractors::clean_names(rhs.prop_group("name", PropertyFilter::All).iter()).collect_in::<Vec<_>>(bump);
-
   let lhs_phone = extractors::phonetic_names_tuples(lhs_names.iter());
-  let rhs_phone = extractors::phonetic_names_tuples(rhs_names.iter());
+  let rhs_phone = rhs
+    .prop_group("name", PropertyFilter::All)
+    .into_iter()
+    .flat_map(|value| {
+      let cleaned = extractors::clean_names(std::iter::once(&value)).collect::<std::vec::Vec<_>>();
+      let candidate = Candidate::new(value.field, value.value);
+      extractors::phonetic_names_tuples(cleaned.iter()).into_iter().map(move |parts| (candidate.clone(), parts))
+    })
+    .collect_in::<Vec<_>>(bump);
 
   let mut score = 0.0f64;
   let mut best_matches: std::vec::Vec<CodedPair> = std::vec::Vec::new();
+  let mut best_candidate = None;
 
-  for (ls, rs) in lhs_phone.iter().cartesian_product(rhs_phone.iter()) {
+  for (ls, (candidate, rs)) in lhs_phone.iter().cartesian_product(rhs_phone.iter()) {
     let mut matched = 0;
     let mut used = vec![false; rs.len()];
     let mut combo_matches = std::vec::Vec::new();
@@ -57,6 +64,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
 
       if explain {
         best_matches = combo_matches;
+        best_candidate = Some(candidate.clone());
       }
     }
 
@@ -73,7 +81,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     }
   });
 
-  (score, detail).into()
+  (score, detail, best_candidate).into()
 }
 
 #[cfg(test)]

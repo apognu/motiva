@@ -10,7 +10,7 @@ use libmotiva_macros::scoring_feature;
 
 use crate::{
   matching::{
-    Detail, Feature, ScoreResult,
+    Candidate, Detail, Feature, ScoreResult,
     comparers::levenshtein_similarity,
     extractors,
     replacers::{self, addresses::ADDRESS_FORMS, ordinals::ORDINALS},
@@ -38,19 +38,21 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
       .collect::<HashSet<_, RandomState>>()
   });
 
-  let rhs_props = rhs.props(&["full"]);
-  let rhs_addresses = extractors::clean_address_parts(rhs_props.iter()).map(|address| {
-    replacers::replace(&ORDINALS.0, &ORDINALS.1, &replacers::remove(&ADDRESS_FORMS.0, &address))
+  let rhs_addresses = rhs.props(&["full"]).into_iter().map(|value| {
+    let address = extractors::clean_address_parts(std::iter::once(&value)).next().unwrap_or_default();
+    let parts = replacers::replace(&ORDINALS.0, &ORDINALS.1, &replacers::remove(&ADDRESS_FORMS.0, &address))
       .split_whitespace()
       .map(str::to_string)
       .unique()
-      .collect::<HashSet<_, RandomState>>()
+      .collect::<HashSet<_, RandomState>>();
+    (Candidate::new(value.field, value.value), parts)
   });
 
   let mut max_score = 0.0f64;
   let mut best_overlap: Option<Detail> = None;
+  let mut best_candidate = None;
 
-  for (lhs, rhs) in lhs_addresses.cartesian_product(rhs_addresses) {
+  for (lhs, (candidate, rhs)) in lhs_addresses.cartesian_product(rhs_addresses) {
     if lhs.is_empty() || rhs.is_empty() {
       continue;
     }
@@ -59,7 +61,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     let overlap_size = overlap.len();
 
     if overlap_size == lhs.len() || overlap_size == rhs.len() {
-      return (1.0, explain.then(|| overlap_detail(&overlap))).into();
+      return (1.0, explain.then(|| overlap_detail(&overlap)), explain.then_some(candidate)).into();
     }
 
     let lhs_remainder: std::vec::Vec<_> = lhs.iter().filter(|word| !overlap.contains(word)).sorted().collect();
@@ -74,7 +76,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     let score = (overlap.len() as f64 + (remainder_len as f64 * score)) / (remainder_len + overlap.len()) as f64;
 
     if score >= 1.0 {
-      return (1.0, explain.then(|| overlap_detail(&overlap))).into();
+      return (1.0, explain.then(|| overlap_detail(&overlap)), explain.then_some(candidate)).into();
     }
 
     if score > max_score {
@@ -82,13 +84,14 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
 
       if explain {
         best_overlap = Some(if overlap.is_empty() { Detail::Note("no address overlap") } else { overlap_detail(&overlap) });
+        best_candidate = Some(candidate);
       }
     }
   }
 
   let detail = explain.then(|| best_overlap.unwrap_or(Detail::Note("no address overlap")));
 
-  (max_score, detail).into()
+  (max_score, detail, best_candidate).into()
 }
 
 #[cfg(test)]

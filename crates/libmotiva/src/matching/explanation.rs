@@ -2,6 +2,23 @@ use std::fmt;
 
 use compact_str::CompactString;
 
+/// The candidate entity property value that supplied a feature's winning
+/// comparison.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Candidate {
+  pub field: CompactString,
+  pub value: CompactString,
+}
+
+impl Candidate {
+  pub(crate) fn new(field: impl Into<CompactString>, value: impl Into<CompactString>) -> Self {
+    Self {
+      field: field.into(),
+      value: value.into(),
+    }
+  }
+}
+
 /// A single derived-representation match: a value and its derived code on each
 /// side, e.g. `putin` / `PTN` against `poutine` / `PTN`.
 #[derive(Clone, Debug)]
@@ -84,6 +101,7 @@ pub struct Explanation {
   pub score: f64,
   pub weighted: f64,
   pub detail: Detail,
+  pub candidate: Option<Candidate>,
 }
 
 #[cfg(test)]

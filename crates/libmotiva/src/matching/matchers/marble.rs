@@ -5,7 +5,7 @@ use libmotiva_macros::scoring_feature;
 use crate::{
   Entity, HasProperties, SearchEntity,
   matching::{
-    Detail, Feature, ScoreResult, extractors,
+    Candidate, Detail, Feature, ScoreResult, extractors,
     replacers::{self, company_types::ORG_TYPES, stopwords::STOPWORDS},
   },
   model::{PropertyFilter, format_score},
@@ -21,16 +21,20 @@ fn fingerprint_name(name: &str) -> String {
 #[scoring_feature(LongestCommonSubsequence, name = "longest_common_subsequence")]
 fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   let lhs_names = lhs.prop_group("name", PropertyFilter::All);
-  let rhs_names = rhs.prop_group("name", PropertyFilter::All);
 
   let lhs_names = extractors::index_name_keys(lhs_names.iter())
     .map(|name| fingerprint_name(&name).chars().collect::<Vec<char>>())
     .collect::<Vec<_>>();
 
   let mut max = 0.0f64;
-  let mut best: Option<(CompactString, CompactString, CompactString)> = None;
+  let mut best: Option<(CompactString, CompactString, CompactString, Candidate)> = None;
 
-  for rhs_name in extractors::index_name_keys(rhs_names.iter()) {
+  for (candidate, rhs_name) in rhs.prop_group("name", PropertyFilter::All).into_iter().flat_map(|value| {
+    let candidate = Candidate::new(value.field, value.value);
+    extractors::index_name_keys(std::iter::once(&value))
+      .map(move |name| (candidate.clone(), name))
+      .collect::<std::vec::Vec<_>>()
+  }) {
     let rname = fingerprint_name(&rhs_name).chars().collect::<Vec<char>>();
 
     for lname in &lhs_names {
@@ -48,15 +52,16 @@ fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -
 
         if explain {
           let matched = matched.unwrap_or_default();
-          best = Some((lname.iter().collect(), rname.iter().collect(), matched.into()));
+          best = Some((lname.iter().collect(), rname.iter().collect(), matched.into(), candidate.clone()));
         }
       }
     }
   }
 
+  let candidate = best.as_ref().map(|(_, _, _, candidate)| candidate.clone());
   let detail = explain.then(|| match best {
-    Some((lhs, rhs, _)) if max >= 0.999 => Detail::Equal(lhs, rhs),
-    Some((lhs, rhs, matched)) => Detail::Subsequence {
+    Some((lhs, rhs, _, _)) if max >= 0.999 => Detail::Equal(lhs, rhs),
+    Some((lhs, rhs, matched, _)) => Detail::Subsequence {
       lhs,
       rhs,
       matched,
@@ -65,7 +70,7 @@ fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -
     None => Detail::Note("no common subsequence"),
   });
 
-  (max, detail).into()
+  (max, detail, candidate).into()
 }
 
 /// Longest common subsequence of `a` and `b`.
@@ -145,7 +150,7 @@ mod tests {
     let lhs = SearchEntity::builder("Person").properties(&[("name", &["Samir Kamil AlAsad"])]).build();
     let rhs = Entity::builder("Person").properties(&[("name", &["Samer Kamal Al-Assad"])]).build();
 
-    let ScoreResult(score, detail) = super::LongestCommonSubsequence.score(&Bump::new(), &lhs, &rhs, true);
+    let ScoreResult(score, detail, _) = super::LongestCommonSubsequence.score(&Bump::new(), &lhs, &rhs, true);
     let detail = detail.unwrap().to_string();
 
     assert!(score > 0.8 && score < 1.0, "score={score}");

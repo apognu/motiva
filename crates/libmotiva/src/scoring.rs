@@ -94,21 +94,26 @@ mod tests {
     let result = super::score::<LogicV1>(&lhs, vec![rhs.clone()], &Default::default()).unwrap();
     assert!(result[0].0.explanations.is_empty());
     assert!(!result[0].0.features.is_empty());
+    let bare_score = result[0].1;
 
     let options = ScoringOptions { explain: true, ..Default::default() };
     let result = super::score::<LogicV1>(&lhs, vec![rhs], &options).unwrap();
     let explanations = &result[0].0.explanations;
 
+    assert_eq!(result[0].1, bare_score);
     assert!(!explanations.is_empty());
 
     let literal = explanations.iter().find(|e| e.name == "name_literal_match").unwrap();
     assert_eq!(literal.score, 1.0);
     assert!(approx_eq!(f64, literal.weighted, 1.0));
     assert_eq!(literal.detail.to_string(), "vladimir putin == vladimir putin");
+    assert_eq!(literal.candidate.as_ref().unwrap().field, "name");
+    assert_eq!(literal.candidate.as_ref().unwrap().value, "Vladimir Putin");
 
     let dob = explanations.iter().find(|e| e.name == "dob_year_disjoint").unwrap();
     assert_eq!(dob.score, 0.0);
     assert_eq!(dob.detail.to_string(), "no data to match against");
+    assert!(dob.candidate.is_none());
 
     let phonetic = explanations.iter().find(|e| e.name == "person_name_phonetic_match").unwrap();
     let detail = phonetic.detail.to_string();

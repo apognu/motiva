@@ -1,6 +1,9 @@
 use std::{
-  borrow::Cow,
+  borrow::{Borrow, Cow},
+  cmp::Ordering,
   collections::{HashMap, HashSet},
+  fmt,
+  ops::Deref,
   str::FromStr,
   sync::{Arc, Mutex},
 };
@@ -22,16 +25,109 @@ use crate::{
   schemas::{FtmProperty, SCHEMAS, resolve_schemas},
 };
 
-const EMPTY: [String; 0] = [];
-
+#[derive(Clone, Copy)]
 pub enum PropertyFilter {
   All,
   Matchable,
 }
 
+/// A property value together with the field it came from.
+///
+/// Comparisons and ordering use the value only; `field` is provenance carried
+/// alongside it for consumers such as scoring explanations.
+#[derive(Clone, Copy, Debug)]
+pub struct PropertyValue<'a> {
+  pub field: &'a str,
+  pub value: &'a str,
+}
+
+impl PropertyValue<'_> {
+  pub const fn as_str(&self) -> &str {
+    self.value
+  }
+}
+
+impl PartialEq for PropertyValue<'_> {
+  fn eq(&self, other: &Self) -> bool {
+    self.value == other.value
+  }
+}
+
+impl Eq for PropertyValue<'_> {}
+
+impl PartialEq<&str> for PropertyValue<'_> {
+  fn eq(&self, other: &&str) -> bool {
+    self.value == *other
+  }
+}
+
+impl PartialOrd for PropertyValue<'_> {
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl Ord for PropertyValue<'_> {
+  fn cmp(&self, other: &Self) -> Ordering {
+    self.value.cmp(other.value)
+  }
+}
+
+impl Deref for PropertyValue<'_> {
+  type Target = str;
+
+  fn deref(&self) -> &Self::Target {
+    self.value
+  }
+}
+
+impl Borrow<str> for PropertyValue<'_> {
+  fn borrow(&self) -> &str {
+    self.value
+  }
+}
+
+impl AsRef<str> for PropertyValue<'_> {
+  fn as_ref(&self) -> &str {
+    self.value
+  }
+}
+
+impl fmt::Display for PropertyValue<'_> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_str(self.value)
+  }
+}
+
 pub trait HasProperties {
-  fn props(&self, keys: &[&str]) -> Cow<'_, [String]>;
-  fn prop_group(&self, group: &str, filter: PropertyFilter) -> Cow<'_, [String]>;
+  fn schema(&self) -> &Schema;
+  fn props<'a>(&'a self, keys: &[&str]) -> Vec<PropertyValue<'a>>;
+
+  fn prop_group(&self, group: &str, filter: PropertyFilter) -> Vec<PropertyValue<'_>> {
+    let keys = property_group_keys(self.schema(), group, filter);
+    self.props(&keys)
+  }
+}
+
+fn property_group_keys(schema: &Schema, group: &str, filter: PropertyFilter) -> Vec<&'static str> {
+  let schemas = resolve_schemas(&SCHEMAS, schema.as_str(), false).unwrap_or_default();
+  let mut keys = SCHEMAS
+    .iter()
+    .filter(|(schema, _)| schemas.contains(schema))
+    .flat_map(|(_, schema)| {
+      schema.properties.iter().filter_map(|(name, property)| {
+        let selected = match filter {
+          PropertyFilter::All => property._type == group,
+          PropertyFilter::Matchable => property._type == group && property.matchable,
+        };
+        selected.then_some(name.as_str())
+      })
+    })
+    .collect::<Vec<_>>();
+
+  keys.sort_unstable();
+  keys.dedup();
+  keys
 }
 
 #[derive(Eq, PartialEq)]
@@ -181,12 +277,12 @@ impl SearchEntity {
       let lastnames = self.props(&["lastName"]);
 
       let combined = [
-        firstnames.as_ref(),
-        secondnames.as_ref(),
-        middlenames.as_ref(),
-        fathernames.as_ref(),
-        mothernames.as_ref(),
-        lastnames.as_ref(),
+        firstnames.as_slice(),
+        secondnames.as_slice(),
+        middlenames.as_slice(),
+        fathernames.as_slice(),
+        mothernames.as_slice(),
+        lastnames.as_slice(),
       ]
       .into_iter()
       .filter(|iter| !iter.is_empty())
@@ -213,7 +309,7 @@ impl SearchEntity {
     let names = self.prop_group("name", PropertyFilter::Matchable);
 
     if names.len() < count {
-      return names;
+      return Cow::Owned(names.iter().map(|name| name.value.to_owned()).collect());
     }
 
     let mut picked = Vec::with_capacity(count);
@@ -221,7 +317,7 @@ impl SearchEntity {
 
     // TODO: Centroid is **not** the longest name in the original Yente implementation
     if let Some(centroid) = names.iter().max_by_key(|name| name.len()) {
-      picked.push(centroid.to_owned());
+      picked.push(centroid.value.to_owned());
     }
 
     while picked.len() < count {
@@ -229,7 +325,7 @@ impl SearchEntity {
       let mut max_distance = -1isize;
 
       for (index, candidate) in processed.iter().enumerate() {
-        if picked.contains(names.get(index).unwrap()) {
+        if picked.iter().any(|name| name == names[index].value) {
           continue;
         }
 
@@ -237,7 +333,7 @@ impl SearchEntity {
 
         if total as isize > max_distance {
           max_distance = total as isize;
-          best = Some(names.get(index).unwrap().clone());
+          best = Some(names[index].value.to_owned());
         }
       }
 
@@ -252,53 +348,20 @@ impl SearchEntity {
 }
 
 impl HasProperties for SearchEntity {
-  fn props(&self, keys: &[&str]) -> Cow<'_, [String]> {
-    match keys.len() {
-      0 => Cow::Borrowed(&EMPTY),
-
-      1 => match self.properties.get(keys[0]) {
-        Some(values) => Cow::Borrowed(values),
-        None => Cow::Borrowed(&EMPTY),
-      },
-
-      _ => {
-        let capacity: usize = keys.iter().filter_map(|key| self.properties.get(*key)).map(|v| v.len()).sum();
-        let mut values = Vec::with_capacity(capacity);
-
-        for key in keys {
-          if let Some(prop_values) = self.properties.get(*key) {
-            values.extend(prop_values.iter().cloned());
-          }
-        }
-
-        Cow::Owned(values)
-      }
-    }
+  fn schema(&self) -> &Schema {
+    &self.schema
   }
 
-  fn prop_group(&self, group: &str, filter: PropertyFilter) -> Cow<'_, [String]> {
-    let schemas = resolve_schemas(&SCHEMAS, self.schema.as_str(), false).unwrap_or_default();
-    let mut keys = Vec::new();
+  fn props<'a>(&'a self, keys: &[&str]) -> Vec<PropertyValue<'a>> {
+    let mut keys = keys.to_vec();
+    keys.sort_unstable();
+    keys.dedup();
 
-    for (_, schema) in SCHEMAS.iter().filter(|(s, _)| schemas.contains(s)) {
-      for (prop, _) in schema.properties.iter().filter(|(_, p)| match filter {
-        PropertyFilter::All => p._type == group,
-        PropertyFilter::Matchable => p._type == group && p.matchable,
-      }) {
-        keys.push(prop.to_owned());
-      }
-    }
-
-    let capacity: usize = keys.iter().filter_map(|key| self.properties.get(key)).map(|v| v.len()).sum();
-    let mut values = Vec::with_capacity(capacity);
-
-    for key in keys {
-      if let Some(prop_values) = self.properties.get(&key) {
-        values.extend(prop_values.iter().cloned());
-      }
-    }
-
-    Cow::Owned(values)
+    keys
+      .into_iter()
+      .filter_map(|key| self.properties.get_key_value(key))
+      .flat_map(|(field, values)| values.iter().map(move |value| PropertyValue { field, value }))
+      .collect()
   }
 }
 
@@ -409,7 +472,7 @@ fn explanations_to_map<S: Serializer>(input: &[crate::matching::Explanation], se
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
       let scored = self.0.score != 0.0;
 
-      let mut map = ser.serialize_map(Some(if scored { 3 } else { 1 }))?;
+      let mut map = ser.serialize_map(Some((if scored { 3 } else { 1 }) + usize::from(self.0.candidate.is_some())))?;
 
       if scored {
         map.serialize_entry("score", &format_score(self.0.score))?;
@@ -417,6 +480,22 @@ fn explanations_to_map<S: Serializer>(input: &[crate::matching::Explanation], se
       }
 
       map.serialize_entry("detail", &self.0.detail.to_string())?;
+
+      if let Some(candidate) = &self.0.candidate {
+        #[derive(Serialize)]
+        struct RenderedCandidate<'a> {
+          field: &'a str,
+          value: &'a str,
+        }
+
+        map.serialize_entry(
+          "candidate",
+          &RenderedCandidate {
+            field: candidate.field.as_str(),
+            value: candidate.value.as_str(),
+          },
+        )?;
+      }
       map.end()
     }
   }
@@ -429,53 +508,20 @@ fn explanations_to_map<S: Serializer>(input: &[crate::matching::Explanation], se
 }
 
 impl HasProperties for Entity {
-  fn props(&self, keys: &[&str]) -> Cow<'_, [String]> {
-    match keys.len() {
-      0 => Cow::Borrowed(&EMPTY),
-
-      1 => match self.properties.strings.get(keys[0]) {
-        Some(values) => Cow::Borrowed(values),
-        None => Cow::Borrowed(&EMPTY),
-      },
-
-      _ => {
-        let capacity: usize = keys.iter().filter_map(|key| self.properties.strings.get(*key)).map(|v| v.len()).sum();
-        let mut values = Vec::with_capacity(capacity);
-
-        for key in keys {
-          if let Some(prop_values) = self.properties.strings.get(*key) {
-            values.extend(prop_values.iter().cloned());
-          }
-        }
-
-        Cow::Owned(values)
-      }
-    }
+  fn schema(&self) -> &Schema {
+    &self.schema
   }
 
-  fn prop_group(&self, group: &str, filter: PropertyFilter) -> Cow<'_, [String]> {
-    let schemas = resolve_schemas(&SCHEMAS, self.schema.as_str(), false).unwrap_or_default();
-    let mut keys = Vec::new();
+  fn props<'a>(&'a self, keys: &[&str]) -> Vec<PropertyValue<'a>> {
+    let mut keys = keys.to_vec();
+    keys.sort_unstable();
+    keys.dedup();
 
-    for (_, schema) in SCHEMAS.iter().filter(|(s, _)| schemas.contains(s)) {
-      for (prop, _) in schema.properties.iter().filter(|(_, p)| match filter {
-        PropertyFilter::All => p._type == group,
-        PropertyFilter::Matchable => p._type == group && p.matchable,
-      }) {
-        keys.push(prop);
-      }
-    }
-
-    let capacity: usize = keys.iter().filter_map(|key| self.properties.strings.get(*key)).map(|v| v.len()).sum();
-    let mut values = Vec::with_capacity(capacity);
-
-    for key in keys {
-      if let Some(prop_values) = self.properties.strings.get(key) {
-        values.extend(prop_values.iter().cloned());
-      }
-    }
-
-    Cow::Owned(values)
+    keys
+      .into_iter()
+      .filter_map(|key| self.properties.strings.get_key_value(key))
+      .flat_map(|(field, values)| values.iter().map(move |value| PropertyValue { field, value }))
+      .collect()
   }
 }
 
@@ -526,12 +572,14 @@ mod tests {
         score: 1.0,
         weighted: 0.851_2,
         detail: Detail::Labeled("matched identifier", "X123".into()),
+        candidate: Some(crate::matching::Candidate::new("leiCode", "X123")),
       },
       Explanation {
         name: "dob_year_disjoint",
         score: 0.0,
         weighted: 0.0,
         detail: Detail::Note("no data to match against"),
+        candidate: None,
       },
     ];
 
@@ -541,7 +589,10 @@ mod tests {
     assert_eq!(explanations["identifier_match"]["score"], 1.0);
     assert_eq!(explanations["identifier_match"]["weighted"], 0.851);
     assert_eq!(explanations["identifier_match"]["detail"], "matched identifier: X123");
+    assert_eq!(explanations["identifier_match"]["candidate"]["field"], "leiCode");
+    assert_eq!(explanations["identifier_match"]["candidate"]["value"], "X123");
     assert_eq!(explanations["dob_year_disjoint"]["detail"], "no data to match against");
+    assert!(explanations["dob_year_disjoint"].get("candidate").is_none());
 
     let entity = Entity::builder("Person").properties(&[]).build();
     let json = serde_json::to_value(&entity).unwrap();
@@ -610,14 +661,15 @@ mod tests {
     let identifiers = se.prop_group("identifier", PropertyFilter::All);
     let countries = se.prop_group("country", PropertyFilter::All);
 
-    assert!(identifiers.as_ref().iter().any(|p| p == "VAT"));
-    assert!(identifiers.as_ref().iter().any(|p| p == "ID"));
-    assert!(identifiers.as_ref().iter().any(|p| p == "PN"));
-    assert!(identifiers.as_ref().iter().any(|p| p == "SSN"));
-    assert!(countries.as_ref().iter().any(|p| p == "fr"));
-    assert!(countries.as_ref().iter().any(|p| p == "gb"));
-    assert!(countries.as_ref().iter().any(|p| p == "ru"));
-    assert!(countries.as_ref().iter().any(|p| p == "ci"));
+    assert!(identifiers.iter().any(|p| p.value == "VAT"));
+    assert!(identifiers.iter().any(|p| p.field == "vatCode" && p.value == "VAT"));
+    assert!(identifiers.iter().any(|p| p.value == "ID"));
+    assert!(identifiers.iter().any(|p| p.value == "PN"));
+    assert!(identifiers.iter().any(|p| p.value == "SSN"));
+    assert!(countries.iter().any(|p| p.value == "fr"));
+    assert!(countries.iter().any(|p| p.value == "gb"));
+    assert!(countries.iter().any(|p| p.value == "ru"));
+    assert!(countries.iter().any(|p| p.value == "ci"));
   }
   #[test]
   fn precompute() {
@@ -637,8 +689,8 @@ mod tests {
       .properties(&[("name", &["Joe Bob"]), ("firstName", &["Vladimir"]), ("lastName", &["Putin"])])
       .build();
 
-    assert_eq!(se.props(&["name"]).as_ref(), &["Joe Bob"]);
-    assert_eq!(se.props(&["alias"]).as_ref(), &["Vladimir Putin"]);
+    assert_eq!(se.props(&["name"])[0].value, "Joe Bob");
+    assert_eq!(se.props(&["alias"])[0].value, "Vladimir Putin");
   }
 
   #[test]

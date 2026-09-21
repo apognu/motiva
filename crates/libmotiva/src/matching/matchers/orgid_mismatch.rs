@@ -9,7 +9,7 @@ use strsim::levenshtein;
 
 use crate::{
   matching::{
-    Detail, Feature, ScoreResult,
+    Candidate, Detail, Feature, ScoreResult,
     comparers::is_disjoint,
     extractors::{self},
     matchers::NO_DATA,
@@ -29,27 +29,36 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     return (0.0, explain.then_some(Detail::Note("no organization identifiers to compare"))).into();
   }
 
-  let rhs = rhs.props(&["registrationNumber", "taxNumber", "leiCode", "innCode", "bicCode", "orgnCode"]);
+  let rhs_values = rhs.props(&["registrationNumber", "taxNumber", "leiCode", "innCode", "bicCode", "orgnCode"]);
 
-  if rhs.is_empty() {
+  if rhs_values.is_empty() {
     return (0.0, explain.then_some(Detail::Note("no organization identifiers to compare"))).into();
   }
 
   let lhs = extractors::normalize_identifiers(lhs.iter()).collect_in::<Vec<_>>(bump);
-  let rhs = extractors::normalize_identifiers(rhs.iter()).collect_in::<Vec<_>>(bump);
+  let rhs = rhs_values
+    .into_iter()
+    .filter_map(|value| {
+      extractors::normalize_identifiers(std::iter::once(&value))
+        .next()
+        .map(|normalized| (Candidate::new(value.field, value.value), normalized))
+    })
+    .collect_in::<Vec<_>>(bump);
 
   if lhs.is_empty() || rhs.is_empty() {
     return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
   }
 
-  if !is_disjoint(&lhs, &rhs) {
+  let rhs_normalized = rhs.iter().map(|(_, value)| value.clone()).collect::<std::vec::Vec<_>>();
+  if !is_disjoint(&lhs, &rhs_normalized) {
     return (0.0, explain.then_some(Detail::Note("organization identifiers overlap"))).into();
   }
 
   let mut best_ratio = 0.0f64;
   let mut best_pair: Option<(CompactString, CompactString)> = None;
+  let mut best_candidate = None;
 
-  for (l, r) in lhs.iter().cartesian_product(rhs.iter()) {
+  for (l, (candidate, r)) in lhs.iter().cartesian_product(rhs.iter()) {
     let distance = levenshtein(l, r) as f64;
     let ratio = 1.0 - (distance / l.len().max(r.len()) as f64);
     let ratio = if ratio > 0.7 { ratio } else { 0.0 };
@@ -59,6 +68,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
 
       if explain {
         best_pair = Some((l.as_str().into(), r.as_str().into()));
+        best_candidate = Some(candidate.clone());
       }
     }
   }
@@ -72,7 +82,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     _ => Detail::Note("organization identifiers are disjoint"),
   });
 
-  (1.0 - best_ratio, detail).into()
+  (1.0 - best_ratio, detail, best_candidate).into()
 }
 
 #[cfg(test)]

@@ -264,6 +264,6 @@ mod tests {
     let entity: Entity = build_entity().into();
 
     assert_eq!(entity.id, "id");
-    assert!(entity.props(&["name"]).contains(&"The Name".to_string()));
+    assert!(entity.props(&["name"]).iter().any(|value| value.value == "The Name"));
   }
 }

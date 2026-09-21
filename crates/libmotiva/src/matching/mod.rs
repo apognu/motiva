@@ -4,7 +4,7 @@ mod matchers;
 #[cfg(test)]
 mod tests;
 
-pub use explanation::{CodedPair, Detail, Explanation};
+pub use explanation::{Candidate, CodedPair, Detail, Explanation};
 
 use std::{collections::HashMap, time::Instant};
 
@@ -61,7 +61,7 @@ impl Algorithm {
   }
 }
 
-pub struct ScoreResult(pub f64, pub Option<Detail>);
+pub struct ScoreResult(pub f64, pub Option<Detail>, pub Option<Candidate>);
 
 impl From<ScoreResult> for f64 {
   fn from(result: ScoreResult) -> Self {
@@ -71,13 +71,19 @@ impl From<ScoreResult> for f64 {
 
 impl From<f64> for ScoreResult {
   fn from(score: f64) -> Self {
-    Self(score, None)
+    Self(score, None, None)
   }
 }
 
 impl From<(f64, Option<Detail>)> for ScoreResult {
   fn from(result: (f64, Option<Detail>)) -> Self {
-    Self(result.0, result.1)
+    Self(result.0, result.1, None)
+  }
+}
+
+impl From<(f64, Option<Detail>, Option<Candidate>)> for ScoreResult {
+  fn from(result: (f64, Option<Detail>, Option<Candidate>)) -> Self {
+    Self(result.0, result.1, result.2)
   }
 }
 
@@ -91,7 +97,8 @@ pub trait MatchingAlgorithm {
   /// cannot influence the score.
   ///
   /// It returns a tuple of the resulting score and a vector of per-feature
-  /// [`Explanation`]s (name, raw score, weighted score and an optional detail).
+  /// [`Explanation`]s (name, raw score, weighted score, an optional detail and
+  /// optional winning candidate property provenance).
   fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, options: &ScoringOptions) -> (f64, Vec<Explanation>);
 }
 
@@ -102,8 +109,8 @@ pub trait Feature: Send + Sync {
   /// Score an entity against search parameters.
   ///
   /// When `explain` is set, the feature also returns a structured [`Detail`]
-  /// describing how it scored, computed in the same pass as the score. When it
-  /// is not set, the feature returns `None` and does no explanation work at all.
+  /// and, when one value wins the comparison, its [`Candidate`] provenance.
+  /// When it is not set, the feature does no explanation work at all.
   fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult;
 
   /// Convenience for callers (mostly tests) that only need the raw score.
@@ -197,7 +204,7 @@ where
     let then = Instant::now();
     // The detail is only built when explanations are requested; otherwise the
     // feature returns `None` and does no explanation work at all.
-    let ScoreResult(feature_score, detail) = func.score(bump, lhs, rhs, config.explain);
+    let ScoreResult(feature_score, detail, candidate) = func.score(bump, lhs, rhs, config.explain);
 
     let weighted = feature_score * weight;
 
@@ -206,6 +213,7 @@ where
       score: feature_score,
       weighted,
       detail: detail.unwrap_or_default(),
+      candidate,
     });
 
     tracing::debug!(score = feature_score, latency = ?then.elapsed(), "computed feature score");

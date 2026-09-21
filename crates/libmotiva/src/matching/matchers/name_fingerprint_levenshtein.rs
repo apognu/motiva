@@ -5,7 +5,7 @@ use libmotiva_macros::scoring_feature;
 
 use crate::{
   matching::{
-    Detail, Feature, ScoreResult,
+    Candidate, Detail, Feature, ScoreResult,
     comparers::{default_levenshtein_similarity, levenshtein_similarity},
     extractors::{clean_names, tokenize_clean_names},
     replacers::{self, company_types::ORG_TYPES, stopwords::STOPWORDS},
@@ -17,14 +17,15 @@ use crate::{
 fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   let (score, best) = name_fingerprint_levenshtein(lhs, rhs, explain);
 
+  let candidate = best.as_ref().map(|(_, _, candidate)| candidate.clone());
   let detail = explain.then(|| match best {
-    Some((lhs, rhs)) if score >= 0.999 => Detail::Equal(lhs, rhs),
-    Some((lhs, rhs)) => Detail::Fuzzy { lhs, rhs, score: format_score(score) },
+    Some((lhs, rhs, _)) if score >= 0.999 => Detail::Equal(lhs, rhs),
+    Some((lhs, rhs, _)) => Detail::Fuzzy { lhs, rhs, score: format_score(score) },
     None if lhs.schema.is_a("Person") || rhs.schema.is_a("Person") => Detail::Note("not an organization"),
     None => Detail::Note("no name fingerprint match"),
   });
 
-  (score, detail).into()
+  (score, detail, candidate).into()
 }
 
 fn fingerprint_name(name: &str) -> String {
@@ -85,28 +86,32 @@ fn pair_score(qn: &str, rn: &str) -> f64 {
   score.max(default_levenshtein_similarity(&aligned_q, &aligned_r))
 }
 
-pub(crate) fn name_fingerprint_levenshtein(lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<(CompactString, CompactString)>) {
+pub(crate) fn name_fingerprint_levenshtein(lhs: &SearchEntity, rhs: &Entity, explain: bool) -> (f64, Option<(CompactString, CompactString, Candidate)>) {
   if lhs.schema.is_a("Person") || rhs.schema.is_a("Person") {
     return (0.0, None);
   }
 
   let qiter = lhs.prop_group("name", PropertyFilter::All);
-  let riter = rhs.prop_group("name", PropertyFilter::All);
-
   let query_names = clean_names(qiter.iter()).filter(|word| word.len() >= 2);
-  let result_names = clean_names(riter.iter()).filter(|word| word.len() >= 2);
+  let result_names = rhs.prop_group("name", PropertyFilter::All).into_iter().flat_map(|value| {
+    let candidate = Candidate::new(value.field, value.value);
+    clean_names(std::iter::once(&value))
+      .filter(|word| word.len() >= 2)
+      .map(move |word| (candidate.clone(), word))
+      .collect::<std::vec::Vec<_>>()
+  });
 
   let mut max = 0.0f64;
-  let mut best: Option<(CompactString, CompactString)> = None;
+  let mut best: Option<(CompactString, CompactString, Candidate)> = None;
 
-  for (qn, rn) in query_names.cartesian_product(result_names) {
+  for (qn, (candidate, rn)) in query_names.cartesian_product(result_names) {
     let score = pair_score(&qn, &rn);
 
     if score > max {
       max = score;
 
       if explain {
-        best = Some((qn.as_str().into(), rn.as_str().into()));
+        best = Some((qn.as_str().into(), rn.as_str().into(), candidate));
       }
     }
   }

@@ -9,7 +9,7 @@ use strsim::jaro_winkler;
 
 use crate::{
   matching::{
-    Detail, Feature, ScoreResult,
+    Candidate, Detail, Feature, ScoreResult,
     comparers::{align_name_parts, is_levenshtein_plausible},
     extractors,
     matchers::NO_DATA,
@@ -23,27 +23,36 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
   }
 
-  let rhs_parts = extractors::name_parts_flat(rhs.prop_group("name", PropertyFilter::All).iter()).collect_in::<Vec<_>>(bump);
+  let rhs_parts = rhs
+    .prop_group("name", PropertyFilter::All)
+    .into_iter()
+    .flat_map(|value| {
+      let candidate = Candidate::new(value.field, value.value);
+      extractors::name_parts_flat(std::iter::once(&value))
+        .map(move |part| (candidate.clone(), part))
+        .collect::<std::vec::Vec<_>>()
+    })
+    .collect_in::<Vec<_>>(bump);
 
   if rhs_parts.is_empty() {
     return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
   }
 
   let mut similarities = Vec::with_capacity_in(lhs.name_parts_flat.len(), bump);
-  let mut details: Option<(CompactString, CompactString, f64)> = None;
+  let mut details: Option<(CompactString, CompactString, f64, Candidate)> = None;
 
   for part in &lhs.name_parts_flat {
     let mut best = 0.0f64;
     let mut best_other = None;
 
-    for other in &rhs_parts {
+    for (candidate, other) in &rhs_parts {
       let similarity = jaro_winkler(part, other);
 
       if similarity > 0.6 && similarity > best {
         best = similarity;
 
         if explain {
-          best_other = Some(other);
+          best_other = Some((candidate, other));
         }
 
         if best >= 1.0 {
@@ -54,18 +63,19 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
 
     similarities.push(best);
 
-    if let Some(other) = best_other
-      && details.as_ref().is_none_or(|(_, _, best_so_far)| best > *best_so_far)
+    if let Some((candidate, other)) = best_other
+      && details.as_ref().is_none_or(|(_, _, best_so_far, _)| best > *best_so_far)
     {
-      details = Some((part.as_str().into(), other.as_str().into(), best));
+      details = Some((part.as_str().into(), other.as_str().into(), best, candidate.clone()));
     }
   }
 
   let score = similarities.iter().sum::<f64>() / similarities.len() as f64;
 
+  let candidate = details.as_ref().map(|(_, _, _, candidate)| candidate.clone());
   let detail = explain.then(|| match details {
-    Some((lhs, rhs, similarity)) if similarity >= 0.999 => Detail::Equal(lhs, rhs),
-    Some((lhs, rhs, similarity)) => Detail::Fuzzy {
+    Some((lhs, rhs, similarity, _)) if similarity >= 0.999 => Detail::Equal(lhs, rhs),
+    Some((lhs, rhs, similarity, _)) => Detail::Fuzzy {
       lhs,
       rhs,
       score: format_score(similarity),
@@ -73,7 +83,7 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     None => Detail::Note("no matching name parts"),
   });
 
-  (score, detail).into()
+  (score, detail, candidate).into()
 }
 
 pub struct PersonNameJaroWinkler;
@@ -90,12 +100,16 @@ impl Feature for PersonNameJaroWinkler {
     }
 
     let lhs_names = &lhs.name_parts;
-    let rhs_names = extractors::name_parts(rhs.prop_group("name", PropertyFilter::All).iter()).collect_in::<Vec<_>>(bump);
+    let rhs_names = rhs
+      .prop_group("name", PropertyFilter::All)
+      .into_iter()
+      .filter_map(|value| extractors::name_parts(std::iter::once(&value)).next().map(|parts| (Candidate::new(value.field, value.value), parts)))
+      .collect_in::<Vec<_>>(bump);
 
     let mut score = 0.0f64;
-    let mut details: Option<(CompactString, CompactString)> = None;
+    let mut details: Option<(CompactString, CompactString, Candidate)> = None;
 
-    for (lhs_parts, rhs_parts) in lhs_names.iter().cartesian_product(rhs_names.iter()) {
+    for (lhs_parts, (candidate, rhs_parts)) in lhs_names.iter().cartesian_product(rhs_names.iter()) {
       let lhs_len: usize = lhs_parts.iter().map(|s| s.len()).sum();
       let rhs_len: usize = rhs_parts.iter().map(|s| s.len()).sum();
 
@@ -120,7 +134,7 @@ impl Feature for PersonNameJaroWinkler {
         score = pair_score;
 
         if explain {
-          details = Some((CompactString::from(lhs_parts.join("").as_str()), CompactString::from(rhs_parts.join("").as_str())));
+          details = Some((CompactString::from(lhs_parts.join("").as_str()), CompactString::from(rhs_parts.join("").as_str()), candidate.clone()));
         }
       }
 
@@ -129,13 +143,14 @@ impl Feature for PersonNameJaroWinkler {
       }
     }
 
+    let candidate = details.as_ref().map(|(_, _, candidate)| candidate.clone());
     let detail = explain.then(|| match details {
-      Some((lhs, rhs)) if score >= 0.999 => Detail::Equal(lhs, rhs),
-      Some((lhs, rhs)) => Detail::Fuzzy { lhs, rhs, score: format_score(score) },
+      Some((lhs, rhs, _)) if score >= 0.999 => Detail::Equal(lhs, rhs),
+      Some((lhs, rhs, _)) => Detail::Fuzzy { lhs, rhs, score: format_score(score) },
       None => Detail::Note(NO_DATA),
     });
 
-    (score, detail).into()
+    (score, detail, candidate).into()
   }
 }
 

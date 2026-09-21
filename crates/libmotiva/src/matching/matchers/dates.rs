@@ -7,7 +7,7 @@ use jiff::{
 };
 
 use crate::{
-  matching::{Detail, Feature, ScoreResult, matchers::NO_DATA},
+  matching::{Candidate, Detail, Feature, ScoreResult, matchers::NO_DATA},
   model::{Entity, HasProperties, SearchEntity},
 };
 
@@ -30,12 +30,19 @@ impl Feature for DobProgressiveMatch {
 
     let (score, best) = dob_progressive(&lhs_dates[..], &rhs_dates[..], explain);
 
+    let candidate = explain
+      .then(|| {
+        best
+          .as_ref()
+          .and_then(|best| rhs_dates.iter().find(|value| value.value == best.rhs.as_str()).map(|value| Candidate::new(value.field, value.value)))
+      })
+      .flatten();
     let detail = explain.then(|| match best {
       Some(best) => best.into_detail(),
       None => Detail::Note("no comparable birth dates"),
     });
 
-    (score, detail).into()
+    (score, detail, candidate).into()
   }
 }
 

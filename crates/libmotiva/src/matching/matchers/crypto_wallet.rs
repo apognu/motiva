@@ -2,7 +2,7 @@ use bumpalo::Bump;
 use libmotiva_macros::scoring_feature;
 
 use crate::{
-  matching::{Detail, Feature, ScoreResult},
+  matching::{Candidate, Detail, Feature, ScoreResult},
   model::{Entity, HasProperties, SearchEntity},
 };
 
@@ -15,13 +15,12 @@ fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -
   let lhs_props = lhs.props(&["publicKey"]);
   let rhs_props = rhs.props(&["publicKey"]);
 
-  let (bigger, smaller) = if lhs_props.len() > rhs_props.len() { (&lhs_props, &rhs_props) } else { (&rhs_props, &lhs_props) };
-
-  for a in smaller.iter() {
+  for a in &lhs_props {
     if a.len() > 10 {
-      for b in bigger.iter() {
-        if b.len() > 10 && a == b {
-          return (1.0, explain.then(|| Detail::Labeled("matched public key", a.as_str().into()))).into();
+      for b in &rhs_props {
+        if b.len() > 10 && a.value == b.value {
+          let candidate = explain.then(|| Candidate::new(b.field, b.value));
+          return (1.0, explain.then(|| Detail::Labeled("matched public key", a.as_str().into())), candidate).into();
         }
       }
     }

@@ -16,10 +16,10 @@ use crate::{
     extractors::{self, extract_numbers},
     matchers::{NO_DATA, match_::MatchExtractor},
   },
-  model::{Entity, HasProperties, PropertyFilter, SearchEntity},
+  model::{Entity, HasProperties, PropertyFilter, PropertyValue, SearchEntity},
 };
 
-type MismatchMatcher = Option<fn(bump: &Bump, lhs: &[String], rhs: &[String]) -> f64>;
+type MismatchMatcher = Option<for<'a, 'b> fn(bump: &Bump, lhs: &[PropertyValue<'a>], rhs: &[PropertyValue<'b>]) -> f64>;
 
 pub(crate) struct SimpleMismatch<'e> {
   name: &'static str,
@@ -100,7 +100,7 @@ fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -
   (score, detail).into()
 }
 
-pub(crate) fn dob_year_disjoint<S: AsRef<str>>(bump: &Bump, lhs: &[S], rhs: &[S]) -> f64 {
+pub(crate) fn dob_year_disjoint<L: AsRef<str>, R: AsRef<str>>(bump: &Bump, lhs: &[L], rhs: &[R]) -> f64 {
   // A date of birth is intrinsically invalid if it is not plain ASCII; such
   // values are skipped so they neither match nor trigger a mismatch penalty.
   let lhs_years = lhs
@@ -124,7 +124,11 @@ pub(crate) fn dob_year_disjoint<S: AsRef<str>>(bump: &Bump, lhs: &[S], rhs: &[S]
   }
 }
 
-pub(crate) fn dob_day_disjoint<S: AsRef<str>>(bump: &Bump, lhs: &[S], rhs: &[S]) -> f64 {
+pub(crate) fn dob_year_disjoint_properties(bump: &Bump, lhs: &[PropertyValue<'_>], rhs: &[PropertyValue<'_>]) -> f64 {
+  dob_year_disjoint(bump, lhs, rhs)
+}
+
+pub(crate) fn dob_day_disjoint<L: AsRef<str>, R: AsRef<str>>(bump: &Bump, lhs: &[L], rhs: &[R]) -> f64 {
   // Non-ASCII dates are intrinsically invalid and are skipped; requiring ASCII
   // also makes the byte length a valid proxy for the character count.
   let lhs_months = lhs.iter().filter(|d| d.as_ref().is_ascii() && d.as_ref().len() >= 10).map(extract_month_day).collect_in::<Vec<_>>(bump);
@@ -149,6 +153,10 @@ pub(crate) fn dob_day_disjoint<S: AsRef<str>>(bump: &Bump, lhs: &[S], rhs: &[S])
   }
 
   1.0
+}
+
+pub(crate) fn dob_day_disjoint_properties(bump: &Bump, lhs: &[PropertyValue<'_>], rhs: &[PropertyValue<'_>]) -> f64 {
+  dob_day_disjoint(bump, lhs, rhs)
 }
 
 fn extract_month_day<S: AsRef<str>>(date: S) -> std::vec::Vec<char> {

@@ -7,7 +7,7 @@ use itertools::Itertools;
 
 use crate::{
   matching::{
-    Detail, Feature, ScoreResult,
+    Candidate, Detail, Feature, ScoreResult,
     extractors::{self},
   },
   model::{Entity, HasProperties, PropertyFilter, SearchEntity},
@@ -29,10 +29,26 @@ impl Feature for NameLiteralMatch {
   #[tracing::instrument(level = "trace", name = "name_literal_match", skip_all, fields(feature = "name_literal_match", entity_id = rhs.id))]
   fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
     let lhs_names = extractors::clean_literal_names(lhs.prop_group("name", PropertyFilter::All).iter()).unique().collect_in::<Vec<_>>(bump);
-    let rhs_names = extractors::clean_literal_names(rhs.prop_group("name", PropertyFilter::All).iter()).unique().collect_in::<Vec<_>>(bump);
+    let rhs_candidates = rhs.prop_group("name", PropertyFilter::All);
+    let rhs_names = rhs_candidates
+      .iter()
+      .flat_map(|value| extractors::clean_literal_names(std::iter::once(value)))
+      .unique()
+      .collect_in::<Vec<_>>(bump);
 
     match Self::shared_name(&lhs_names, &rhs_names) {
-      Some(name) => (1.0, explain.then(|| Detail::Equal(CompactString::from(name.as_str()), CompactString::from(name.as_str())))).into(),
+      Some(name) => {
+        let candidate = explain
+          .then(|| {
+            rhs_candidates.iter().find_map(|value| {
+              extractors::clean_literal_names(std::iter::once(value))
+                .any(|cleaned| cleaned == *name)
+                .then(|| Candidate::new(value.field, value.value))
+            })
+          })
+          .flatten();
+        (1.0, explain.then(|| Detail::Equal(CompactString::from(name.as_str()), CompactString::from(name.as_str()))), candidate).into()
+      }
       None => (0.0, explain.then_some(Detail::Note("no literal name match"))).into(),
     }
   }
@@ -42,7 +58,10 @@ impl Feature for NameLiteralMatch {
 mod tests {
   use bumpalo::Bump;
 
-  use crate::model::{Entity, SearchEntity};
+  use crate::{
+    matching::ScoreResult,
+    model::{Entity, SearchEntity},
+  };
 
   use super::Feature;
 
@@ -57,5 +76,21 @@ mod tests {
     let rhs = Entity::builder("Person").properties(&[("name", &["Donald Duck"]), ("alias", &["POTUS"])]).build();
 
     assert_eq!(super::NameLiteralMatch.score_scalar(&Bump::new(), &lhs, &rhs), 0.0);
+  }
+
+  #[test]
+  fn name_literal_match_preserves_candidate_provenance() {
+    let lhs = SearchEntity::builder("Person").properties(&[("name", &["Donald Trump"])]).build();
+    let rhs = Entity::builder("Person").properties(&[("name", &["Someone Else"]), ("alias", &["DONALD TRUMP!!!"])]).build();
+
+    let ScoreResult(score, _, candidate) = super::NameLiteralMatch.score(&Bump::new(), &lhs, &rhs, true);
+    let candidate = candidate.unwrap();
+
+    assert_eq!(score, 1.0);
+    assert_eq!(candidate.field, "alias");
+    assert_eq!(candidate.value, "DONALD TRUMP!!!");
+
+    let ScoreResult(_, _, candidate) = super::NameLiteralMatch.score(&Bump::new(), &lhs, &rhs, false);
+    assert!(candidate.is_none());
   }
 }

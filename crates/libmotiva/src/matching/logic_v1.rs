@@ -12,7 +12,7 @@ use crate::{
       identifier::IdentifierMatch,
       jaro_winkler::PersonNameJaroWinkler,
       match_::{SimpleMatch, WeakAliasMatch},
-      mismatch::{NumbersMismatch, SimpleMismatch, dob_day_disjoint, dob_year_disjoint},
+      mismatch::{NumbersMismatch, SimpleMismatch, dob_day_disjoint_properties, dob_year_disjoint_properties},
       name_fingerprint_levenshtein::NameFingerprintLevenshtein,
       name_literal_match::NameLiteralMatch,
       orgid_mismatch::OrgIdMismatch,
@@ -57,8 +57,8 @@ static QUALIFIERS: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(||
   vec![
     (SimpleMismatch::new("country_mismatch", &|e| e.prop_group("country", PropertyFilter::Matchable), None), -0.2),
     (SimpleMismatch::new("last_name_mismatch", &|e| e.props(&["lastName"]), None), -0.2),
-    (SimpleMismatch::new("dob_year_disjoint", &|e| e.props(&["birthDate"]), Some(dob_year_disjoint)), -0.15),
-    (SimpleMismatch::new("dob_day_disjoint", &|e| e.props(&["birthDate"]), Some(dob_day_disjoint)), -0.2),
+    (SimpleMismatch::new("dob_year_disjoint", &|e| e.props(&["birthDate"]), Some(dob_year_disjoint_properties)), -0.15),
+    (SimpleMismatch::new("dob_day_disjoint", &|e| e.props(&["birthDate"]), Some(dob_day_disjoint_properties)), -0.2),
     (SimpleMismatch::new("gender_mismatch", &|e| e.props(&["gender"]), None), -0.2),
     (SimpleMismatch::new("identifier_mismatch", &|e| e.prop_group("identifier", PropertyFilter::Matchable), None), 0.0), // Motiva-specific, disabled by default
     (&OrgIdMismatch, -0.2),

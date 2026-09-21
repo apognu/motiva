@@ -8,7 +8,7 @@ use crate::{
     Explanation, Feature, FeaturesConfig, MatchingAlgorithm,
     matchers::{
       jaro_winkler::JaroNameParts,
-      mismatch::{SimpleMismatch, dob_day_disjoint, dob_year_disjoint},
+      mismatch::{SimpleMismatch, dob_day_disjoint_properties, dob_year_disjoint_properties},
       orgid_mismatch::OrgIdMismatch,
       soundex::SoundexNameParts,
     },
@@ -26,8 +26,8 @@ static FEATURES: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
     (&SoundexNameParts, 0.5),
     (&JaroNameParts, 0.5),
     (SimpleMismatch::new("country_disjoint", &|e| e.props(&["country"]), None), -0.1),
-    (SimpleMismatch::new("dob_year_disjoint", &|e| e.props(&["birthDate"]), Some(dob_year_disjoint)), -0.1),
-    (SimpleMismatch::new("dob_day_disjoint", &|e| e.props(&["birthDate"]), Some(dob_day_disjoint)), -0.15),
+    (SimpleMismatch::new("dob_year_disjoint", &|e| e.props(&["birthDate"]), Some(dob_year_disjoint_properties)), -0.1),
+    (SimpleMismatch::new("dob_day_disjoint", &|e| e.props(&["birthDate"]), Some(dob_day_disjoint_properties)), -0.15),
     (SimpleMismatch::new("gender_disjoint", &|e| e.props(&["gender"]), None), -0.1),
     (&OrgIdMismatch, -0.1),
   ]
