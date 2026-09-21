@@ -206,7 +206,7 @@ pub struct CatalogDatasetCoverage {
   pub frequency: String,
 }
 
-pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F, index: &P, outdated_grace: Span) -> anyhow::Result<Catalog> {
+pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F, index: &P, outdated_grace: Span, abort_on_error: bool) -> anyhow::Result<Catalog> {
   let manifest = fetcher.fetch_manifest().await?;
   let indices = index.list_indices().await?;
   let mut catalog = Catalog::default();
@@ -269,10 +269,18 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
         catalog.datasets.extend(upstream.datasets);
       }
 
-      Err(err) => {
-        tracing::warn!("error" = ?err, "encountered issue parsing dataset at {}", spec.url);
-        continue;
-      }
+      Err(err) => match abort_on_error {
+        false => {
+          tracing::warn!("error" = ?err, "encountered issue parsing dataset at {}", spec.url);
+          continue;
+        }
+
+        true => {
+          tracing::error!("error" = ?err, "encountered issue parsing dataset at {}", spec.url);
+
+          return Err(err);
+        }
+      },
     }
   }
 
@@ -367,7 +375,7 @@ mod tests {
     let fetcher = TestFetcher { manifest: Manifest::test(), catalogs };
 
     let indices = vec![("dataset1".to_string(), "20251125100000-pop".to_string()), ("dataset2".to_string(), "2025110100000-pop".to_string())];
-    let catalog = super::get_merged_catalog(&fetcher, &MockedElasticsearch::builder().indices(indices).build(), Span::default())
+    let catalog = super::get_merged_catalog(&fetcher, &MockedElasticsearch::builder().indices(indices).build(), Span::default(), false)
       .await
       .unwrap();
 
@@ -458,7 +466,7 @@ mod tests {
       ("noexport".to_string(), "20251125100000-pop".to_string()),
     ];
 
-    let catalog = super::get_merged_catalog(&fetcher, &MockedElasticsearch::builder().indices(indices).build(), Span::new().days(30))
+    let catalog = super::get_merged_catalog(&fetcher, &MockedElasticsearch::builder().indices(indices).build(), Span::new().days(30), false)
       .await
       .unwrap();
 
@@ -506,7 +514,7 @@ mod tests {
     };
 
     let indices = vec![("simple".to_string(), "idx-1".to_string())];
-    let catalog = super::get_merged_catalog(&fetcher, &MockedElasticsearch::builder().indices(indices).build(), Span::default())
+    let catalog = super::get_merged_catalog(&fetcher, &MockedElasticsearch::builder().indices(indices).build(), Span::default(), false)
       .await
       .unwrap();
 

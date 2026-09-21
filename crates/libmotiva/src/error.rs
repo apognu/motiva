@@ -6,6 +6,8 @@ pub enum MotivaError {
   MissingIndex(String),
   #[error("index is not ready")]
   IndexUnavailable,
+  #[error("scope not found in catalog: {0}")]
+  ScopeNotFound(String),
   #[error("resource not found")]
   ResourceNotFound,
   #[error("invalid schema: {0}")]
