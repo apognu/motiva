@@ -1,4 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+  collections::HashMap,
+  sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+  },
+};
 
 use bon::bon;
 use jiff::Span;
@@ -87,6 +93,7 @@ pub struct Motiva<P: IndexProvider, F: CatalogFetcher = HttpCatalogFetcher> {
   fetcher: F,
   config: MotivaConfig,
   catalog: Arc<RwLock<Catalog>>,
+  ready: Arc<AtomicBool>,
 }
 
 /// Perform the initial catalog fetch, tolerating failures.
@@ -95,18 +102,18 @@ pub struct Motiva<P: IndexProvider, F: CatalogFetcher = HttpCatalogFetcher> {
 /// unreachable), we start with an empty catalog and log a warning rather than
 /// aborting startup. The background refresh loop recovers it once the index and
 /// upstream become available.
-async fn init_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F, provider: &P, outdated_grace: Span) -> Catalog {
+async fn init_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F, provider: &P, outdated_grace: Span) -> Option<Catalog> {
   if !provider.ready() {
-    return Catalog::default();
+    return None;
   }
 
   match get_merged_catalog(fetcher, provider, outdated_grace).await {
-    Ok(catalog) => catalog,
+    Ok(catalog) => Some(catalog),
 
     Err(err) => {
-      tracing::warn!(error = err.to_string(), "could not initialize catalog, starting with an empty catalog");
+      tracing::warn!(error = err.to_string(), "could not initialize catalog, not ready");
 
-      Catalog::default()
+      None
     }
   }
 }
@@ -142,7 +149,8 @@ impl<P: IndexProvider> Motiva<P> {
       config,
       index: provider,
       fetcher,
-      catalog: Arc::new(RwLock::new(catalog)),
+      ready: Arc::new(AtomicBool::new(catalog.is_some())),
+      catalog: Arc::new(RwLock::new(catalog.unwrap_or_default())),
     })
   }
 
@@ -158,7 +166,8 @@ impl<P: IndexProvider> Motiva<P> {
       config,
       index: provider,
       fetcher,
-      catalog: Arc::new(RwLock::new(catalog)),
+      ready: Arc::new(AtomicBool::new(catalog.is_some())),
+      catalog: Arc::new(RwLock::new(catalog.unwrap_or_default())),
     })
   }
 }
@@ -179,7 +188,8 @@ impl<P: IndexProvider> Motiva<P, TestFetcher> {
       config,
       index: provider,
       fetcher,
-      catalog: Arc::new(RwLock::new(catalog)),
+      ready: Arc::new(AtomicBool::new(catalog.is_some())),
+      catalog: Arc::new(RwLock::new(catalog.unwrap_or_default())),
     })
   }
 }
@@ -194,26 +204,24 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
     self.index.health().await
   }
 
-  /// Whether the backing index is ready to serve queries.
+  /// Whether the backing index and catalog are ready to serve queries.
   ///
-  /// This reflects the latest background readiness check performed by the
-  /// [`IndexProvider`]. When `false`, callers should surface an unavailable
+  /// This requires both a ready [`IndexProvider`] and at least one successful
+  /// catalog initialization. When `false`, callers should surface an unavailable
   /// status rather than attempting to query.
   pub fn ready(&self) -> bool {
-    self.index.ready()
+    self.index.ready() && self.ready.load(Ordering::Acquire)
   }
 
-  /// Re-check the backing index and update its cached readiness state.
+  /// Re-check the backing index and recover catalog initialization if needed.
   ///
-  /// Meant to be called periodically from a background task so the index can
-  /// recover once it becomes available.
+  /// Meant to be called periodically from a background task so the index and
+  /// initial catalog can recover once they become available.
   pub async fn refresh(&self) {
-    let was_ready = self.index.ready();
-
     self.index.refresh().await;
 
-    if !was_ready && self.index.ready() {
-      self.refresh_catalog().await;
+    if self.index.ready() && !self.ready.load(Ordering::Acquire) {
+      let _ = self.refresh_catalog().await;
     }
   }
 
@@ -268,14 +276,22 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
   /// Refresh the local catalog from upstream.
   ///
   /// This will fetch the latest catalogs and bare datasets, as configured
-  /// by the manifest, and merge it with the currently synced indices.
-  pub async fn refresh_catalog(&self) {
+  /// by the manifest, and merge it with the currently synced indices. Failed
+  /// refreshes retain the last successfully loaded catalog.
+  pub async fn refresh_catalog(&self) -> Result<(), MotivaError> {
     match get_merged_catalog(&self.fetcher, &self.index, self.config.outdated_grace).await {
       Ok(catalog) => {
         *self.catalog.write().await = catalog;
+        self.ready.store(true, Ordering::Release);
+
+        Ok(())
       }
 
-      Err(err) => tracing::warn!(error = err.to_string(), "could not refresh catalog"),
+      Err(err) => {
+        tracing::warn!(error = err.to_string(), "could not refresh catalog");
+
+        Err(MotivaError::OtherError(err))
+      }
     }
   }
 
@@ -295,7 +311,7 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
     }
 
     if force_refresh {
-      self.refresh_catalog().await;
+      let _ = self.refresh_catalog().await;
     }
 
     Ok(self.catalog.read().await.clone())
@@ -312,12 +328,61 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
 }
 #[cfg(test)]
 mod tests {
-  use std::collections::HashMap;
+  use std::{
+    collections::HashMap,
+    sync::{
+      Arc,
+      atomic::{AtomicUsize, Ordering},
+    },
+  };
 
   use crate::{
-    Catalog, CatalogDataset, MockedElasticsearch, Motiva, TestFetcher,
+    Catalog, CatalogDataset, CatalogFetcher, MockedElasticsearch, Motiva, TestFetcher,
     catalog::{Manifest, ManifestCatalog},
   };
+
+  #[derive(Clone, Default)]
+  struct SequencedFetcher {
+    calls: Arc<AtomicUsize>,
+    fail_on_calls: Arc<Vec<usize>>,
+  }
+
+  impl SequencedFetcher {
+    fn failing_on(calls: impl IntoIterator<Item = usize>) -> Self {
+      Self {
+        calls: Arc::new(AtomicUsize::new(0)),
+        fail_on_calls: Arc::new(calls.into_iter().collect()),
+      }
+    }
+  }
+
+  impl CatalogFetcher for SequencedFetcher {
+    async fn fetch_manifest(&self) -> anyhow::Result<Manifest> {
+      Ok(Manifest {
+        catalogs: vec![ManifestCatalog {
+          url: "catalog".to_string(),
+          ..Default::default()
+        }],
+        ..Default::default()
+      })
+    }
+
+    async fn fetch_catalog(&self, _: &str, _: Option<&str>) -> anyhow::Result<Catalog> {
+      let call = self.calls.fetch_add(1, Ordering::Relaxed) + 1;
+
+      if self.fail_on_calls.contains(&call) {
+        anyhow::bail!("catalog fetch failed on call {call}");
+      }
+
+      Ok(Catalog {
+        datasets: vec![CatalogDataset {
+          name: "dataset1".to_string(),
+          ..Default::default()
+        }],
+        ..Default::default()
+      })
+    }
+  }
 
   #[tokio::test]
   async fn catalog_refresh() {
@@ -351,7 +416,7 @@ mod tests {
     assert_eq!(initial_catalog.datasets.len(), 1);
     assert!(initial_catalog.datasets.iter().find(|ds| ds.name == "dataset1").is_some());
 
-    motiva.refresh_catalog().await;
+    motiva.refresh_catalog().await.unwrap();
   }
 
   #[tokio::test]
@@ -367,6 +432,7 @@ mod tests {
     let motiva = Motiva::test(index).build().await.unwrap();
 
     assert!(motiva.ready());
+    assert!(!motiva.has_catalog().await);
   }
 
   #[tokio::test]
@@ -374,7 +440,65 @@ mod tests {
     let index = MockedElasticsearch::builder().indexing_done(false).build();
     let motiva = Motiva::test(index).build().await.unwrap();
 
-    assert!(motiva.get_catalog(false).await.unwrap().datasets.is_empty());
+    assert!(!motiva.ready());
+    assert!(motiva.get_catalog(false).await.is_err());
+  }
+
+  #[tokio::test]
+  async fn initial_catalog_error_leaves_service_unready() {
+    let mut catalogs = HashMap::default();
+    catalogs.insert("valid-catalog".to_string(), Catalog::default());
+
+    let fetcher = TestFetcher {
+      manifest: Manifest {
+        catalogs: vec![
+          ManifestCatalog {
+            url: "valid-catalog".to_string(),
+            ..Default::default()
+          },
+          ManifestCatalog {
+            url: "missing-catalog".to_string(),
+            ..Default::default()
+          },
+        ],
+        ..Default::default()
+      },
+      catalogs,
+    };
+
+    let motiva = Motiva::custom(MockedElasticsearch::default()).fetcher(fetcher).build().await.unwrap();
+
+    assert!(!motiva.ready());
+    assert!(motiva.catalog.read().await.datasets.is_empty());
+  }
+
+  #[tokio::test]
+  async fn catalog_recovery_makes_service_ready() {
+    let fetcher = SequencedFetcher::failing_on([1]);
+    let motiva = Motiva::custom(MockedElasticsearch::default()).fetcher(fetcher).build().await.unwrap();
+
+    assert!(!motiva.ready());
+
+    motiva.refresh().await;
+
+    assert!(motiva.ready());
+    assert_eq!(motiva.get_catalog(false).await.unwrap().datasets.len(), 1);
+  }
+
+  #[tokio::test]
+  async fn failed_refresh_after_initialization_keeps_last_catalog_ready() {
+    let fetcher = SequencedFetcher::failing_on([2]);
+    let motiva = Motiva::custom(MockedElasticsearch::default()).fetcher(fetcher).build().await.unwrap();
+    let initial_catalog = motiva.get_catalog(false).await.unwrap();
+    let initial_dataset_names = initial_catalog.datasets.iter().map(|dataset| dataset.name.clone()).collect::<Vec<_>>();
+
+    assert!(motiva.refresh_catalog().await.is_err());
+
+    assert!(motiva.ready());
+    assert_eq!(
+      motiva.get_catalog(false).await.unwrap().datasets.iter().map(|dataset| dataset.name.clone()).collect::<Vec<_>>(),
+      initial_dataset_names
+    );
   }
 
   #[tokio::test]
