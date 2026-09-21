@@ -29,6 +29,13 @@ pub struct AppState<F: CatalogFetcher, P: IndexProvider> {
   pub motiva: Motiva<P, F>,
 }
 
+fn next_catalog_refresh_delay(succeeded: bool, refresh_interval: Duration, retry_interval: Duration) -> Duration {
+  match succeeded {
+    true => refresh_interval,
+    false => retry_interval,
+  }
+}
+
 pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: Config, fetcher: F, provider: P) -> anyhow::Result<Router> {
   let motiva = {
     let config = MotivaConfig {
@@ -50,16 +57,12 @@ pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: Config, fetcher
         motiva.refresh().await;
       }
 
-      let mut due = !motiva.has_catalog().await;
+      let mut next_refresh = refresh_interval;
 
       loop {
-        if due {
-          motiva.refresh_catalog().await;
-        }
+        tokio::time::sleep(next_refresh).await;
 
-        due = true;
-
-        tokio::time::sleep(refresh_interval).await;
+        next_refresh = next_catalog_refresh_delay(motiva.refresh_catalog().await.is_ok(), refresh_interval, readiness_interval);
       }
     }
   });
@@ -76,6 +79,20 @@ pub async fn routes<F: CatalogFetcher, P: IndexProvider>(config: Config, fetcher
   };
 
   Ok(router(state))
+}
+
+#[cfg(test)]
+mod tests {
+  use std::time::Duration;
+
+  #[test]
+  fn catalog_refresh_delay_uses_retry_interval_after_failure() {
+    let refresh_interval = Duration::from_secs(3600);
+    let retry_interval = Duration::from_secs(15);
+
+    assert_eq!(super::next_catalog_refresh_delay(true, refresh_interval, retry_interval), refresh_interval);
+    assert_eq!(super::next_catalog_refresh_delay(false, refresh_interval, retry_interval), retry_interval);
+  }
 }
 
 pub(crate) fn router<F: CatalogFetcher, P: IndexProvider>(state: AppState<F, P>) -> Router {

@@ -270,8 +270,9 @@ pub async fn get_merged_catalog<P: IndexProvider, F: CatalogFetcher>(fetcher: &F
       }
 
       Err(err) => {
-        tracing::warn!("error" = ?err, "encountered issue parsing dataset at {}", spec.url);
-        continue;
+        tracing::error!("error" = ?err, "encountered issue parsing dataset at {}", spec.url);
+
+        return Err(err);
       }
     }
   }
@@ -435,18 +436,11 @@ mod tests {
     catalogs.insert(OPENSANCTIONS_CATALOG_URL.to_string(), catalog);
 
     let manifest = Manifest {
-      catalogs: vec![
-        ManifestCatalog {
-          url: OPENSANCTIONS_CATALOG_URL.to_string(),
-          scope: Some("default".to_string()),
-          ..Default::default()
-        },
-        // Absent from the fetcher's catalog map -> fetch_catalog errors and is skipped.
-        ManifestCatalog {
-          url: "https://absent.example/index.json".to_string(),
-          ..Default::default()
-        },
-      ],
+      catalogs: vec![ManifestCatalog {
+        url: OPENSANCTIONS_CATALOG_URL.to_string(),
+        scope: Some("default".to_string()),
+        ..Default::default()
+      }],
       datasets: Vec::new(),
     };
 
@@ -475,6 +469,26 @@ mod tests {
 
     let datasets_by_name = catalog.datasets.iter().map(|ds| (ds.name.clone(), ds.clone())).collect::<HashMap<_, _>>();
     assert_eq!(datasets_by_name["withresource"].entities_url.as_deref(), Some("http://example/entities.ftm.json"));
+  }
+
+  #[tokio::test]
+  async fn merge_catalog_propagates_catalog_fetch_failure() {
+    let manifest = Manifest {
+      catalogs: vec![ManifestCatalog {
+        url: "https://absent.example/index.json".to_string(),
+        ..Default::default()
+      }],
+      datasets: Vec::new(),
+    };
+
+    let fetcher = TestFetcher {
+      manifest,
+      catalogs: HashMap::default(),
+    };
+
+    let err = super::get_merged_catalog(&fetcher, &MockedElasticsearch::default(), Span::default()).await.unwrap_err();
+
+    assert_eq!(err.to_string(), "unknown catalog url");
   }
 
   #[tokio::test]

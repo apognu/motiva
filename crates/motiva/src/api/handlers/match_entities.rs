@@ -73,14 +73,14 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
 
       async move {
         if entity.properties.is_empty() {
-          return (
+          return Ok((
             id,
             MatchResults {
-              status: 200,
+              status: StatusCode::OK.as_u16(),
               total: Some(MatchTotal { relation: "eq", value: 0 }),
               results: vec![],
             },
-          );
+          ));
         }
 
         let hits = match state.motiva.search(&entity, &query).await {
@@ -89,7 +89,7 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
           Err(err) => {
             tracing::error!(error = ?err, "index query returned an error");
 
-            return (id, MatchResults { status: 500, ..Default::default() });
+            return Err(err);
           }
         };
 
@@ -121,20 +121,20 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
             histogram!("motiva_matches_above_cutoff_total").record(hits.len() as f64);
             histogram!("motiva_matches_below_cutoff_total").record((pre_cutoff_count - hits.len()) as f64);
 
-            (
+            Ok((
               id,
               MatchResults {
-                status: 200,
+                status: StatusCode::OK.as_u16(),
                 total: Some(MatchTotal {
                   relation: "eq",
                   value: post_threshold_count,
                 }),
                 results: hits,
               },
-            )
+            ))
           }
 
-          Err(_) => (id, MatchResults { status: 500, ..Default::default() }),
+          Err(err) => Err(MotivaError::OtherError(err)),
         }
       }
       .in_current_span()
@@ -144,8 +144,9 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
   let mut responses = HashMap::with_capacity_and_hasher(tasks.len(), RandomState::default());
 
   for task in tasks {
-    match task.await {
-      Err(_) => return Err(AppError::ServerError),
+    match task.await.map_err(|err| AppError::OtherError(anyhow::anyhow!(err)))? {
+      Err(err) => return Err(err.into()),
+
       Ok((id, results)) => {
         responses.insert(id, results);
       }

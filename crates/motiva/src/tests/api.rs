@@ -78,6 +78,23 @@ async fn api_health_healthy() {
 }
 
 #[tokio::test]
+async fn api_is_not_ready_when_initial_catalog_loading_fails() {
+  let index = MockedElasticsearch::builder().ready(true).indexing_done(false).build();
+
+  let state = AppState {
+    config: Arc::new(Config::default()),
+    prometheus: None,
+    motiva: Motiva::test(index).build().await.unwrap(),
+  };
+
+  let app = Router::new().route("/readyz", post(handlers::readyz)).with_state(state);
+  let server = TestServer::new(app);
+  let response = server.post("/readyz").await;
+
+  assert_eq!(response.status_code(), 503);
+}
+
+#[tokio::test]
 async fn api_algorithms() {
   let index = MockedElasticsearch::builder().healthy(true).build();
 

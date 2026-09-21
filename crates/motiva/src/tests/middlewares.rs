@@ -4,10 +4,12 @@ use std::{
 };
 
 use axum_test::TestServer;
+use jiff::Span;
 use libmotiva::{MockedElasticsearch, prelude::*};
 use nix::{sys::signal, unistd::Pid};
 use reqwest::{StatusCode, header::AUTHORIZATION};
 use rusty_fork::rusty_fork_test;
+use serde_json::json;
 
 use crate::{
   api::{self, AppState, config::Config},
@@ -124,11 +126,13 @@ rusty_fork_test! {
 
             let buf = Arc::new(Mutex::new(Vec::default()));
             let (writer, wait) = VecLogWriter::new(Arc::clone(&buf));
-            let _guards = init_tracing(&state.config, writer).await;
+            let guards = init_tracing(&state.config, writer).await;
 
             let app = api::router(state);
             let server = TestServer::new(app);
             let _ = server.post("/match/default").add_header("traceparent", "01-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01").await;
+
+            drop(guards);
 
             wait.recv().unwrap();
 
@@ -142,6 +146,51 @@ rusty_fork_test! {
             assert!(lines[1].contains("request_id="));
             assert!(lines[1].contains("trace_id=0af7651916cd43dd8448eb211c80319c"));
             assert!(lines[1].contains(r#"remote="-" method=POST path="/match/default" status=415"#));
+        });
+    }
+
+    #[test]
+    fn logs_scope_not_found() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        rt.block_on(async {
+            let index = MockedElasticsearch::builder().scope_not_found("unknown".to_string()).build();
+            let state = AppState {
+                config: Arc::new(Config {
+                    enable_tracing: true,
+                    request_timeout: Span::new().seconds(10),
+                    ..Default::default()
+                }),
+                prometheus: None,
+                motiva: Motiva::test(index).build().await.unwrap(),
+            };
+
+            let buf = Arc::new(Mutex::new(Vec::default()));
+            let (writer, _wait) = VecLogWriter::new(Arc::clone(&buf));
+            let guards = init_tracing(&state.config, writer).await;
+
+            let app = api::router(state);
+            let server = TestServer::new(app);
+            let response = server
+                .post("/match/unknown")
+                .json(&json!({
+                    "queries": {
+                        "test": {
+                            "schema": "Person",
+                            "properties": { "name": ["John Doe"] }
+                        }
+                    }
+                }))
+                .await;
+
+            assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
+
+            drop(guards);
+
+            let lines = buf.lock().unwrap();
+
+            assert!(lines.iter().any(|line| line.contains("index query returned an error") && line.contains(r#"ScopeNotFound("unknown")"#)));
+            assert!(lines.iter().any(|line| line.contains("status=404")));
         });
     }
 

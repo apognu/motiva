@@ -84,10 +84,15 @@ impl CatalogFetcher for HttpCatalogFetcher {
       None => None,
     };
 
-    match token {
-      Some(token) => Ok(client.get(url).header(header::AUTHORIZATION, format!("Token {token}")).send().await?.json::<Catalog>().await?),
-      None => Ok(client.get(url).send().await?.json::<Catalog>().await?),
+    let request = client.get(url);
+
+    let response = match token {
+      Some(token) => request.header(header::AUTHORIZATION, format!("Token {token}")).send().await?,
+      None => request.send().await?,
     }
+    .error_for_status()?;
+
+    Ok(response.json::<Catalog>().await?)
   }
 }
 
@@ -95,7 +100,7 @@ impl HttpCatalogFetcher {
   async fn fetch_http(&self, url: &str) -> anyhow::Result<Manifest> {
     tracing::debug!(url, "fetching http manifest");
 
-    let response = reqwest::get(url).await.context("could not reach manifest location")?;
+    let response = reqwest::get(url).await.context("could not reach manifest location")?.error_for_status()?;
 
     match self.format {
       ManifestFormat::Json => response.json().await.context("invalid manifest file"),
@@ -261,6 +266,28 @@ mod tests {
     assert_eq!(manifest.catalogs[0].url, "http://myurl.tld");
     assert_eq!(manifest.catalogs[0].scope.as_deref(), Some("myscope"));
     assert_eq!(manifest.catalogs[0].resource_name.as_deref(), Some("ents.json"));
+  }
+
+  #[tokio::test]
+  async fn http_errors_are_rejected() {
+    let mock = MockServer::start().await;
+
+    Mock::given(method("GET"))
+      .and(path("/manifest.json"))
+      .respond_with(ResponseTemplate::new(503).set_body_raw(r#"{"catalogs":[]}"#, "application/json"))
+      .mount(&mock)
+      .await;
+
+    Mock::given(method("GET"))
+      .and(path("/catalog.json"))
+      .respond_with(ResponseTemplate::new(404).set_body_raw(r#"{"datasets":[]}"#, "application/json"))
+      .mount(&mock)
+      .await;
+
+    let fetcher = HttpCatalogFetcher::from_manifest_url(Some(format!("{}/manifest.json", mock.uri()))).unwrap();
+
+    assert!(fetcher.fetch_manifest().await.is_err());
+    assert!(fetcher.fetch_catalog(&format!("{}/catalog.json", mock.uri()), None).await.is_err());
   }
 
   #[tokio::test]

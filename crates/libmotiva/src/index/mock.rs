@@ -25,6 +25,7 @@ pub struct MockedElasticsearch {
 
   #[builder(default)]
   entities: Vec<Entity>,
+  scope_not_found: Option<String>,
   entity: Option<EntityHandle>,
   #[builder(default)]
   indices: Vec<(String, String)>,
@@ -49,6 +50,10 @@ impl IndexProvider for MockedElasticsearch {
   }
 
   async fn search(&self, _: &Arc<RwLock<Catalog>>, _: &SearchEntity, _: &MatchParams) -> Result<Vec<Entity>, MotivaError> {
+    if let Some(scope) = &self.scope_not_found {
+      return Err(MotivaError::ScopeNotFound(scope.clone()));
+    }
+
     Ok(self.entities.clone())
   }
 
