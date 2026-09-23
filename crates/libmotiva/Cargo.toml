@@ -23,7 +23,7 @@ anyhow = "1.0.98"
 aws-config = { version = "1.11.0", optional = true }
 bon = { version = "3.6.5" }
 bumpalo = { version = "3.19.0", features = ["collections"] }
-celes = "2.8.2"
+celes = "3.0.0"
 compact_str = "0.10.0"
 itertools = "0.15.0"
 jiff = { version = "0.2.15", features = ["serde"] }
