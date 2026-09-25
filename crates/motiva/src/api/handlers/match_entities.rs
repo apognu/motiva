@@ -83,8 +83,8 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
           ));
         }
 
-        let hits = match state.motiva.search(&entity, &query).await {
-          Ok(hits) => hits,
+        let candidates = match state.motiva.search(&entity, &query).await {
+          Ok(candidates) => candidates,
 
           Err(err) => {
             tracing::error!(error = ?err, "index query returned an error");
@@ -94,10 +94,10 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
         };
 
         let scores = match query.algorithm {
-          Algorithm::NameBased => state.motiva.score::<NameBased>(&entity, hits, &options),
-          Algorithm::NameQualified => state.motiva.score::<NameQualified>(&entity, hits, &options),
-          Algorithm::MarbleV0 => state.motiva.score::<MarbleV0>(&entity, hits, &options),
-          Algorithm::LogicV1 | Algorithm::Best => state.motiva.score::<LogicV1>(&entity, hits, &options),
+          Algorithm::NameBased => state.motiva.score::<NameBased>(entity, candidates, options).await,
+          Algorithm::NameQualified => state.motiva.score::<NameQualified>(entity, candidates, options).await,
+          Algorithm::MarbleV0 => state.motiva.score::<MarbleV0>(entity, candidates, options).await,
+          Algorithm::LogicV1 | Algorithm::Best => state.motiva.score::<LogicV1>(entity, candidates, options).await,
         };
 
         match scores {
@@ -134,7 +134,7 @@ pub async fn match_entities<F: CatalogFetcher, P: IndexProvider + 'static>(
             ))
           }
 
-          Err(err) => Err(MotivaError::OtherError(err)),
+          Err(err) => Err(err),
         }
       }
       .in_current_span()

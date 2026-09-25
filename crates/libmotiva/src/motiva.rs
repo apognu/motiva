@@ -15,7 +15,7 @@ use crate::{
   catalog::{Catalog, get_merged_catalog},
   error::MotivaError,
   fetcher::CatalogFetcher,
-  index::{EntityHandle, IndexProvider, elastic::config::IndexVersion},
+  index::{Candidates, EntityHandle, IndexProvider, elastic::config::IndexVersion},
   matching::MatchParams,
   model::{Entity, SearchEntity},
   nested::fetch_nested_entities,
@@ -69,6 +69,7 @@ pub struct MotivaConfig {
 /// # Examples
 ///
 /// ```rust
+/// # use std::sync::Arc;
 /// # use libmotiva::{prelude::*, MockedElasticsearch};
 /// # use std::collections::HashMap;
 ///
@@ -78,7 +79,7 @@ pub struct MotivaConfig {
 ///
 ///   let search = SearchEntity::builder("Person").properties(&[("name", &["John Doe"])]).build();
 ///   let results = motiva.search(&search, &MatchParams::default()).await.unwrap();
-///   let scores = motiva.score::<NameBased>(&search, results, &Default::default()).unwrap();
+///   let scores = motiva.score::<NameBased>(search, results, Arc::new(ScoringOptions::default())).await.unwrap();
 ///
 ///   for (entity, score) in scores {
 ///       if let Some(name) = entity.props(&["name"]).iter().next() {
@@ -233,7 +234,11 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
   }
 
   /// Perform an entity search and return the candidates.
-  pub async fn search(&self, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, MotivaError> {
+  ///
+  /// The candidates may not be decoded yet: pass them to [`Motiva::score`],
+  /// which decodes them away from the async runtime, or decode them with
+  /// [`Candidates::decode`].
+  pub async fn search(&self, entity: &SearchEntity, params: &MatchParams) -> Result<Candidates, MotivaError> {
     self.index.search(&self.catalog, entity, params).await
   }
 
@@ -269,8 +274,13 @@ impl<P: IndexProvider, F: CatalogFetcher> Motiva<P, F> {
   }
 
   /// Perform the scoring of all candidates against the search parameters.
-  pub fn score<A: MatchingAlgorithm>(&self, entity: &SearchEntity, hits: Vec<Entity>, options: &ScoringOptions) -> anyhow::Result<Vec<(Entity, f64)>> {
-    scoring::score::<A>(entity, hits, options)
+  ///
+  /// Decoding and scoring the candidates can take several milliseconds, so it
+  /// runs on a dedicated CPU thread pool instead of blocking the async runtime.
+  /// Both run as a single job, so the decoded candidates are scored while they
+  /// are still in cache.
+  pub async fn score<A: MatchingAlgorithm + 'static>(&self, entity: SearchEntity, candidates: Candidates, options: Arc<ScoringOptions>) -> Result<Vec<(Entity, f64)>, MotivaError> {
+    crate::cpu::run(move || scoring::score::<A>(&entity, candidates.decode()?, &options).map_err(MotivaError::OtherError)).await
   }
 
   /// Refresh the local catalog from upstream.
