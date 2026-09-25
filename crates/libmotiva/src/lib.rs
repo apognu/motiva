@@ -2,6 +2,7 @@
 #![doc = include_str!("../README.md")]
 
 mod catalog;
+mod cpu;
 mod error;
 mod fetcher;
 mod index;
@@ -34,7 +35,7 @@ pub mod prelude {
 
   pub use crate::error::MotivaError;
   pub use crate::index::{
-    EntityHandle, IndexProvider,
+    Candidates, EntityHandle, IndexProvider,
     elastic::{ElasticsearchProvider, builder::EsAuthMethod, builder::EsTlsVerification, config::EsOptions, scoped::create_scoped_index},
   };
 

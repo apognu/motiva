@@ -19,7 +19,7 @@ use crate::{
   Catalog,
   error::MotivaError,
   index::{
-    EntityHandle, IndexProvider,
+    Candidate, Candidates, EntityHandle, IndexProvider,
     elastic::{EsEntity, EsErrorResponse, EsHealth, EsResponse, config::IndexVersion},
   },
   matching::{MatchParams, extractors},
@@ -101,8 +101,10 @@ impl IndexProvider for ElasticsearchProvider {
   }
 
   /// Search for candidate entities matching input parameters.
+  ///
+  /// The response body is returned undecoded, see [`Candidates::decode`].
   #[instrument(skip_all)]
-  async fn search(&self, catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, params: &MatchParams) -> Result<Vec<Entity>, MotivaError> {
+  async fn search(&self, catalog: &Arc<RwLock<Catalog>>, entity: &SearchEntity, params: &MatchParams) -> Result<Candidates, MotivaError> {
     if !self.ready() {
       return Err(MotivaError::IndexUnavailable);
     }
@@ -129,23 +131,7 @@ impl IndexProvider for ElasticsearchProvider {
       return Err(MotivaError::OtherError(anyhow::anyhow!(body.error.reason)));
     }
 
-    let body: EsResponse = response.json().await?;
-
-    match body.hits.hits {
-      Some(hits) => {
-        tracing::debug!(latency = body.took, hits = body.hits.total.value, results = hits.len(), "got hits from index");
-
-        counter!("motiva_indexer_matches_total").increment(hits.len() as u64);
-        histogram!("motiva_indexer_latency_seconds").record(body.took as f64 / 1000.0);
-
-        global::meter("motiva").u64_histogram("index_hits").build().record(hits.len() as u64, &[]);
-        global::meter("motiva").u64_histogram("index_latency").build().record(body.took, &[]);
-
-        Ok(hits.into_iter().map(Entity::from).collect())
-      }
-
-      None => Err(MotivaError::OtherError(anyhow::anyhow!("invalid response from elasticsearch"))),
-    }
+    Ok(Candidates(Candidate::Json(response.bytes().await?)))
   }
 
   /// Get an entity from its ID.
@@ -338,6 +324,29 @@ impl ElasticsearchProvider {
     }
 
     Ok(true)
+  }
+}
+
+/// Decode a search response body into candidate entities.
+///
+/// This is CPU-bound (and grows with the number of candidates), see [`Candidates::decode`].
+pub(crate) fn decode_search_response(body: &[u8]) -> Result<Vec<Entity>, MotivaError> {
+  let body: EsResponse = serde_json::from_slice(body).map_err(|err| MotivaError::OtherError(err.into()))?;
+
+  match body.hits.hits {
+    Some(hits) => {
+      tracing::debug!(latency = body.took, hits = body.hits.total.value, results = hits.len(), "got hits from index");
+
+      counter!("motiva_indexer_matches_total").increment(hits.len() as u64);
+      histogram!("motiva_indexer_latency_seconds").record(body.took as f64 / 1000.0);
+
+      global::meter("motiva").u64_histogram("index_hits").build().record(hits.len() as u64, &[]);
+      global::meter("motiva").u64_histogram("index_latency").build().record(body.took, &[]);
+
+      Ok(hits.into_iter().map(Entity::from).collect())
+    }
+
+    None => Err(MotivaError::OtherError(anyhow::anyhow!("invalid response from elasticsearch"))),
   }
 }
 

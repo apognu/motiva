@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 use crate::{
   Catalog,
   error::MotivaError,
-  index::{EntityHandle, IndexProvider, elastic::config::IndexVersion},
+  index::{Candidates, EntityHandle, IndexProvider, elastic::config::IndexVersion},
   matching::MatchParams,
   model::{Entity, SearchEntity},
 };
@@ -49,12 +49,12 @@ impl IndexProvider for MockedElasticsearch {
     }
   }
 
-  async fn search(&self, _: &Arc<RwLock<Catalog>>, _: &SearchEntity, _: &MatchParams) -> Result<Vec<Entity>, MotivaError> {
+  async fn search(&self, _: &Arc<RwLock<Catalog>>, _: &SearchEntity, _: &MatchParams) -> Result<Candidates, MotivaError> {
     if let Some(scope) = &self.scope_not_found {
       return Err(MotivaError::ScopeNotFound(scope.clone()));
     }
 
-    Ok(self.entities.clone())
+    Ok(self.entities.clone().into())
   }
 
   async fn get_entity(&self, _: &str) -> Result<EntityHandle, MotivaError> {
