@@ -56,7 +56,7 @@ jobs:
 
       - name: Stage binary
         run: |
-          mv dist/motiva${{ matrix.combination.suffix }} dist/motiva
+          mv dist/motiva${{ matrix.combination.suffix }} tmp && mv tmp dist/motiva
           chmod +x dist/motiva
 
       - name: Check binary runs in the runtime image

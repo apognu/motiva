@@ -23,6 +23,7 @@ async fn api_invalid_credentials() {
 
   let state = AppState {
     config: Arc::new(Config {
+      request_timeout: Span::new().seconds(10),
       api_key: Some("myapikey".into()),
       ..Default::default()
     }),
@@ -51,6 +52,7 @@ async fn api_valid_credentials() {
 
   let state = AppState {
     config: Arc::new(Config {
+      request_timeout: Span::new().seconds(10),
       api_key: Some("myapikey".into()),
       ..Default::default()
     }),
@@ -76,6 +78,7 @@ rusty_fork_test! {
             let index = MockedElasticsearch::builder().healthy(true).build();
 
             let config = Config {
+                request_timeout: Span::new().seconds(10),
                 index_url: "http://localhost:9200".into(),
                 listen_addr: "0.0.0.0:8080".into(),
                 ..Default::default()
@@ -117,6 +120,7 @@ rusty_fork_test! {
 
             let state = AppState {
                 config: Arc::new(Config {
+                    request_timeout: Span::new().seconds(10),
                     enable_tracing: true,
                     ..Default::default()
                 }),
@@ -157,8 +161,8 @@ rusty_fork_test! {
             let index = MockedElasticsearch::builder().scope_not_found("unknown".to_string()).build();
             let state = AppState {
                 config: Arc::new(Config {
-                    enable_tracing: true,
                     request_timeout: Span::new().seconds(10),
+                    enable_tracing: true,
                     ..Default::default()
                 }),
                 prometheus: None,
@@ -203,6 +207,7 @@ rusty_fork_test! {
 
             let state = AppState {
                 config: Arc::new(Config {
+                    request_timeout: Span::new().seconds(10),
                     enable_prometheus: true,
                     ..Default::default()
                 }),
