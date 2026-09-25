@@ -20,6 +20,8 @@ pub enum AppError {
   InvalidCredentials,
   #[error("missing resource")]
   ResourceNotFound,
+  #[error("missing scope")]
+  ScopeNotFound(String),
   #[error("server error, please check your logs for more information")]
   ServerError,
   #[error("the index is not ready, please try again later")]
@@ -42,7 +44,7 @@ impl From<MotivaError> for AppError {
       MotivaError::ConfigError(err) => AppError::ConfigError(err),
       MotivaError::MissingIndex(_) => AppError::ServerError,
       MotivaError::IndexUnavailable => AppError::ServiceUnavailable,
-      MotivaError::ScopeNotFound(_) => AppError::ResourceNotFound,
+      MotivaError::ScopeNotFound(scope) => AppError::ScopeNotFound(scope),
       MotivaError::IndexError(err) => AppError::IndexError(err.to_string()),
       MotivaError::InvalidSchema(_) => AppError::BadRequest,
       MotivaError::ResourceNotFound => AppError::ResourceNotFound,
@@ -65,6 +67,7 @@ impl From<&AppError> for ApiError {
       AppError::BadRequest => ApiError(StatusCode::BAD_REQUEST, value.to_string(), None),
       AppError::InvalidCredentials => ApiError(StatusCode::UNAUTHORIZED, value.to_string(), None),
       AppError::ResourceNotFound => ApiError(StatusCode::NOT_FOUND, value.to_string(), None),
+      AppError::ScopeNotFound(scope) => ApiError(StatusCode::NOT_FOUND, value.to_string(), Some(vec![format!("scope {scope} not found in the index")])),
       AppError::ServiceUnavailable => ApiError(StatusCode::SERVICE_UNAVAILABLE, value.to_string(), None),
       AppError::IndexError(_) => ApiError(StatusCode::INTERNAL_SERVER_ERROR, value.to_string(), None),
       AppError::InvalidQuery(err) => ApiError(StatusCode::BAD_REQUEST, value.to_string(), Some(vec![err.to_string()])),
@@ -119,7 +122,7 @@ mod tests {
         "invalid configuration: config error",
       ),
       (MotivaError::ResourceNotFound, StatusCode::NOT_FOUND, "missing resource"),
-      (MotivaError::ScopeNotFound("unknown".into()), StatusCode::NOT_FOUND, "missing resource"),
+      (MotivaError::ScopeNotFound("unknown".into()), StatusCode::NOT_FOUND, "missing scope"),
       (
         MotivaError::IndexError(io::Error::new(ErrorKind::AddrInUse, anyhow::anyhow!("index error")).into()),
         StatusCode::INTERNAL_SERVER_ERROR,
