@@ -10,3 +10,12 @@ updates:
       interval: daily
     cooldown:
       default-days: 7
+    groups:
+      opentelemetry:
+        patterns:
+          - "opentelemetry*"
+          - "tracing-opentelemetry"
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
