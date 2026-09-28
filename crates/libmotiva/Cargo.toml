@@ -33,7 +33,7 @@ luhn = "1.0.1"
 metrics = "0.24.2"
 opensearch = { version = "2.4.0", default-features = false, features = ["rustls-tls"] }
 opentelemetry = { version = "0.33.0", features = ["trace"] }
-rand = "0.10.1"
+rand = "0.10.3"
 rayon = "1.10"
 regex = "1.11.1"
 reqwest = { version = "0.13.1", default-features = false, features = ["rustls", "json"] }
