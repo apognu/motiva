@@ -31,7 +31,7 @@ mimalloc = { version = "0.1.52" }
 opentelemetry = { version = "0.32", features = ["trace"] }
 opentelemetry-gcloud-trace = { version = "0.27", optional = true }
 opentelemetry-http = "0.32"
-opentelemetry-otlp = { version = "0.32", features = [
+opentelemetry-otlp = { version = "0.33", features = [
     "grpc-tonic",
     "metrics",
     "tonic",
