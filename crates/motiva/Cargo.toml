@@ -28,16 +28,16 @@ libmotiva = { path = "../libmotiva" }
 metrics = "0.24.2"
 metrics-exporter-prometheus = { version = "0.18.1", default-features = false, features = ["http-listener"] }
 mimalloc = { version = "0.1.52" }
-opentelemetry = { version = "0.32", features = ["trace"] }
-opentelemetry-gcloud-trace = { version = "0.27", optional = true }
-opentelemetry-http = "0.32"
-opentelemetry-otlp = { version = "0.32", features = [
+opentelemetry = { version = "0.33", features = ["trace"] }
+opentelemetry-gcloud-trace = { version = "0.28", optional = true }
+opentelemetry-http = "0.33"
+opentelemetry-otlp = { version = "0.33", features = [
     "grpc-tonic",
     "metrics",
     "tonic",
     "trace",
 ] }
-opentelemetry_sdk = "0.32"
+opentelemetry_sdk = "0.33"
 reqwest = { version = "0.13.1", default-features = false, features = ["rustls", "json"] }
 rustls = "^0.23"
 serde = { version = "1.0.219", features = ["rc"] }
@@ -53,7 +53,7 @@ tokio = { version = "1.46.1", features = [
 tower-http = { version = "0.7.0", features = ["timeout", "trace"] }
 tracing = "0.1.41"
 tracing-appender = "0.2.3"
-tracing-opentelemetry = "0.33"
+tracing-opentelemetry = "0.34"
 tracing-subscriber = { version = "0.3.20", features = [
     "json",
     "std",
