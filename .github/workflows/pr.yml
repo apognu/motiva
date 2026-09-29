@@ -24,9 +24,6 @@ jobs:
     needs: [test]
     permissions:
       contents: read
-      packages: write
-      id-token: write
-      attestations: write
     secrets: inherit
     with:
       tag: ${{ github.event.number }}
