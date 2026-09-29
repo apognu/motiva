@@ -3,7 +3,7 @@
 #  - prebuilt: copy it from dist/motiva (used in CI, where it was already built)
 ARG BINARY_SOURCE=source
 
-FROM lukemathwalker/cargo-chef:latest-rust-1.98.0-slim-trixie AS base
+FROM lukemathwalker/cargo-chef:latest-rust-1.98.1-slim-trixie AS base
 RUN apt update && apt install -y pkg-config libssl-dev
 
 FROM base AS planner
