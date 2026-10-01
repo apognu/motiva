@@ -7,7 +7,7 @@ use rphonetic::{Encoder, Metaphone};
 use unicode_general_category::{GeneralCategory, get_general_category};
 use whatlang::Script;
 
-use crate::matching::latinize::latinize;
+use crate::matching::{latinize::latinize, replacers::stopwords::STOPWORDS};
 
 static METAPHONE: LazyLock<Metaphone> = LazyLock::new(|| Metaphone::new(None));
 
@@ -49,20 +49,22 @@ fn is_modern_alphabet(input: &str) -> bool {
   matches!(info.script(), Script::Latin | Script::Greek | Script::Armenian | Script::Cyrillic)
 }
 
+fn tokenize_name(name: &str) -> Vec<String> {
+  name
+    .chars()
+    .filter(|c| !is_ignored_separator(*c))
+    .join("")
+    .split(is_name_separator)
+    .map(|token| token.to_string())
+    .collect()
+}
+
 pub(crate) fn tokenize_names<'s, I, S>(names: I) -> impl Iterator<Item = Vec<String>>
 where
   S: Borrow<str> + 's,
   I: Iterator<Item = &'s S> + 's,
 {
-  names.map(|s| {
-    s.borrow()
-      .chars()
-      .filter(|c| !is_ignored_separator(*c))
-      .join("")
-      .split(is_name_separator)
-      .map(|token| token.to_string())
-      .collect::<Vec<_>>()
-  })
+  names.map(|s| tokenize_name(s.borrow()))
 }
 
 #[inline(always)]
@@ -233,6 +235,33 @@ where
     .filter(|s| s.chars().count() > 1)
     .map(|s| latinize(&s).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
     .unique()
+}
+
+pub(crate) fn last_name_parts<'s, I, S>(names: I) -> impl Iterator<Item = String>
+where
+  S: Borrow<str> + 's,
+  I: Iterator<Item = &'s S> + 's,
+{
+  names
+    .flat_map(|name| tokenize_name(strip_person_prefixes(name.borrow())).into_iter())
+    .filter(|part| part.chars().count() > 1)
+    .map(|part| latinize(&part).to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>())
+}
+
+pub(crate) fn strip_person_prefixes(mut name: &str) -> &str {
+  name = name.trim_start_matches(|c: char| !c.is_alphanumeric());
+
+  while let Some(prefix) = STOPWORDS.0.find(name) {
+    let trailing = name[prefix.end()..].chars().next();
+
+    if prefix.start() != 0 || trailing.is_some_and(char::is_alphanumeric) {
+      break;
+    }
+
+    name = name[prefix.end()..].trim_start_matches(|c: char| !c.is_alphanumeric());
+  }
+
+  name
 }
 
 pub(crate) fn name_parts<'s, I, S>(names: I) -> impl Iterator<Item = Vec<String>>

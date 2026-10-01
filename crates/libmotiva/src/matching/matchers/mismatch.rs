@@ -67,6 +67,30 @@ impl<'e> Feature for SimpleMismatch<'e> {
   }
 }
 
+#[scoring_feature(LastNameMismatch, name = "last_name_mismatch")]
+fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
+  let lhs = lhs.props(&["lastName"]);
+  let rhs = rhs.props(&["lastName"]);
+
+  if lhs.is_empty() {
+    return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
+  }
+  if rhs.is_empty() {
+    return (0.0, explain.then_some(Detail::Note(NO_DATA))).into();
+  }
+
+  let lhs = HashSet::<String>::from_iter(extractors::last_name_parts(lhs.iter()));
+
+  let score = match extractors::last_name_parts(rhs.iter()).any(|part| lhs.contains(&part)) {
+    true => 0.0,
+    false => 1.0,
+  };
+
+  let detail = explain.then(|| if score > 0.0 { Detail::Note("mismatch detected") } else { Detail::Note("no mismatch") });
+
+  (score, detail).into()
+}
+
 #[scoring_feature(NumbersMismatch, name = "numbers_mismatch")]
 fn score(&self, _bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) -> ScoreResult {
   let (lhs_numbers, rhs_numbers) = match lhs.schema.is_a("Address") {
@@ -157,12 +181,67 @@ fn extract_month_day<S: AsRef<str>>(date: S) -> std::vec::Vec<char> {
 
 #[cfg(test)]
 mod tests {
+  use pyo3::Python;
+
   use crate::{
     matching::Feature,
     model::{Entity, SearchEntity},
+    tests::python::nomenklatura_comparer,
   };
 
   use bumpalo::Bump;
+
+  #[test]
+  fn last_name_mismatch() {
+    let score = |lhs: &[&str], rhs: &[&str]| {
+      let lhs = SearchEntity::builder("Person").properties(&[("lastName", lhs)]).build();
+      let rhs = Entity::builder("Person").properties(&[("lastName", rhs)]).build();
+
+      super::LastNameMismatch.score_scalar(&Bump::new(), &lhs, &rhs)
+    };
+
+    assert_eq!(score(&["John Doe"], &["Doe"]), 0.0);
+    assert_eq!(score(&["Doe"], &["Roe"]), 1.0);
+    assert_eq!(score(&["Doe"], &[]), 0.0);
+    assert_eq!(score(&["Dr. Doe"], &["Dr. Smith"]), 1.0);
+    assert_eq!(score(&["DOE"], &["doe"]), 0.0);
+    assert_eq!(score(&["O'Reilly"], &["OReilly"]), 0.0);
+    assert_eq!(score(&["O’Reilly"], &["OReilly"]), 0.0);
+    assert_eq!(score(&["Dr. Smith-Jones"], &["Jones"]), 0.0);
+    assert_eq!(score(&["van der Meer"], &["Meer"]), 0.0);
+  }
+
+  #[test]
+  #[serial_test::serial]
+  fn last_name_mismatch_against_nomenklatura() {
+    Python::initialize();
+
+    let score = |lhs: &[&str], rhs: &[&str]| {
+      let lhs = SearchEntity::builder("Person").properties(&[("lastName", lhs)]).build();
+      let rhs = Entity::builder("Person").properties(&[("lastName", rhs)]).build();
+
+      let score = super::LastNameMismatch.score_scalar(&Bump::new(), &lhs, &rhs);
+      let nscore = nomenklatura_comparer("compare.names", "last_name_mismatch", &lhs, &rhs).unwrap();
+
+      (score, nscore)
+    };
+
+    for (lhs, rhs) in [
+      (&["John Doe"][..], &["Doe"][..]),
+      (&["Doe"][..], &["Roe"][..]),
+      (&["Doe"][..], &[][..]),
+      (&["Dr. Doe"][..], &["Dr. Smith"][..]),
+      (&["DOE"][..], &["doe"][..]),
+      (&["O'Reilly"][..], &["OReilly"][..]),
+      (&["O’Reilly"][..], &["OReilly"][..]),
+      (&["Dr. Smith-Jones"][..], &["Jones"][..]),
+      (&["van der Meer"][..], &["Meer"][..]),
+    ] {
+      let (score, nscore) = score(lhs, rhs);
+
+      assert_eq!(score, nscore);
+    }
+  }
 
   #[test]
   fn dob_year_disjoint() {
