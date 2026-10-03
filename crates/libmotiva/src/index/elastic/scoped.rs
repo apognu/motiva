@@ -17,7 +17,15 @@ struct Index {
   settings: serde_json::Value,
 }
 
-pub async fn create_scoped_index(provider: &ElasticsearchProvider, query: serde_json::Value) -> Result<(), anyhow::Error> {
+#[derive(Debug, Deserialize)]
+struct ReindexResult {
+  timed_out: bool,
+  total: u64,
+  created: u64,
+  failures: Vec<serde_json::Value>,
+}
+
+pub async fn create_scoped_index(provider: &ElasticsearchProvider, query: serde_json::Value, excludes: &[String]) -> Result<(), anyhow::Error> {
   let new_index = format!("motiva-{}", Alphanumeric.sample_string(&mut rand::rng(), 8).to_lowercase());
 
   let mut actions: Vec<serde_json::Value> = vec![json!({ "add": { "alias": provider.scoped_alias_name(), "index": new_index } })];
@@ -62,9 +70,13 @@ pub async fn create_scoped_index(provider: &ElasticsearchProvider, query: serde_
         "source": {
           "index": provider.main_index,
           "query": query,
+          "_source": {
+            "excludes": excludes,
+          },
         }
       }))
       .wait_for_completion(true)
+      .refresh(true)
       .send()
       .await?;
 
@@ -72,7 +84,26 @@ pub async fn create_scoped_index(provider: &ElasticsearchProvider, query: serde_
       anyhow::bail!("reindex returned {}: {:?}", reindex.status_code(), reindex.text().await);
     }
 
-    tracing::info!(index = new_index, "reindexed data");
+    let result: ReindexResult = reindex.json().await.context("could not parse reindex response")?;
+
+    if result.timed_out || !result.failures.is_empty() {
+      anyhow::bail!(
+        "reindex did not complete: timed_out={}, total={}, created={}, failures={:?}",
+        result.timed_out,
+        result.total,
+        result.created,
+        result.failures
+      );
+    }
+
+    if result.total == 0 {
+      anyhow::bail!("reindex matched no documents in {} with the scoped query", provider.main_index);
+    }
+    if result.created != result.total {
+      anyhow::bail!("reindex copied only {} of {} documents into {}", result.created, result.total, new_index);
+    }
+
+    tracing::info!(index = new_index, documents = result.created, "reindexed data");
 
     let response = provider.es.indices().update_aliases().body(json!({ "actions": actions })).send().await?;
     if response.status_code() != StatusCode::OK {

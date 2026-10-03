@@ -28,16 +28,21 @@ pub async fn create_scoped_index(provider: &ElasticsearchProvider) -> Result<(),
     "bool": {
       "must": [
         { "terms": { "schema": ["Person", "LegalEntity", "Organization", "Company", "Airplane", "Vessel"] } },
-        { "term": { "topics": "sanction" } }
+        { "terms": { "topics": ["sanctions", "sanction"] } }
       ]
     }
   });
 
+  let mut excludes: Vec<String> = vec!["properties.notes".into(), "sourceUrl".into()];
+
   if let Ok(custom) = env::var("SCOPED_INDEX_QUERY") {
     query = serde_json::from_str(&custom)?;
   }
+  if let Ok(custom) = env::var("SCOPED_INDEX_EXCLUDES") {
+    excludes = custom.split(",").map(str::to_string).collect();
+  }
 
-  let result = libmotiva::create_scoped_index(provider, query).await;
+  let result = libmotiva::create_scoped_index(provider, query, &excludes).await;
 
   if let Err(ref err) = result {
     tracing::error!(error = ?err, "encountered error while creating scoped index");
