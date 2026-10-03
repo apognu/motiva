@@ -1,4 +1,7 @@
-use std::{borrow::Borrow, cmp::Ordering};
+use std::{
+  borrow::{Borrow, Cow},
+  cmp::Ordering,
+};
 
 use ahash::{HashMap, HashSet, RandomState};
 use itertools::Itertools;
@@ -63,7 +66,20 @@ pub(crate) fn is_levenshtein_plausible(lhs: &str, rhs: &str) -> bool {
   let pct = (lhs.len().min(rhs.len()) as f32 * 0.2).ceil();
   let threshold = 4.min(pct as usize);
 
-  levenshtein(&lhs.to_lowercase(), &rhs.to_lowercase()) <= threshold
+  let lhs = lowercase_for_comparison(lhs);
+  let rhs = lowercase_for_comparison(rhs);
+
+  levenshtein(&lhs, &rhs) <= threshold
+}
+
+#[inline]
+fn lowercase_for_comparison(input: &str) -> Cow<'_, str> {
+  if input.bytes().all(|b| b.is_ascii() && !b.is_ascii_uppercase()) {
+    Cow::Borrowed(input)
+  } else {
+    // Preserve whole-string Unicode casing, including contextual mappings.
+    Cow::Owned(input.to_lowercase())
+  }
 }
 
 #[inline]
@@ -191,6 +207,70 @@ mod tests {
   fn is_levenshtein_plausible() {
     assert!(super::is_levenshtein_plausible("Martin", "Jardin"));
     assert!(!super::is_levenshtein_plausible("John", "Nicolas"));
+  }
+
+  #[test]
+  fn lowercase_for_comparison() {
+    for input in ["", "martin", "name 123-._'", "\0\n"] {
+      let lowered = super::lowercase_for_comparison(input);
+      assert!(matches!(lowered, std::borrow::Cow::Borrowed(_)), "{input:?}");
+      assert_eq!(lowered, input);
+    }
+
+    for input in ["Martin", "MARTIN", "Émile", "émile", "İ", "ΟΣ", "οσ", "中文"] {
+      let lowered = super::lowercase_for_comparison(input);
+      assert!(matches!(lowered, std::borrow::Cow::Owned(_)), "{input:?}");
+      assert_eq!(lowered, input.to_lowercase());
+    }
+  }
+
+  #[test]
+  fn is_levenshtein_plausible_preserves_behavior() {
+    fn previous(lhs: &str, rhs: &str) -> bool {
+      if lhs == rhs {
+        return true;
+      }
+
+      let pct = (lhs.len().min(rhs.len()) as f32 * 0.2).ceil();
+      let threshold = 4.min(pct as usize);
+
+      strsim::levenshtein(&lhs.to_lowercase(), &rhs.to_lowercase()) <= threshold
+    }
+
+    let inputs = [
+      "",
+      "a",
+      "b",
+      "ab",
+      "abcde",
+      "abcdx",
+      "abcxy",
+      "abcdef",
+      "abcdxy",
+      "abcxyz",
+      "abcdefghijklmnopqrstuvwxy",
+      "abcdefghijklmnopqrstu1234",
+      "abcdefghijklmnopqrst12345",
+      "martin",
+      "jardin",
+      "Martin",
+      "JARDIN",
+      "Émile",
+      "émile",
+      "Emile",
+      "İ",
+      "i\u{307}",
+      "ΟΣ",
+      "ος",
+      "οσ",
+      "中文",
+    ];
+
+    for lhs in inputs {
+      for rhs in inputs {
+        assert_eq!(super::is_levenshtein_plausible(lhs, rhs), previous(lhs, rhs), "{lhs:?} / {rhs:?}");
+      }
+    }
   }
 
   #[test]
