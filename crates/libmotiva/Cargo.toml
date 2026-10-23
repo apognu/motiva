@@ -62,7 +62,7 @@ aws-sigv4 = "1.5.1"
 aws-smithy-runtime-api = { version = "1.15.0", features = ["client"] }
 criterion = { version = "0.8.1", features = ["async_tokio"] }
 float-cmp = "0.10.0"
-pyo3 = { version = "0.29.0" }
+pyo3 = { version = "0.30.1" }
 serde-json-assert = "0.4.0"
 serial_test = "4.0"
 std-macro-extensions = "^10"
