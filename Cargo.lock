@@ -2881,6 +2881,7 @@ dependencies = [
  "compact_str",
  "criterion",
  "float-cmp",
+ "glob",
  "itertools 0.15.0",
  "jiff",
  "lei",

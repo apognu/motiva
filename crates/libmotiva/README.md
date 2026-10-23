@@ -71,6 +71,7 @@ Motiva is configured via environment variables. The following variables are supp
 | `TRACING_EXPORTER`         | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)                          | `otlp`                    |
 | `REQUEST_TIMEOUT`          | Maximum duration for a match request                                                                 | _10s_                     |
 | `SCOPED_INDEX_QUERY`       | Query used to scope down the index used for match queries                                            | [see here](#scoped-index) |
+| `SCOPED_INDEX_SKIP_SOURCES` | Comma-separated glob patterns of source indices to leave out of the scoped index                    | _(none)_                  |
 
 <sup>[1]</sup>: Only available with the `aws` feature. See section [**OpenSearch AWS IAM authentication**](#opensearch-aws-iam-authentication).
 
@@ -173,6 +174,8 @@ $ motiva create-scoped-index
 ```
 
 The default scoped query is listed below, but can be customized through `SCOPED_INDEX_QUERY`.
+
+Some indices behind the main alias can be left out entirely by listing glob patterns in `SCOPED_INDEX_SKIP_SOURCES` (e.g. `yente-entities-internal_*`).
 
 ```json
 {
