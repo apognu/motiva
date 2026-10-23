@@ -29,7 +29,10 @@ struct ReindexResult {
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 struct ScopedMeta {
   sources: Vec<String>,
-  query: serde_json::Value,
+  /// Stored as a serialized JSON string because Elasticsearch's mapping parser
+  /// collapses arrays of single-key objects with identical keys (e.g., multiple
+  /// `terms` clauses) under a single key in `_meta`, corrupting Query DSL.
+  query: String,
   excludes: Vec<String>,
   skip_sources: Vec<String>,
 }
@@ -68,15 +71,24 @@ pub async fn create_scoped_index(provider: &ElasticsearchProvider, query: serde_
 
   let meta = ScopedMeta {
     sources: indices.iter().map(|(name, _)| name.clone()).collect(),
-    query,
+    query: query.to_string(),
     excludes: property_excludes(excludes),
     skip_sources: skip_sources.to_vec(),
   };
 
-  if !force && previous_meta.as_ref() == Some(&meta) {
+  let up_to_date = previous_meta.as_ref() == Some(&meta);
+
+  if up_to_date && !force {
     tracing::info!(index = old_index, "scoped index is up to date, skipping");
 
     return Ok(());
+  }
+
+  match previous_meta {
+    Some(_) if up_to_date => tracing::info!(index = old_index, "scoped index is up to date, but recreation was forced"),
+    Some(ref previous) => tracing::info!(index = old_index, changed = ?changed_inputs(previous, &meta), "scoped index inputs changed, recreating"),
+    None if old_index.is_some() => tracing::info!(index = old_index, "previous scoped index has no recorded inputs, recreating"),
+    None => {}
   }
 
   let mut index = indices
@@ -110,7 +122,7 @@ pub async fn create_scoped_index(provider: &ElasticsearchProvider, query: serde_
         },
         "source": {
           "index": meta.sources,
-          "query": meta.query,
+          "query": query,
           "_source": {
             "excludes": meta.excludes,
           },
@@ -175,14 +187,29 @@ pub async fn create_scoped_index(provider: &ElasticsearchProvider, query: serde_
   Ok(())
 }
 
+/// List the inputs that differ between two scoped index builds.
+fn changed_inputs(previous: &ScopedMeta, current: &ScopedMeta) -> Vec<&'static str> {
+  [
+    ("sources", previous.sources != current.sources),
+    ("query", previous.query != current.query),
+    ("excludes", previous.excludes != current.excludes),
+    ("skip_sources", previous.skip_sources != current.skip_sources),
+  ]
+  .into_iter()
+  .filter_map(|(name, changed)| changed.then_some(name))
+  .collect()
+}
+
 /// Map excluded property names to their fields, other fields are used for matching.
 fn property_excludes(excludes: &[String]) -> Vec<String> {
   excludes.iter().filter(|property| !property.is_empty()).map(|property| format!("properties.{property}")).collect()
 }
 
 async fn fetch_scoped_meta(provider: &ElasticsearchProvider, index: &str) -> Option<ScopedMeta> {
-  let response = provider.es.indices().get_mapping(IndicesGetMappingParts::Index(&[index])).send().await.ok()?;
-  let mappings: HashMap<String, serde_json::Value> = response.json().await.ok()?;
+  let mappings: HashMap<String, serde_json::Value> = async { provider.es.indices().get_mapping(IndicesGetMappingParts::Index(&[index])).send().await?.json().await }
+    .await
+    .inspect_err(|err| tracing::warn!(index, error = %err, "could not fetch previous scoped index mapping"))
+    .ok()?;
 
   parse_scoped_meta(mappings.get(index)?)
 }
@@ -218,7 +245,7 @@ mod tests {
   fn meta(sources: &[&str], excludes: &[&str]) -> serde_json::Value {
     json!({
       "sources": sources,
-      "query": { "match_all": {} },
+      "query": r#"{"match_all":{}}"#,
       "excludes": excludes,
       "skip_sources": ["yente-entities-internal_*"],
     })
@@ -468,7 +495,7 @@ mod tests {
         "_meta": {
           "motiva": {
             "sources": ["yente-entities-b", "yente-entities-a"],
-            "query": { "term": { "topics": "sanction" } },
+            "query": r#"{"term":{"topics":"sanction"}}"#,
             "excludes": ["properties.sourceUrl"],
             "skip_sources": ["yente-entities-internal_*"],
           }
@@ -478,7 +505,7 @@ mod tests {
 
     let expected = ScopedMeta {
       sources: vec!["yente-entities-a".into(), "yente-entities-b".into()],
-      query: json!({ "term": { "topics": "sanction" } }),
+      query: r#"{"term":{"topics":"sanction"}}"#.into(),
       excludes: vec!["properties.sourceUrl".into()],
       skip_sources: vec!["yente-entities-internal_*".into()],
     };
@@ -498,5 +525,45 @@ mod tests {
     assert_eq!(super::parse_scoped_meta(&json!({ "mappings": {} })), None);
     assert_eq!(super::parse_scoped_meta(&json!({ "mappings": { "_meta": { "last_export": "2026-10-15T00:00:00" } } })), None);
     assert_eq!(super::parse_scoped_meta(&json!({ "mappings": { "_meta": { "motiva": { "sources": [] } } } })), None);
+
+    // Queries were stored as objects before, which Elasticsearch may rewrite.
+    let object_query = json!({ "sources": [], "query": { "match_all": {} }, "excludes": [], "skip_sources": [] });
+
+    assert_eq!(super::parse_scoped_meta(&json!({ "mappings": { "_meta": { "motiva": object_query } } })), None);
+  }
+
+  #[test]
+  fn serialized_query_is_stable() {
+    let lhs: serde_json::Value = serde_json::from_str(r#"{"bool":{"must":[{"terms":{"schema":["Person"]}}],"minimum_should_match":1}}"#).unwrap();
+    let rhs: serde_json::Value = serde_json::from_str(
+      r#"{ "bool": { "minimum_should_match": 1,
+           "must": [ { "terms": { "schema": [ "Person" ] } } ] } }"#,
+    )
+    .unwrap();
+
+    // Object keys are sorted and output is compact, so formatting does not
+    // matter. Array order is meaningful and kept.
+    assert_eq!(lhs.to_string(), r#"{"bool":{"minimum_should_match":1,"must":[{"terms":{"schema":["Person"]}}]}}"#);
+    assert_eq!(lhs.to_string(), rhs.to_string());
+  }
+
+  #[test]
+  fn changed_inputs() {
+    let meta = || ScopedMeta {
+      sources: vec!["yente-entities-default".into()],
+      query: r#"{"match_all":{}}"#.into(),
+      excludes: vec!["properties.notes".into()],
+      skip_sources: vec![],
+    };
+
+    assert!(super::changed_inputs(&meta(), &meta()).is_empty());
+
+    let current = ScopedMeta {
+      sources: vec!["yente-entities-sanctions".into()],
+      excludes: vec![],
+      ..meta()
+    };
+
+    assert_eq!(super::changed_inputs(&meta(), &current), vec!["sources", "excludes"]);
   }
 }
