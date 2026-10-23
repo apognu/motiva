@@ -4951,9 +4951,9 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "std-macro-extensions"
-version = "10.2.2"
+version = "10.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e36cc9d7ff9644635999d7d8c55006ddb9373d054f5f8e894659e7cbf6b55a2"
+checksum = "08047eee217d91e8fa807654fd980477596f49f3b444b2bcc0eb5c0bc5d70c5a"
 
 [[package]]
 name = "strsim"
