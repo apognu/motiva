@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use anyhow::Context;
 use opensearch::indices::{IndicesCreateParts, IndicesDeleteParts, IndicesGetAliasParts, IndicesGetParts};
@@ -9,7 +9,7 @@ use serde_json::json;
 
 use crate::ElasticsearchProvider;
 
-type IndexResponse = HashMap<String, Index>;
+type IndexResponse = BTreeMap<String, Index>;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Index {
@@ -25,7 +25,12 @@ struct ReindexResult {
   failures: Vec<serde_json::Value>,
 }
 
-pub async fn create_scoped_index(provider: &ElasticsearchProvider, query: serde_json::Value, excludes: &[String]) -> Result<(), anyhow::Error> {
+pub async fn create_scoped_index(provider: &ElasticsearchProvider, query: serde_json::Value, excludes: &[String], skip_sources: &[String]) -> Result<(), anyhow::Error> {
+  let skip_sources = skip_sources
+    .iter()
+    .map(|pattern| glob::Pattern::new(pattern).with_context(|| format!("invalid source skip pattern `{pattern}`")))
+    .collect::<Result<Vec<_>, _>>()?;
+
   let new_index = format!("motiva-{}", Alphanumeric.sample_string(&mut rand::rng(), 8).to_lowercase());
 
   let mut actions: Vec<serde_json::Value> = vec![json!({ "add": { "alias": provider.scoped_alias_name(), "index": new_index } })];
@@ -44,7 +49,18 @@ pub async fn create_scoped_index(provider: &ElasticsearchProvider, query: serde_
   }
 
   let indices: IndexResponse = provider.es.indices().get(IndicesGetParts::Index(&[&provider.main_index])).send().await?.json().await?;
-  let mut index = indices.values().next().ok_or_else(|| anyhow::anyhow!("found no index"))?.to_owned();
+  let (indices, skipped): (Vec<_>, Vec<_>) = indices.into_iter().partition(|(name, _)| !skip_sources.iter().any(|pattern| pattern.matches(name)));
+
+  for (name, _) in &skipped {
+    tracing::info!(index = name, "skipping source index");
+  }
+
+  let sources: Vec<String> = indices.iter().map(|(name, _)| name.clone()).collect();
+  let mut index = indices
+    .into_iter()
+    .next()
+    .map(|(_, index)| index)
+    .ok_or_else(|| anyhow::anyhow!("found no source index in {}", provider.main_index))?;
 
   let nested = index.settings.get_mut("index").context("no settings")?.as_object_mut().context("no settings")?;
   nested.remove("uuid");
@@ -57,7 +73,7 @@ pub async fn create_scoped_index(provider: &ElasticsearchProvider, query: serde_
     anyhow::bail!("index creation returned {}: {:?}", response.status_code(), response.text().await);
   }
 
-  tracing::info!(index = new_index, "created new index, starting reindexing data");
+  tracing::info!(index = new_index, sources = ?sources, "created new index, starting reindexing data");
 
   let result: Result<(), anyhow::Error> = async {
     let reindex = provider
@@ -68,7 +84,7 @@ pub async fn create_scoped_index(provider: &ElasticsearchProvider, query: serde_
           "index": new_index
         },
         "source": {
-          "index": provider.main_index,
+          "index": sources,
           "query": query,
           "_source": {
             "excludes": excludes,

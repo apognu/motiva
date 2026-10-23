@@ -34,6 +34,7 @@ pub async fn create_scoped_index(provider: &ElasticsearchProvider) -> Result<(),
   });
 
   let mut excludes: Vec<String> = vec!["properties.notes".into(), "sourceUrl".into()];
+  let mut skip_sources: Vec<String> = vec![];
 
   if let Ok(custom) = env::var("SCOPED_INDEX_QUERY") {
     query = serde_json::from_str(&custom)?;
@@ -41,8 +42,11 @@ pub async fn create_scoped_index(provider: &ElasticsearchProvider) -> Result<(),
   if let Ok(custom) = env::var("SCOPED_INDEX_EXCLUDES") {
     excludes = custom.split(",").map(str::to_string).collect();
   }
+  if let Ok(custom) = env::var("SCOPED_INDEX_SKIP_SOURCES") {
+    skip_sources = custom.split(",").map(str::to_string).collect();
+  }
 
-  let result = libmotiva::create_scoped_index(provider, query, &excludes).await;
+  let result = libmotiva::create_scoped_index(provider, query, &excludes, &skip_sources).await;
 
   if let Err(ref err) = result {
     tracing::error!(error = ?err, "encountered error while creating scoped index");
