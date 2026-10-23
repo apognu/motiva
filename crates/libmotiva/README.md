@@ -48,30 +48,32 @@ Before v0.5.0, motiva is only compatible with data indexer with Yente v4.x. Star
 
 Motiva is configured via environment variables. The following variables are supported:
 
-| Variable                   | Description                                                                                          | Default / Example         |
-| -------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------- |
-| `ENV`                      | Environment (`dev` or `production`)                                                                  | `dev`                     |
-| `LISTEN_ADDR`              | Address to bind the API server                                                                       | `0.0.0.0:8000`            |
-| `API_KEY`                  | Bearer token used to authenticate requests                                                           | _(none)_                  |
-| `INDEX_URL`                | Elasticsearch URL                                                                                    | `http://localhost:9200`   |
-| `INDEX_AUTH_METHOD`        | Index authentication (`none`, `basic`, `bearer`, `api_key`, `api_token`, `aws_iam_*` <sup>[1]</sup>) | `none`                    |
-| `INDEX_CLIENT_ID`          | Elasticsearch client ID (required for `basic` or `api_key`)                                          | _(none)_                  |
-| `INDEX_CLIENT_SECRET`      | Client secret (required for `basic`, `api_key`, `encoded_api_key` or `api_token`)                    | _(none)_                  |
-| `INDEX_TLS_CA_CERT`        | Path to a PEM-encoded certificate chain to use for TLS validation                                    | _(none)_                  |
-| `INDEX_TLS_SKIP_VERIFY`    | If `1`, do not validate the TLS certificate served by the Elasticsearch cluster                      | `0`                       |
-| `INDEX_NAME`               | Index prefix under which data was indexed (suffixed by `-entities`)                                  | `yente`                   |
-| `MANIFEST_URL`             | Optional URL to a custom manifest JSON file                                                          | _(none)_                  |
-| `CATALOG_REFRESH_INTERVAL` | Interval at which to pull the manifest and catalogs                                                  | _1h_                      |
-| `MATCH_CANDIDATES`         | Number of candidates to consider for matching                                                        | `10`                      |
-| `WEIGHT_<FEATURE_NAME>`    | Custom weight for a given feature (e.g. `WEIGHT_PERSON_NAME_JARO_WINKLER`)                           | _(none)_                  |
-| `ENRICHMENT_MAX_RECURSION` | Maximum recursion levels when enriching entities with relations                                      | `2`                       |
-| `ENRICHMENT_QUERY_LIMIT`   | Maximum relation documents to fetch from Elasticsearch when building relation graphs                 | `200`                     |
-| `ENABLE_PROMETHEUS`        | Enable Prometheus metrics collection and /metrics endpoint                                           | `0`                       |
-| `ENABLE_TRACING`           | Set to `1` to enable tracing                                                                         | _(none)_                  |
-| `TRACING_EXPORTER`         | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)                          | `otlp`                    |
-| `REQUEST_TIMEOUT`          | Maximum duration for a match request                                                                 | _10s_                     |
-| `SCOPED_INDEX_QUERY`       | Query used to scope down the index used for match queries                                            | [see here](#scoped-index) |
-| `SCOPED_INDEX_SKIP_SOURCES` | Comma-separated glob patterns of source indices to leave out of the scoped index                    | _(none)_                  |
+| Variable                    | Description                                                                                          | Default / Example         |
+| --------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------- |
+| `ENV`                       | Environment (`dev` or `production`)                                                                  | `dev`                     |
+| `LISTEN_ADDR`               | Address to bind the API server                                                                       | `0.0.0.0:8000`            |
+| `API_KEY`                   | Bearer token used to authenticate requests                                                           | _(none)_                  |
+| `INDEX_URL`                 | Elasticsearch URL                                                                                    | `http://localhost:9200`   |
+| `INDEX_AUTH_METHOD`         | Index authentication (`none`, `basic`, `bearer`, `api_key`, `api_token`, `aws_iam_*` <sup>[1]</sup>) | `none`                    |
+| `INDEX_CLIENT_ID`           | Elasticsearch client ID (required for `basic` or `api_key`)                                          | _(none)_                  |
+| `INDEX_CLIENT_SECRET`       | Client secret (required for `basic`, `api_key`, `encoded_api_key` or `api_token`)                    | _(none)_                  |
+| `INDEX_TLS_CA_CERT`         | Path to a PEM-encoded certificate chain to use for TLS validation                                    | _(none)_                  |
+| `INDEX_TLS_SKIP_VERIFY`     | If `1`, do not validate the TLS certificate served by the Elasticsearch cluster                      | `0`                       |
+| `INDEX_NAME`                | Index prefix under which data was indexed (suffixed by `-entities`)                                  | `yente`                   |
+| `MANIFEST_URL`              | Optional URL to a custom manifest JSON file                                                          | _(none)_                  |
+| `CATALOG_REFRESH_INTERVAL`  | Interval at which to pull the manifest and catalogs                                                  | _1h_                      |
+| `MATCH_CANDIDATES`          | Number of candidates to consider for matching                                                        | `10`                      |
+| `WEIGHT_<FEATURE_NAME>`     | Custom weight for a given feature (e.g. `WEIGHT_PERSON_NAME_JARO_WINKLER`)                           | _(none)_                  |
+| `ENRICHMENT_MAX_RECURSION`  | Maximum recursion levels when enriching entities with relations                                      | `2`                       |
+| `ENRICHMENT_QUERY_LIMIT`    | Maximum relation documents to fetch from Elasticsearch when building relation graphs                 | `200`                     |
+| `ENABLE_PROMETHEUS`         | Enable Prometheus metrics collection and /metrics endpoint                                           | `0`                       |
+| `ENABLE_TRACING`            | Set to `1` to enable tracing                                                                         | _(none)_                  |
+| `TRACING_EXPORTER`          | Tracing exporter kind (`otlp`, or `gcp` if compiled with the `gcp` feature)                          | `otlp`                    |
+| `REQUEST_TIMEOUT`           | Maximum duration for a match request                                                                 | _10s_                     |
+| `SCOPED_INDEX_QUERY`        | Query used to scope down the index used for match queries                                            | [see here](#scoped-index) |
+| `SCOPED_INDEX_EXCLUDES`     | Comma-separated properties to drop from documents copied into the scoped index                       | `notes,sourceUrl`         |
+| `SCOPED_INDEX_SKIP_SOURCES` | Comma-separated glob patterns of source indices to leave out of the scoped index                     | _(none)_                  |
+| `SCOPED_INDEX_FORCE`        | Set to `1` to recreate the scoped index even if its sources did not change                           | _(none)_                  |
 
 <sup>[1]</sup>: Only available with the `aws` feature. See section [**OpenSearch AWS IAM authentication**](#opensearch-aws-iam-authentication).
 
@@ -166,16 +168,17 @@ Motiva can be run with the `create-scoped-index` subcommand, which will take car
 
 ```bash
 $ motiva create-scoped-index
-2026-03-05T16:56:14.439865Z  INFO libmotiva::index::elastic::scoped: found previous scoped index index="motiva-w4xgo6jh"
-2026-03-05T16:56:14.546981Z  INFO libmotiva::index::elastic::scoped: created new index, starting reindexing data index="motiva-9xtyeclx"
-2026-03-05T16:56:24.030717Z  INFO libmotiva::index::elastic::scoped: reindexed data index="motiva-9xtyeclx"
-2026-03-05T16:56:24.041981Z  INFO libmotiva::index::elastic::scoped: atomically swapped index from="motiva-w4xgo6jh" to="motiva-9xtyeclx"
-2026-03-05T16:56:24.071765Z  INFO libmotiva::index::elastic::scoped: deleted old index index="motiva-w4xgo6jh"
+2026-10-23T09:12:03.118412Z  INFO libmotiva::index::elastic::scoped: found previous scoped index index="motiva-w4xgo6jh"
+2026-10-23T09:12:03.164027Z  INFO libmotiva::index::elastic::scoped: skipping source index index="yente-entities-internal_watchlist-…"
+2026-10-23T09:12:03.241967Z  INFO libmotiva::index::elastic::scoped: created new index, starting reindexing data index="motiva-9xtyeclx" sources=["yente-entities-default-…", "yente-entities-sanctions-…"]
+2026-10-23T09:12:13.030717Z  INFO libmotiva::index::elastic::scoped: reindexed data index="motiva-9xtyeclx" documents=947
+2026-10-23T09:12:13.041981Z  INFO libmotiva::index::elastic::scoped: atomically swapped index from="motiva-w4xgo6jh" to="motiva-9xtyeclx"
+2026-10-23T09:12:13.071765Z  INFO libmotiva::index::elastic::scoped: deleted old index index="motiva-w4xgo6jh"
 ```
 
-The default scoped query is listed below, but can be customized through `SCOPED_INDEX_QUERY`.
+#### Scoped query
 
-Some indices behind the main alias can be left out entirely by listing glob patterns in `SCOPED_INDEX_SKIP_SOURCES` (e.g. `yente-entities-internal_*`).
+The documents copied into the scoped index are selected with an Elasticsearch query. The default is listed below, and can be customized by setting `SCOPED_INDEX_QUERY` to a JSON query.
 
 ```json
 {
@@ -193,13 +196,39 @@ Some indices behind the main alias can be left out entirely by listing glob patt
           ]
         }
       },
-      { "term": { "topics": "sanction" } }
+      { "terms": { "topics": ["sanctions", "sanction"] } }
     ]
   }
 }
 ```
 
+#### Excluded fields
+
+Some entity properties are not needed for matching and are dropped from the copied documents to keep the scoped index small. By default, those are `notes` and `sourceUrl`. `SCOPED_INDEX_EXCLUDES` can be set to a comma-separated list of property names to replace them (e.g. `notes,summary,sourceUrl`).
+
+Only properties can be excluded, since the other fields of a document are needed for matching, so names are always looked up under `properties` (`notes` excludes `properties.notes`). Keep in mind that some properties, such as names or birth dates, are also used for scoring, and should not be excluded.
+
+#### Skipping source indices
+
+The main index is usually an alias over several indices, each holding one or more datasets (OpenSanctions' `default` collection, for example, holds hundreds of datasets in a single index). Some of those indices can be left out of the scoped index entirely by setting `SCOPED_INDEX_SKIP_SOURCES` to comma-separated glob patterns, matched against the full index names (e.g. `yente-entities-internal_*`).
+
+This is different from filtering in `SCOPED_INDEX_QUERY`: skipped indices are not read at all, and changes to them do not cause the scoped index to be recreated (see below).
+
+#### Keeping the scoped index up to date
+
 The scoped index is not kept automatically in sync with the full index, you would need to run `motiva create-scoped-index` again when you need to update it. We suggest running it after your regular indexing operations.
+
+The scoped index records what it was built from in its mapping's `_meta.motiva`: the names of the source indices behind the main alias, the query, the excluded fields and the skip patterns. When `motiva create-scoped-index` runs, it compares those with the current values and does nothing if they are identical:
+
+```bash
+$ motiva create-scoped-index
+2026-10-23T09:30:41.502113Z  INFO libmotiva::index::elastic::scoped: found previous scoped index index="motiva-9xtyeclx"
+2026-10-23T09:30:41.577380Z  INFO libmotiva::index::elastic::scoped: scoped index is up to date, skipping index="motiva-9xtyeclx"
+```
+
+Since yente creates a new index whenever its data is updated, the scoped index is recreated when any index behind the alias is added, replaced or removed, or when any of the settings above change. Scoped indices created by older versions of motiva do not carry this information and are recreated on the first run.
+
+Set `SCOPED_INDEX_FORCE=1` to recreate the scoped index regardless.
 
 Once your scoped index is created, you can perform a `/match` request with the Motiva-specific `?index_type=scoped` parameters for the new index to be used.
 
