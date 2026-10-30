@@ -20,7 +20,7 @@ jobs:
         with:
           submodules: true
 
-      - uses: dtolnay/rust-toolchain@1.98
+      - uses: dtolnay/rust-toolchain@1.99
         with:
           components: clippy, rustfmt
 
@@ -49,7 +49,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - uses: dtolnay/rust-toolchain@1.98
+      - uses: dtolnay/rust-toolchain@1.99
         with:
           components: llvm-tools-preview
 
@@ -106,7 +106,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - uses: dtolnay/rust-toolchain@1.98
+      - uses: dtolnay/rust-toolchain@1.99
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.3.3
@@ -158,7 +158,7 @@ jobs:
 
   build:
     runs-on: ubuntu-26.04
-    container: rust:1.98-trixie
+    container: rust:1.99-trixie
     needs: [generate-matrix]
     strategy:
       matrix:
