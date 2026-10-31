@@ -56,6 +56,16 @@ impl ElasticsearchProvider {
       None => Cow::Borrowed(&self.main_index),
     }
   }
+
+  /// Whether the cluster is an OpenSearch Serverless collection.
+  #[inline]
+  pub(crate) fn is_serverless(&self) -> bool {
+    #[cfg(feature = "aws")]
+    return self.serverless;
+
+    #[cfg(not(feature = "aws"))]
+    false
+  }
 }
 
 #[derive(Deserialize)]
