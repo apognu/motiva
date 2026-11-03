@@ -23,13 +23,13 @@ fn score(&self, bump: &Bump, lhs: &SearchEntity, rhs: &Entity, explain: bool) ->
     return (0.0, explain.then_some(Detail::Note("not an organization"))).into();
   }
 
-  let lhs = lhs.props(&["registrationNumber", "taxNumber", "leiCode", "innCode", "bicCode", "ogrnCode"]);
+  let lhs = lhs.props(&["registrationNumber", "taxNumber", "leiCode", "innCode", "swiftBic", "ogrnCode"]);
 
   if lhs.is_empty() {
     return (0.0, explain.then_some(Detail::Note("no organization identifiers to compare"))).into();
   }
 
-  let rhs = rhs.props(&["registrationNumber", "taxNumber", "leiCode", "innCode", "bicCode", "orgnCode"]);
+  let rhs = rhs.props(&["registrationNumber", "taxNumber", "leiCode", "innCode", "swiftBic", "ogrnCode"]);
 
   if rhs.is_empty() {
     return (0.0, explain.then_some(Detail::Note("no organization identifiers to compare"))).into();

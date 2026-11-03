@@ -47,7 +47,7 @@ static FEATURES: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
     (IdentifierMatch::new("ogrn_code_match", &["ogrnCode"], Some(validate_ogrn)), 0.95),
     (IdentifierMatch::new("vessel_imo_mmsi_match", &["imoNumber", "mmsi"], Some(validate_imo_mmsi)), 0.95),
     (IdentifierMatch::new("inn_code_match", &["innCode"], Some(validate_inn)), 0.95),
-    (IdentifierMatch::new("bic_code_match", &["bicCode"], Some(validate_bic)), 0.95),
+    (IdentifierMatch::new("bic_code_match", &["swiftBic"], Some(validate_bic)), 0.95),
     (SimpleMatch::new("identifier_match", &|e| e.prop_group("identifier", PropertyFilter::Matchable)), 0.85), // TODO: add cleaning
     (&WeakAliasMatch, 0.8),
   ]
