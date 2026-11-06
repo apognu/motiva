@@ -2960,6 +2960,7 @@ dependencies = [
  "compact_str",
  "criterion",
  "float-cmp",
+ "futures",
  "glob",
  "itertools 0.15.0",
  "jiff",

@@ -170,10 +170,10 @@ Motiva can be run with the `create-scoped-index` subcommand, which will take car
 $ motiva create-scoped-index
 2026-10-23T09:12:03.118412Z  INFO libmotiva::index::elastic::scoped: found previous scoped index index="motiva-w4xgo6jh"
 2026-10-23T09:12:03.164027Z  INFO libmotiva::index::elastic::scoped: skipping source index index="yente-entities-internal_watchlist-…"
-2026-10-23T09:12:03.241967Z  INFO libmotiva::index::elastic::scoped: created new index, starting reindexing data index="motiva-9xtyeclx" sources=["yente-entities-default-…", "yente-entities-sanctions-…"]
-2026-10-23T09:12:13.030717Z  INFO libmotiva::index::elastic::scoped: reindexed data index="motiva-9xtyeclx" documents=947
+2026-10-23T09:12:03.241967Z  INFO libmotiva::index::elastic::scoped: created new index, copying data index="motiva-9xtyeclx" sources=["yente-entities-default-…", "yente-entities-sanctions-…"] fields=["name_parts", "name_phonetic", "name_symbols"]
+2026-10-23T09:12:13.030717Z  INFO libmotiva::index::elastic::scoped: copied data index="motiva-9xtyeclx" documents=947 elapsed=9.788s
 2026-10-23T09:12:13.041981Z  INFO libmotiva::index::elastic::scoped: atomically swapped index from="motiva-w4xgo6jh" to="motiva-9xtyeclx"
-2026-10-23T09:12:13.071765Z  INFO libmotiva::index::elastic::scoped: deleted old index index="motiva-w4xgo6jh"
+2026-10-23T09:12:13.071765Z  INFO libmotiva::index::elastic::scoped: deleted index index="motiva-w4xgo6jh"
 ```
 
 #### Scoped query

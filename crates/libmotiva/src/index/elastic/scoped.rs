@@ -1,18 +1,51 @@
-use std::collections::{BTreeMap, HashMap};
+use std::borrow::Cow;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::future::Future;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
-use opensearch::CountParts;
-use opensearch::http::{Method, headers::HeaderMap};
-use opensearch::indices::{IndicesCreateParts, IndicesDeleteParts, IndicesForcemergeParts, IndicesGetAliasParts, IndicesGetMappingParts, IndicesGetParts, IndicesRefreshParts};
+use bytes::Bytes;
+use futures::future::try_join;
+use futures::{TryStreamExt, stream};
+use opensearch::cluster::ClusterHealthParts;
+use opensearch::http::{
+  Method,
+  headers::{CONTENT_TYPE, HeaderMap, HeaderValue},
+  response::Response,
+};
+use opensearch::indices::{
+  IndicesCreateParts, IndicesDeleteParts, IndicesForcemergeParts, IndicesGetAliasParts, IndicesGetMappingParts, IndicesGetParts, IndicesPutSettingsParts, IndicesRefreshParts,
+};
+use opensearch::params::WaitForEvents;
+use opensearch::{ClearScrollParts, CountParts, ScrollParts, SearchParts};
 use rand::distr::{Alphanumeric, SampleString};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, value::RawValue};
+use tokio::sync::mpsc;
 
 use crate::ElasticsearchProvider;
 
 type IndexResponse = BTreeMap<String, Index>;
+
+/// How long the cluster keeps a scroll open between two pages. This must outlast
+/// the time a page spends being written, retries included.
+const SCROLL_KEEP_ALIVE: &str = "5m";
+
+const PAGE_FILTER: &[&str] = &["_scroll_id", "hits.total.value", "hits.hits._id", "hits.hits._source", "hits.hits.fields"];
+const BULK_FILTER: &str = "errors,items.*.status,items.*.error";
+
+/// How long a single page or batch may take.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Longest delay between two attempts at the same request.
+const MAX_RETRY_DELAY: Duration = Duration::from_secs(30);
+
+/// How often to report progress while copying.
+const PROGRESS_INTERVAL: Duration = Duration::from_secs(60);
+
+/// How long to wait for replicas of the new index before swapping to it anyway.
+const REPLICA_TIMEOUT: &str = "15m";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Index {
@@ -20,80 +53,79 @@ struct Index {
   settings: serde_json::Value,
 }
 
-/// How many polls in a row may fail transiently before giving up on the task.
-const TASK_MAX_TRANSIENT_ERRORS: u32 = 5;
-
-/// Timings used to follow a reindex task.
+/// How documents are copied into the scoped index.
 #[derive(Clone, Debug)]
-struct TaskTimings {
-  /// Delay between two polls of the reindex task.
-  poll_interval: Duration,
-  /// How long to wait for the reindex task before giving up on it.
-  max_wait: Duration,
-  /// How often to report progress while the reindex task runs.
-  progress_interval: Duration,
-  /// How many polls to wait for a cancelled task to stop.
-  cancel_polls: u32,
+struct CopyOptions {
+  /// How many documents are read and written at a time.
+  batch_size: usize,
+  /// How many batches may be written at the same time.
+  write_concurrency: usize,
+  /// Delay before the first retry of a request, doubled on every attempt.
+  retry_delay: Duration,
+  /// How many times a request may be attempted before giving up.
+  max_attempts: u32,
 }
 
-impl Default for TaskTimings {
+impl Default for CopyOptions {
   fn default() -> Self {
     Self {
-      poll_interval: Duration::from_secs(5),
-      // A reindex from even the largest main index takes a few minutes, so this
-      // leaves a wide margin while still failing a stuck task in reasonable time.
-      max_wait: Duration::from_secs(30 * 60),
-      progress_interval: Duration::from_secs(60),
-      cancel_polls: 12,
+      batch_size: 5000,
+      write_concurrency: 4,
+      retry_delay: Duration::from_secs(1),
+      max_attempts: 8,
     }
   }
 }
 
+/// One page of source documents, borrowed from the raw response so documents do
+/// not have to be parsed or duplicated on their way to the new index.
 #[derive(Debug, Deserialize)]
-struct ReindexTask {
-  task: String,
+struct Page<'a> {
+  #[serde(rename = "_scroll_id")]
+  scroll_id: Option<String>,
+  #[serde(borrow, default)]
+  hits: Hits<'a>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct Hits<'a> {
+  total: Option<HitsTotal>,
+  #[serde(borrow, default)]
+  hits: Vec<Hit<'a>>,
 }
 
 #[derive(Debug, Deserialize)]
-struct TaskStatus {
-  completed: bool,
-  task: Option<TaskInfo>,
-  response: Option<ReindexResult>,
+struct HitsTotal {
+  value: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct Hit<'a> {
+  #[serde(rename = "_id", borrow)]
+  id: &'a RawValue,
+  #[serde(rename = "_source", borrow)]
+  source: &'a RawValue,
+  #[serde(borrow, default)]
+  fields: Option<&'a RawValue>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkResponse {
+  errors: bool,
+  #[serde(default)]
+  items: Vec<BTreeMap<String, BulkItem>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkItem {
+  status: u16,
   error: Option<serde_json::Value>,
 }
 
-impl TaskStatus {
-  /// Extract the outcome of a completed task.
-  fn into_result(self) -> Result<ReindexResult, anyhow::Error> {
-    match self {
-      TaskStatus { error: Some(error), .. } => anyhow::bail!("reindex task failed: {error}"),
-      TaskStatus { response: Some(result), .. } => Ok(result),
-      TaskStatus { .. } => anyhow::bail!("reindex task completed without a result"),
-    }
-  }
-}
-
-#[derive(Debug, Deserialize)]
-struct TaskInfo {
-  status: Option<TaskProgress>,
-}
-
-#[derive(Debug, Deserialize)]
-struct TaskProgress {
-  #[serde(default)]
-  total: u64,
-  #[serde(default)]
-  created: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReindexResult {
-  timed_out: bool,
-  total: u64,
-  created: u64,
-  failures: Vec<serde_json::Value>,
-  #[serde(default)]
-  canceled: Option<String>,
+/// A page of source documents, as the body of a bulk request.
+struct Batch {
+  body: Bytes,
+  documents: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,12 +145,23 @@ struct Shards {
   failed: u64,
 }
 
-/// Why polling a task failed.
-enum PollError {
-  /// The poll may succeed if retried.
-  Transient(anyhow::Error),
-  /// The task cannot be followed anymore.
-  Fatal(anyhow::Error),
+/// Why a request failed.
+struct RequestError {
+  error: anyhow::Error,
+  /// Whether the request may succeed if retried.
+  transient: bool,
+}
+
+impl RequestError {
+  fn transient(err: impl Into<anyhow::Error>) -> Self {
+    Self { error: err.into(), transient: true }
+  }
+}
+
+impl From<RequestError> for anyhow::Error {
+  fn from(err: RequestError) -> Self {
+    err.error
+  }
 }
 
 /// Inputs a scoped index was built from, stored in its mapping's `_meta.motiva`.
@@ -134,11 +177,11 @@ struct ScopedMeta {
 }
 
 pub async fn create_scoped_index(provider: &ElasticsearchProvider, query: serde_json::Value, excludes: &[String], skip_sources: &[String], force: bool) -> Result<(), anyhow::Error> {
-  build_scoped_index(provider, query, excludes, skip_sources, force, &TaskTimings::default()).await
+  build_scoped_index(provider, query, excludes, skip_sources, force, &CopyOptions::default()).await
 }
 
-async fn build_scoped_index(provider: &ElasticsearchProvider, query: serde_json::Value, excludes: &[String], skip_sources: &[String], force: bool, timings: &TaskTimings) -> Result<(), anyhow::Error> {
-  // Building a scoped index relies on the reindex API, which OpenSearch Serverless does not expose.
+async fn build_scoped_index(provider: &ElasticsearchProvider, query: serde_json::Value, excludes: &[String], skip_sources: &[String], force: bool, options: &CopyOptions) -> Result<(), anyhow::Error> {
+  // Building a scoped index relies on the refresh and force merge APIs, which OpenSearch Serverless does not expose.
   if provider.is_serverless() {
     anyhow::bail!("scoped indexes are not supported on OpenSearch Serverless");
   }
@@ -148,33 +191,17 @@ async fn build_scoped_index(provider: &ElasticsearchProvider, query: serde_json:
     .map(|pattern| glob::Pattern::new(pattern).with_context(|| format!("invalid source skip pattern `{pattern}`")))
     .collect::<Result<Vec<_>, _>>()?;
 
-  let new_index = format!("motiva-{}", Alphanumeric.sample_string(&mut rand::rng(), 8).to_lowercase());
+  let old_index = find_previous_index(provider).await?;
 
-  let mut actions: Vec<serde_json::Value> = vec![json!({ "add": { "alias": provider.scoped_alias_name(), "index": new_index } })];
-  let mut old_index: Option<String> = None;
-  let mut previous_meta: Option<ScopedMeta> = None;
+  let previous_meta = match &old_index {
+    Some(index) => fetch_scoped_meta(provider, index).await,
+    None => None,
+  };
 
-  let aliases = provider.es.indices().get_alias(IndicesGetAliasParts::Name(&[&provider.scoped_alias_name()])).send().await?;
-
-  // Anything but a missing alias must fail, or the swap would add the new index
-  // without removing the previous one, and the alias would then span both.
-  match aliases.status_code() {
-    StatusCode::OK | StatusCode::NOT_FOUND => {}
-    status => anyhow::bail!("fetching scoped alias returned {status}: {:?}", aliases.text().await),
-  }
-
-  if aliases.status_code() == StatusCode::OK {
-    let aliases: HashMap<String, serde_json::Value> = aliases.json().await?;
-    let previous_index = aliases.keys().next().ok_or_else(|| anyhow::anyhow!("found no alias"))?;
-
-    tracing::info!(index = previous_index, "found previous scoped index");
-
-    actions.push(json!({ "remove": { "alias": provider.scoped_alias_name(), "index": previous_index, "must_exist": true } }));
-    old_index = Some(previous_index.clone());
-    previous_meta = fetch_scoped_meta(provider, previous_index).await;
-  }
-
-  let indices: IndexResponse = provider.es.indices().get(IndicesGetParts::Index(&[&provider.main_index])).send().await?.json().await?;
+  let indices: IndexResponse = checked(provider.es.indices().get(IndicesGetParts::Index(&[&provider.main_index])).send(), "fetching source indices")
+    .await?
+    .json()
+    .await?;
   let (indices, skipped): (Vec<_>, Vec<_>) = indices.into_iter().partition(|(name, _)| !skip_patterns.iter().any(|pattern| pattern.matches(name)));
 
   for (name, _) in &skipped {
@@ -203,287 +230,581 @@ async fn build_scoped_index(provider: &ElasticsearchProvider, query: serde_json:
     None => {}
   }
 
-  let mut index = indices
-    .into_iter()
-    .next()
-    .map(|(_, index)| index)
-    .ok_or_else(|| anyhow::anyhow!("found no source index in {}", provider.main_index))?;
+  let new_index = format!("motiva-{}", Alphanumeric.sample_string(&mut rand::rng(), 8).to_lowercase());
+  let (index_only, final_settings) = create_index(provider, &new_index, indices, &meta).await?;
 
-  let nested = index.settings.get_mut("index").context("no settings")?.as_object_mut().context("no settings")?;
-  nested.remove("uuid");
-  nested.remove("provided_name");
-  nested.remove("version");
-  nested.remove("creation_date");
-
-  index.mappings.as_object_mut().context("no mappings")?.insert("_meta".into(), json!({ "motiva": meta }));
-
-  let response = provider.es.indices().create(IndicesCreateParts::Index(&new_index)).body(index).send().await?;
-  if response.status_code() != StatusCode::OK {
-    anyhow::bail!("index creation returned {}: {:?}", response.status_code(), response.text().await);
-  }
-
-  tracing::info!(index = new_index, sources = ?meta.sources, "created new index, starting reindexing data");
-
-  // Set while a reindex task may be running on the cluster, so it can be
-  // cancelled if anything fails. Otherwise, it would keep writing to (and
-  // possibly recreate) the index once it has been deleted.
-  let mut running_task: Option<String> = None;
+  tracing::info!(index = new_index, sources = ?meta.sources, fields = ?index_only, "created new index, copying data");
 
   let result: Result<(), anyhow::Error> = async {
-    let body = json!({
-      "dest": {
-        "index": new_index
-      },
-      "source": {
-        "index": meta.sources,
-        "query": query,
-        "_source": {
-          "excludes": meta.excludes,
-        },
-      }
-    });
+    let copied = copy_documents(provider, &meta, &query, &index_only, &new_index, options).await?;
 
-    let response = provider.es.reindex().body(body).wait_for_completion(false).refresh(true).send().await?;
-    if response.status_code() != StatusCode::OK {
-      anyhow::bail!("reindex returned {}: {:?}", response.status_code(), response.text().await);
+    // A failed merge only costs performance, so it is not fatal.
+    if let Err(error) = force_merge(provider, &new_index).await {
+      tracing::warn!(index = new_index, %error, "could not merge index segments");
     }
 
-    let task: ReindexTask = response.json().await.context("could not parse reindex response")?;
+    // Make everything written so far visible to searches, and use merged segments.
+    checked(provider.es.indices().refresh(IndicesRefreshParts::Index(&[&new_index])).send(), &format!("refreshing {new_index}")).await?;
 
-    tracing::info!(index = new_index, task = task.task, "started reindex task");
+    check_document_count(provider, &new_index, copied).await?;
 
-    running_task = Some(task.task.clone());
-    let status = wait_for_task(provider, &task.task, timings).await?;
-    running_task = None;
+    checked(
+      provider.es.indices().put_settings(IndicesPutSettingsParts::Index(&[&new_index])).body(&final_settings).send(),
+      &format!("updating settings of {new_index}"),
+    )
+    .await?;
 
-    let result = status.into_result()?;
-
-    check_reindex_result(provider, &new_index, &result)?;
-
-    tracing::info!(index = new_index, documents = result.created, "reindexed data");
-
-    force_merge(provider, &new_index).await;
-
-    check_document_count(provider, &new_index, result.created).await?;
-
-    let response = provider.es.indices().update_aliases().body(json!({ "actions": actions })).send().await?;
-    if response.status_code() != StatusCode::OK {
-      anyhow::bail!("update aliases returned {}: {:?}", response.status_code(), response.text().await);
-    }
-
-    Ok(())
+    wait_for_replicas(provider, &new_index).await;
+    swap_alias(provider, &new_index, old_index.as_deref()).await
   }
   .await;
 
-  if let Err(e) = result {
-    let stopped = match running_task {
-      Some(ref task) => cancel_task(provider, task, timings).await,
-      None => true,
-    };
+  if let Err(err) = result {
+    delete_index(provider, &new_index).await;
 
-    match provider.es.indices().delete(IndicesDeleteParts::Index(&[&new_index])).send().await {
-      Ok(response) if response.status_code().is_success() => {}
-      Ok(response) => tracing::warn!(index = new_index, status = %response.status_code(), "failed to clean up orphaned index after error"),
-      Err(err) => tracing::warn!(index = new_index, error = %err, "failed to clean up orphaned index after error"),
-    }
-
-    if !stopped {
-      tracing::warn!(
-        index = new_index,
-        task = running_task,
-        "reindex task may still be running and recreate the index, it may need manual cleanup"
-      );
-    }
-
-    return Err(e);
+    return Err(err);
   }
 
   tracing::info!(from = old_index, to = new_index, "atomically swapped index");
 
-  if let Some(ref to_delete) = old_index {
-    if provider.es.indices().delete(IndicesDeleteParts::Index(&[to_delete])).send().await?.status_code() != StatusCode::OK {
-      tracing::warn!(index = to_delete, "could not delete previous scoped index, it may need manual cleanup");
-    } else {
-      tracing::info!(index = to_delete, "deleted old index");
+  if let Some(old_index) = old_index {
+    delete_index(provider, &old_index).await;
+  }
+
+  Ok(())
+}
+
+/// Send a request, and fail on anything but a successful response.
+async fn checked(request: impl Future<Output = Result<Response, opensearch::Error>>, action: &str) -> Result<Response, RequestError> {
+  check_status(request.await.map_err(RequestError::transient)?, action).await
+}
+
+async fn check_status(response: Response, action: &str) -> Result<Response, RequestError> {
+  let status = response.status_code();
+
+  if status == StatusCode::OK {
+    return Ok(response);
+  }
+
+  Err(RequestError {
+    error: anyhow::anyhow!("{action} returned {status}: {}", response.text().await.unwrap_or_default()),
+    transient: is_transient(status),
+  })
+}
+
+/// Whether a request that got this status may succeed if retried.
+fn is_transient(status: StatusCode) -> bool {
+  matches!(
+    status,
+    StatusCode::REQUEST_TIMEOUT | StatusCode::TOO_MANY_REQUESTS | StatusCode::BAD_GATEWAY | StatusCode::SERVICE_UNAVAILABLE | StatusCode::GATEWAY_TIMEOUT
+  )
+}
+
+/// Run a request until it succeeds, backing off after every transient failure.
+async fn with_retries<T, F, R>(options: &CopyOptions, action: &str, mut request: F) -> Result<T, anyhow::Error>
+where
+  F: FnMut() -> R,
+  R: Future<Output = Result<T, RequestError>>,
+{
+  let mut attempt = 1;
+  let mut delay = options.retry_delay;
+
+  loop {
+    match request().await {
+      Ok(value) => return Ok(value),
+      Err(RequestError { error, transient: false }) => return Err(error),
+      Err(RequestError { error, .. }) if attempt >= options.max_attempts => return Err(error.context(format!("could not {action} after {attempt} attempts"))),
+
+      Err(RequestError { error, .. }) => {
+        tracing::warn!(action, %error, attempt, "request failed, retrying");
+
+        tokio::time::sleep(delay).await;
+
+        attempt += 1;
+        delay = (delay * 2).min(MAX_RETRY_DELAY);
+      }
+    }
+  }
+}
+
+/// Find the index the scoped alias currently points to.
+///
+/// Anything but a missing alias must fail, or the swap would add the new index
+/// without removing the previous one, and the alias would then span both.
+async fn find_previous_index(provider: &ElasticsearchProvider) -> Result<Option<String>, anyhow::Error> {
+  let response = provider.es.indices().get_alias(IndicesGetAliasParts::Name(&[&provider.scoped_alias_name()])).send().await?;
+
+  if response.status_code() == StatusCode::NOT_FOUND {
+    return Ok(None);
+  }
+
+  let aliases: HashMap<String, serde_json::Value> = check_status(response, "fetching scoped alias").await?.json().await?;
+  let index = aliases.into_keys().next().context("found no alias")?;
+
+  tracing::info!(index, "found previous scoped index");
+
+  Ok(Some(index))
+}
+
+/// Create the new index from the first source, set up for a bulk load.
+///
+/// Returns the fields to copy from doc values, and the settings the index is to
+/// be served with once it is built.
+async fn create_index(provider: &ElasticsearchProvider, name: &str, sources: Vec<(String, Index)>, meta: &ScopedMeta) -> Result<(Vec<String>, serde_json::Value), anyhow::Error> {
+  let mut sources = sources.into_iter();
+
+  let (_, mut index) = sources.next().ok_or_else(|| anyhow::anyhow!("found no source index in {}", provider.main_index))?;
+
+  // The new index gets the mapping of the first source, so it only knows of its fields.
+  let index_only = index_only_fields(&index.mappings);
+
+  for (source, other) in sources {
+    let unmapped = index_only_fields(&other.mappings).into_iter().filter(|field| !index_only.contains(field)).collect::<Vec<_>>();
+
+    if !unmapped.is_empty() {
+      tracing::warn!(index = source, fields = ?unmapped, "source index has index-only fields the scoped index does not map, they will not be copied");
     }
   }
 
+  strip_source_settings(&mut index.settings)?;
+
+  let final_settings = apply_build_settings(&mut index.settings)?;
+
+  index.mappings.as_object_mut().context("no mappings")?.insert("_meta".into(), json!({ "motiva": meta }));
+
+  checked(provider.es.indices().create(IndicesCreateParts::Index(name)).body(index).send(), "index creation").await?;
+
+  Ok((index_only, final_settings))
+}
+
+/// Remove the settings that describe the source index rather than how to build
+/// one, which an index cannot be created with.
+///
+/// That includes what is left on an index created by cloning another one, which
+/// yente does for datasets that did not change, and write blocks.
+fn strip_source_settings(settings: &mut serde_json::Value) -> Result<(), anyhow::Error> {
+  if let Some(allocation) = settings.pointer_mut("/index/routing/allocation").and_then(serde_json::Value::as_object_mut) {
+    allocation.remove("initial_recovery");
+  }
+
+  let nested = settings.get_mut("index").and_then(serde_json::Value::as_object_mut).context("no settings")?;
+
+  for setting in ["uuid", "provided_name", "version", "creation_date", "resize", "blocks"] {
+    nested.remove(setting);
+  }
+
   Ok(())
 }
 
-/// Check that a reindex copied every matching document.
-fn check_reindex_result(provider: &ElasticsearchProvider, index: &str, result: &ReindexResult) -> Result<(), anyhow::Error> {
-  if let Some(ref reason) = result.canceled {
-    anyhow::bail!("reindex was cancelled ({reason}) after copying {} of {} documents", result.created, result.total);
+/// Set up the new index for a one-time bulk load, returning the settings it is to
+/// be served with.
+///
+/// Nothing reads the index while it is being built, and a failed build is thrown
+/// away, so it does not need refreshes, durable writes or replicas. Replicas are
+/// instead copied from the merged primary, rather than built and merged twice.
+fn apply_build_settings(settings: &mut serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+  let nested = settings.get_mut("index").and_then(serde_json::Value::as_object_mut).context("no settings")?;
+
+  // Sources can expand replicas to all nodes, which would override their number.
+  let auto_expand = nested.insert("auto_expand_replicas".into(), json!("false"));
+  let replicas = nested.insert("number_of_replicas".into(), json!("0"));
+  let refresh = nested.insert("refresh_interval".into(), json!("-1"));
+  let translog = nested.entry("translog").or_insert_with(|| json!({})).as_object_mut().context("invalid translog settings")?;
+  let durability = translog.insert("durability".into(), json!("async"));
+
+  // A setting the source did not have goes back to its default, as if it was never set.
+  Ok(json!({ "index": { "auto_expand_replicas": auto_expand, "number_of_replicas": replicas, "refresh_interval": refresh, "translog.durability": durability } }))
+}
+
+/// Copy the documents matching the scoped query into the new index, returning how
+/// many were copied.
+///
+/// The `_reindex` API cannot be used here: it rebuilds documents from `_source`,
+/// and yente excludes the fields matching relies on (such as `name_parts`) from
+/// it. Those fields are only left in the inverted index and in doc values, which
+/// neither reindex scripts nor ingest pipelines can read, so they are fetched from
+/// doc values here and written back with each document.
+///
+/// Documents are read in index order through a scroll: any other order makes the
+/// cluster jump around its stored fields and decompress a block for each document,
+/// which is what `search_after` on an identifier would do. The scroll also holds on
+/// to the source indices it started from if they are replaced while copying.
+///
+/// Pages are turned into bulk requests without parsing the documents, and written
+/// while the next ones are read, as the cluster should never be left waiting for
+/// them. Only one page can wait to be written, which keeps memory bounded to a few
+/// batches however far ahead of the cluster reading gets.
+async fn copy_documents(provider: &ElasticsearchProvider, meta: &ScopedMeta, query: &serde_json::Value, index_only: &[String], target: &str, options: &CopyOptions) -> Result<u64, anyhow::Error> {
+  let started = Instant::now();
+
+  let mut scroll = Scroll {
+    provider,
+    options,
+    sources: meta.sources.iter().map(String::as_str).collect(),
+    search: json!({
+      "size": options.batch_size,
+      "sort": ["_doc"],
+      "query": query,
+      "track_total_hits": true,
+      // Listing the fields here too makes sure they cannot be in `_source` twice.
+      "_source": { "excludes": meta.excludes.iter().chain(index_only).collect::<Vec<_>>() },
+      "docvalue_fields": index_only,
+    }),
+    id: None,
+    total: 0,
+  };
+
+  let (sender, receiver) = mpsc::channel(1);
+
+  let result = try_join(read_batches(&mut scroll, target, sender), write_batches(provider, target, options, receiver)).await;
+
+  scroll.clear().await;
+
+  let (copied, ()) = result?;
+
+  if scroll.total == 0 {
+    anyhow::bail!("found no documents in {} matching the scoped query", provider.main_index);
   }
 
-  if result.timed_out || !result.failures.is_empty() {
-    anyhow::bail!(
-      "reindex did not complete: timed_out={}, total={}, created={}, failures={:?}",
-      result.timed_out,
-      result.total,
-      result.created,
-      result.failures
-    );
+  if copied != scroll.total {
+    anyhow::bail!("copied only {copied} of {} documents into {target}", scroll.total);
   }
 
-  if result.total == 0 {
-    anyhow::bail!("reindex matched no documents in {} with the scoped query", provider.main_index);
+  tracing::info!(index = target, documents = copied, elapsed = ?started.elapsed(), "copied data");
+
+  Ok(copied)
+}
+
+/// Read source documents until there are none left, handing them to `batches`.
+/// Returns how many were read.
+async fn read_batches(scroll: &mut Scroll<'_>, target: &str, batches: mpsc::Sender<Bytes>) -> Result<u64, anyhow::Error> {
+  let started = Instant::now();
+  let mut last_progress = started;
+  let mut read = 0;
+
+  while let Some(batch) = scroll.next_batch().await? {
+    read += batch.documents;
+
+    // Writing stopping ends the copy with its own error, which is what gets reported.
+    batches.send(batch.body).await.context("writing documents stopped")?;
+
+    if last_progress.elapsed() >= PROGRESS_INTERVAL {
+      last_progress = Instant::now();
+
+      tracing::info!(index = target, read, total = scroll.total, elapsed = ?started.elapsed(), "still copying documents");
+    }
   }
-  if result.created != result.total {
-    anyhow::bail!("reindex copied only {} of {} documents into {}", result.created, result.total, index);
+
+  Ok(read)
+}
+
+/// Write the batches coming out of `batches`, until it is closed.
+async fn write_batches(provider: &ElasticsearchProvider, target: &str, options: &CopyOptions, batches: mpsc::Receiver<Bytes>) -> Result<(), anyhow::Error> {
+  let batches = stream::unfold(batches, |mut batches| async move { Some((Ok::<_, anyhow::Error>(batches.recv().await?), batches)) });
+
+  batches
+    .try_for_each_concurrent(options.write_concurrency, |batch| async move {
+      with_retries(options, "write documents", || write_batch(provider, target, &batch)).await
+    })
+    .await
+}
+
+/// A scroll over the source documents.
+struct Scroll<'a> {
+  provider: &'a ElasticsearchProvider,
+  options: &'a CopyOptions,
+  sources: Vec<&'a str>,
+  search: serde_json::Value,
+  /// Identifies the scroll to continue, once it has been opened.
+  id: Option<String>,
+  /// How many documents the search matched, known once the scroll has been opened.
+  total: u64,
+}
+
+impl Scroll<'_> {
+  /// Read the next page of documents, if there is one left.
+  async fn next_batch(&mut self) -> Result<Option<Batch>, anyhow::Error> {
+    // A scroll moves on as it is read, so a retried page could in theory be a lost
+    // one. That shows as a document count that does not add up, which fails the build.
+    let response = with_retries(self.options, "read source documents", || self.fetch_page()).await?;
+    let page: Page = serde_json::from_slice(&response).context("could not parse source documents")?;
+
+    if let Some(id) = page.scroll_id {
+      self.id = Some(id);
+    }
+
+    if let Some(total) = page.hits.total {
+      self.total = total.value;
+    }
+
+    // Only an empty page shows that there is nothing left.
+    if page.hits.hits.is_empty() {
+      return Ok(None);
+    }
+
+    let mut body = Vec::with_capacity(response.len());
+
+    for hit in &page.hits.hits {
+      write_document(&mut body, hit)?;
+    }
+
+    Ok(Some(Batch {
+      body: body.into(),
+      documents: page.hits.hits.len() as u64,
+    }))
   }
+
+  /// Open the scroll, or read its next page if it already is.
+  async fn fetch_page(&self) -> Result<Bytes, RequestError> {
+    let es = &self.provider.es;
+
+    let response = match &self.id {
+      // A partial page would otherwise silently leave documents behind.
+      None => {
+        let request = es
+          .search(SearchParts::Index(&self.sources))
+          .scroll(SCROLL_KEEP_ALIVE)
+          .allow_partial_search_results(false)
+          .filter_path(PAGE_FILTER)
+          .request_timeout(REQUEST_TIMEOUT)
+          .body(&self.search)
+          .send();
+
+        checked(request, "reading documents").await?
+      }
+
+      Some(id) => {
+        let body = json!({ "scroll": SCROLL_KEEP_ALIVE, "scroll_id": id });
+        let request = es.scroll(ScrollParts::None).filter_path(PAGE_FILTER).request_timeout(REQUEST_TIMEOUT).body(body).send();
+
+        checked(request, "reading documents").await?
+      }
+    };
+
+    response.bytes().await.map_err(RequestError::transient)
+  }
+
+  /// Release the scroll, which would otherwise only go away after its keep-alive.
+  async fn clear(&self) {
+    let Some(id) = &self.id else {
+      return;
+    };
+
+    let request = self.provider.es.clear_scroll(ClearScrollParts::None).body(json!({ "scroll_id": [id] })).send();
+
+    if let Err(RequestError { error, .. }) = checked(request, "clearing scroll").await {
+      tracing::warn!(%error, "could not clear scroll");
+    }
+  }
+}
+
+/// Append the bulk action for a document, merging its doc values into its source.
+fn write_document(body: &mut Vec<u8>, hit: &Hit<'_>) -> Result<(), anyhow::Error> {
+  let source = compact(hit.source.get())?;
+  let fields = hit.fields.map(|fields| compact(fields.get())).transpose()?;
+
+  let source = object_members(&source).context("source document is not an object")?;
+  let fields = fields.as_deref().and_then(object_members).unwrap_or_default();
+  let separator = if source.is_empty() || fields.is_empty() { "" } else { "," };
+
+  body.extend_from_slice(br#"{"index":{"_id":"#);
+  body.extend_from_slice(hit.id.get().as_bytes());
+  body.extend_from_slice(b"}}\n{");
+  body.extend_from_slice(source.as_bytes());
+  body.extend_from_slice(separator.as_bytes());
+  body.extend_from_slice(fields.as_bytes());
+  body.extend_from_slice(b"}\n");
 
   Ok(())
 }
 
-/// Check that the new index holds as many documents as the reindex reported,
-/// so the alias only moves to an index whose data is actually there.
+/// What is between the braces of a raw JSON object.
+fn object_members(raw: &str) -> Option<&str> {
+  Some(raw.strip_prefix('{')?.strip_suffix('}')?.trim())
+}
+
+/// Remove line breaks from JSON, which would otherwise end a bulk action.
+///
+/// Responses are compact unless the cluster is configured otherwise, and line
+/// breaks in strings are escaped, so this very rarely has anything to do.
+fn compact(raw: &str) -> Result<Cow<'_, str>, anyhow::Error> {
+  if !raw.contains('\n') {
+    return Ok(Cow::Borrowed(raw));
+  }
+
+  Ok(Cow::Owned(serde_json::from_str::<serde_json::Value>(raw).context("could not parse source document")?.to_string()))
+}
+
+/// Write a batch of documents.
+///
+/// Documents are written with their source identifier, so a batch can safely be
+/// sent again as a whole. The bulk builder is not used because it copies its body.
+async fn write_batch(provider: &ElasticsearchProvider, index: &str, body: &Bytes) -> Result<(), RequestError> {
+  let headers = HeaderMap::from_iter([(CONTENT_TYPE, HeaderValue::from_static("application/x-ndjson"))]);
+  let path = format!("/{index}/_bulk");
+  let query = [("filter_path", BULK_FILTER)];
+
+  let request = provider.es.send(Method::Post, &path, headers, Some(&query), Some(body.clone()), Some(REQUEST_TIMEOUT));
+  let response = checked(request, "writing documents").await?;
+
+  check_bulk_response(response.json().await.map_err(RequestError::transient)?)
+}
+
+/// Check that a batch was written in full, a document failing for any other
+/// reason than the load on the cluster will fail the same way if sent again.
+fn check_bulk_response(response: BulkResponse) -> Result<(), RequestError> {
+  if !response.errors {
+    return Ok(());
+  }
+
+  let failures = response
+    .items
+    .iter()
+    .flat_map(BTreeMap::values)
+    .filter(|item| item.error.is_some() || item.status >= 300)
+    .collect::<Vec<_>>();
+
+  let error = match failures.first() {
+    Some(first) => anyhow::anyhow!("could not write some documents: {} {:?}", first.status, first.error),
+    None => anyhow::anyhow!("writing documents reported errors, but no failed document"),
+  };
+
+  Err(RequestError {
+    error,
+    transient: !failures.is_empty() && failures.iter().all(|item| StatusCode::from_u16(item.status).is_ok_and(is_transient)),
+  })
+}
+
+/// Check that the new index holds as many documents as were copied, so the alias
+/// only moves to an index whose data is actually there.
+///
+/// This also catches an identifier found in two source indices, as writing the
+/// second document replaces the first.
 async fn check_document_count(provider: &ElasticsearchProvider, index: &str, expected: u64) -> Result<(), anyhow::Error> {
-  let response = provider.es.count(CountParts::Index(&[index])).send().await?;
-  if response.status_code() != StatusCode::OK {
-    anyhow::bail!("counting documents in {index} returned {}: {:?}", response.status_code(), response.text().await);
-  }
-
+  let response = checked(provider.es.count(CountParts::Index(&[index])).send(), &format!("counting documents in {index}")).await?;
   let count: CountResult = response.json().await.context("could not parse document count")?;
 
   if count.count != expected {
-    anyhow::bail!("{index} holds {} documents, but the reindex reported {expected}", count.count);
+    anyhow::bail!("{index} holds {} documents, but {expected} were copied", count.count);
   }
 
   Ok(())
-}
-
-/// Wait for a reindex task to complete and return its final status.
-///
-/// Reindexing runs as a task instead of a blocking request because OpenSearch
-/// attaches a response header for every scroll batch, which overflows the
-/// HTTP client's header limit when copying millions of documents.
-///
-/// The task is polled instead of waited on server-side, because the status
-/// returned when such a wait times out differs between Elasticsearch and
-/// OpenSearch versions.
-async fn wait_for_task(provider: &ElasticsearchProvider, task: &str, timings: &TaskTimings) -> Result<TaskStatus, anyhow::Error> {
-  let started = Instant::now();
-  let mut last_progress = started;
-  let mut transient_errors = 0;
-
-  loop {
-    match fetch_task(provider, task).await {
-      Ok(status) if status.completed => return Ok(status),
-
-      Ok(status) => {
-        transient_errors = 0;
-
-        if last_progress.elapsed() >= timings.progress_interval {
-          last_progress = Instant::now();
-
-          match status.task.and_then(|info| info.status) {
-            Some(progress) => tracing::info!(task, created = progress.created, total = progress.total, "reindex still running"),
-            None => tracing::info!(task, "reindex still running"),
-          }
-        }
-      }
-
-      Err(PollError::Fatal(err)) => return Err(err),
-
-      Err(PollError::Transient(err)) => {
-        transient_errors += 1;
-
-        if transient_errors >= TASK_MAX_TRANSIENT_ERRORS {
-          return Err(err.context(format!("could not follow reindex task {task} after {transient_errors} attempts")));
-        }
-
-        tracing::warn!(task, error = %err, attempt = transient_errors, "could not poll reindex task, retrying");
-      }
-    }
-
-    if started.elapsed() >= timings.max_wait {
-      anyhow::bail!("reindex task {task} did not complete within {:?}", timings.max_wait);
-    }
-
-    tokio::time::sleep(timings.poll_interval).await;
-  }
-}
-
-/// Fetch the current status of a task.
-async fn fetch_task(provider: &ElasticsearchProvider, task: &str) -> Result<TaskStatus, PollError> {
-  let response = provider
-    .es
-    .send(Method::Get, &format!("/_tasks/{task}"), HeaderMap::new(), None::<&()>, None::<()>, None)
-    .await
-    .map_err(|err| PollError::Transient(anyhow::Error::new(err).context("could not fetch reindex task")))?;
-
-  match response.status_code() {
-    StatusCode::OK => response.json().await.context("could not parse reindex task").map_err(PollError::Transient),
-
-    status if status.is_server_error() || status == StatusCode::REQUEST_TIMEOUT || status == StatusCode::TOO_MANY_REQUESTS => {
-      Err(PollError::Transient(anyhow::anyhow!("reindex task returned {status}: {:?}", response.text().await)))
-    }
-
-    status => Err(PollError::Fatal(anyhow::anyhow!("reindex task returned {status}: {:?}", response.text().await))),
-  }
-}
-
-/// Cancel a task and wait for it to stop, returning whether it did.
-async fn cancel_task(provider: &ElasticsearchProvider, task: &str, timings: &TaskTimings) -> bool {
-  let response = provider
-    .es
-    .send(Method::Post, &format!("/_tasks/{task}/_cancel"), HeaderMap::new(), None::<&()>, None::<()>, None)
-    .await;
-
-  match response {
-    Ok(response) if response.status_code().is_success() => tracing::info!(task, "cancelled reindex task"),
-    Ok(response) => tracing::warn!(task, status = %response.status_code(), "could not cancel reindex task"),
-    Err(err) => tracing::warn!(task, error = %err, "could not cancel reindex task"),
-  }
-
-  // Keep polling even if cancelling failed, the task may have completed anyway.
-  for _ in 0..timings.cancel_polls {
-    match fetch_task(provider, task).await {
-      Ok(status) if status.completed => return true,
-      Ok(_) | Err(PollError::Transient(_)) => {}
-      Err(PollError::Fatal(_)) => return false,
-    }
-
-    tokio::time::sleep(timings.poll_interval).await;
-  }
-
-  false
 }
 
 /// Merge the freshly built index down to a single segment.
 ///
 /// Fuzzy and term lookups run once per segment, so a single segment roughly
-/// halves query latency on a static index. The index never has deleted documents,
-/// so scoring statistics, and therefore scores, are unchanged.
-/// A failed merge only costs performance, so it is not fatal.
-async fn force_merge(provider: &ElasticsearchProvider, index: &str) {
-  let response = provider.es.indices().forcemerge(IndicesForcemergeParts::Index(&[index])).max_num_segments(1).send().await;
+/// halves query latency on a static index. The only deleted documents the index
+/// can hold come from batches written again, which merging removes.
+async fn force_merge(provider: &ElasticsearchProvider, index: &str) -> Result<(), anyhow::Error> {
+  let result: ForcemergeResult = checked(provider.es.indices().forcemerge(IndicesForcemergeParts::Index(&[index])).max_num_segments(1).send(), "merging segments")
+    .await?
+    .json()
+    .await?;
 
-  match response {
-    Ok(response) if response.status_code() == StatusCode::OK => match response.json::<ForcemergeResult>().await {
-      Ok(ForcemergeResult { shards: Shards { failed: 0, .. } }) => tracing::info!(index, "merged index into a single segment"),
-      Ok(ForcemergeResult { shards }) => tracing::warn!(index, failed = shards.failed, total = shards.total, "could not merge index segments on some shards"),
-      Err(err) => tracing::warn!(index, error = %err, "could not parse index merge response"),
-    },
-
-    Ok(response) => {
-      tracing::warn!(index, status = %response.status_code(), "could not merge index segments");
-      return;
-    }
-
-    Err(err) => {
-      tracing::warn!(index, error = %err, "could not merge index segments");
-      return;
-    }
+  if result.shards.failed > 0 {
+    anyhow::bail!("merging failed on {} of {} shards", result.shards.failed, result.shards.total);
   }
 
-  // Searches keep using the pre-merge segments until the next refresh.
-  match provider.es.indices().refresh(IndicesRefreshParts::Index(&[index])).send().await {
-    Ok(response) if response.status_code() == StatusCode::OK => {}
-    Ok(response) => tracing::warn!(index, status = %response.status_code(), "could not refresh merged index"),
-    Err(err) => tracing::warn!(index, error = %err, "could not refresh merged index"),
+  tracing::info!(index, "merged index into a single segment");
+
+  Ok(())
+}
+
+/// Wait for the replicas of the new index to be copied.
+///
+/// This does not wait for the index to turn green, which it never would on a
+/// cluster with fewer nodes than copies. The primary can serve queries by itself,
+/// so an index that is late to replicate is not worth failing the build over.
+async fn wait_for_replicas(provider: &ElasticsearchProvider, index: &str) {
+  let cluster = provider.es.cluster();
+  let parts = [index];
+
+  let request = cluster
+    .health(ClusterHealthParts::Index(&parts))
+    .wait_for_events(WaitForEvents::Languid)
+    .wait_for_no_initializing_shards(true)
+    .timeout(REPLICA_TIMEOUT)
+    .send();
+
+  match checked(request, "waiting for replicas").await {
+    Ok(_) => tracing::info!(index, "replicas are ready"),
+    Err(RequestError { error, .. }) => tracing::warn!(index, %error, "replicas are not ready, serving from the primary until they are"),
+  }
+}
+
+/// Atomically move the scoped alias to the new index.
+async fn swap_alias(provider: &ElasticsearchProvider, new_index: &str, old_index: Option<&str>) -> Result<(), anyhow::Error> {
+  let alias = provider.scoped_alias_name();
+  let mut actions = vec![json!({ "add": { "alias": alias, "index": new_index } })];
+
+  if let Some(old_index) = old_index {
+    actions.push(json!({ "remove": { "alias": alias, "index": old_index, "must_exist": true } }));
+  }
+
+  checked(provider.es.indices().update_aliases().body(json!({ "actions": actions })).send(), "update aliases").await?;
+
+  Ok(())
+}
+
+/// Delete an index. Failing to is not worth failing over, as the build it belongs
+/// to has already settled.
+async fn delete_index(provider: &ElasticsearchProvider, index: &str) {
+  match checked(provider.es.indices().delete(IndicesDeleteParts::Index(&[index])).send(), "deleting index").await {
+    Ok(_) => tracing::info!(index, "deleted index"),
+    Err(RequestError { error, .. }) => tracing::warn!(index, %error, "could not delete index, it may need manual cleanup"),
+  }
+}
+
+/// List the fields that matching relies on but that are not in `_source`, and
+/// that must therefore be copied from doc values.
+///
+/// Excluded fields that are the target of a `copy_to` are left out: those are
+/// filled again when their source fields are written.
+fn index_only_fields(mappings: &serde_json::Value) -> Vec<String> {
+  let Some(excludes) = mappings.pointer("/_source/excludes").and_then(serde_json::Value::as_array) else {
+    return Vec::new();
+  };
+
+  let properties = mappings.get("properties").unwrap_or(&serde_json::Value::Null);
+  let mut targets = HashSet::new();
+
+  collect_copy_targets(properties, &mut targets);
+
+  excludes
+    .iter()
+    .filter_map(serde_json::Value::as_str)
+    .filter(|name| !targets.contains(name))
+    .filter(|name| {
+      let readable = properties.get(name).is_some_and(|field| field["type"] == "keyword" && field["doc_values"] != false);
+
+      if !readable {
+        tracing::warn!(
+          field = name,
+          "field is excluded from _source and has no doc values to copy it from, it will be missing from the scoped index"
+        );
+      }
+
+      readable
+    })
+    .map(String::from)
+    .collect()
+}
+
+fn collect_copy_targets<'a>(properties: &'a serde_json::Value, targets: &mut HashSet<&'a str>) {
+  for field in properties.as_object().into_iter().flat_map(serde_json::Map::values) {
+    match field.get("copy_to") {
+      Some(serde_json::Value::String(target)) => {
+        targets.insert(target);
+      }
+
+      Some(serde_json::Value::Array(values)) => targets.extend(values.iter().filter_map(serde_json::Value::as_str)),
+      _ => {}
+    }
+
+    if let Some(nested) = field.get("properties") {
+      collect_copy_targets(nested, targets);
+    }
   }
 }
 
@@ -527,22 +848,26 @@ mod tests {
 
   use serde_json::json;
   use wiremock::{
-    Mock, MockServer, Request, ResponseTemplate,
+    Mock, MockServer, Request, Respond, ResponseTemplate,
     matchers::{method, path, path_regex},
   };
 
-  use super::{ScopedMeta, TaskTimings};
+  use super::{CopyOptions, Hit, ScopedMeta};
   use crate::{ElasticsearchProvider, index::elastic::config::EsOptions};
 
   const NEW_INDEX: &str = r"^/motiva-[a-z0-9]{8}$";
+  const SEARCH: &str = "/_search(/scroll)?$";
+  const BULK: &str = r"^/motiva-[a-z0-9]{8}/_bulk$";
+  const SETTINGS: &str = r"^/motiva-[a-z0-9]{8}/_settings$";
+  const HEALTH: &str = r"^/_cluster/health/motiva-[a-z0-9]{8}$";
 
-  /// Timings that keep polling fast, with a deadline no test should reach.
-  fn fast() -> TaskTimings {
-    TaskTimings {
-      poll_interval: Duration::from_millis(1),
-      max_wait: Duration::from_secs(10),
-      progress_interval: Duration::from_secs(60),
-      cancel_polls: 12,
+  /// Options that keep batches small and retries fast.
+  fn fast() -> CopyOptions {
+    CopyOptions {
+      batch_size: 4,
+      write_concurrency: 1,
+      retry_delay: Duration::from_millis(1),
+      max_attempts: 3,
     }
   }
 
@@ -553,8 +878,16 @@ mod tests {
   fn source_index(name: &str) -> serde_json::Value {
     json!({
       "aliases": { "yente-entities": {} },
-      "mappings": { "_meta": { "last_export": "2026-10-15T00:00:00" }, "properties": {} },
-      "settings": { "index": { "uuid": "uuid", "provided_name": name, "creation_date": "0", "version": { "created": "1" }, "number_of_shards": "1" } }
+      "mappings": {
+        "_meta": { "last_export": "2026-10-15T00:00:00" },
+        "_source": { "excludes": ["name_parts", "name_phonetic", "text"] },
+        "properties": {
+          "name_parts": { "type": "keyword", "copy_to": "text" },
+          "name_phonetic": { "type": "keyword" },
+          "text": { "type": "text" },
+        }
+      },
+      "settings": { "index": { "uuid": "uuid", "provided_name": name, "creation_date": "0", "version": { "created": "1" }, "number_of_shards": "1", "number_of_replicas": "1", "auto_expand_replicas": "0-all", "refresh_interval": "10s" } }
     })
   }
 
@@ -567,9 +900,49 @@ mod tests {
     })
   }
 
-  /// Mock a cluster with three source indices, and a previous scoped index
-  /// built with `previous_meta`, if any.
-  async fn cluster(previous_meta: Option<serde_json::Value>, reindex_total: u64) -> (MockServer, ElasticsearchProvider) {
+  fn hit(id: &str) -> serde_json::Value {
+    json!({ "_id": id, "_source": { "id": id }, "fields": { "name_parts": [id] } })
+  }
+
+  fn hits(count: u64) -> Vec<serde_json::Value> {
+    (0..count).map(|i| format!("doc-{i:03}")).map(|id| hit(&id)).collect()
+  }
+
+  /// Source documents served the way a scroll pages through them, the scroll
+  /// identifier holding the position and page size.
+  struct Source {
+    total: u64,
+    hits: Vec<serde_json::Value>,
+  }
+
+  impl Respond for Source {
+    fn respond(&self, request: &Request) -> ResponseTemplate {
+      let body: serde_json::Value = request.body_json().unwrap();
+
+      let (offset, size) = match body["scroll_id"].as_str() {
+        Some(id) => id.split_once(':').map(|(offset, size)| (offset.parse().unwrap(), size.parse().unwrap())).unwrap(),
+        None => (0, body["size"].as_u64().unwrap() as usize),
+      };
+
+      let hits = self.hits.iter().skip(offset).take(size).cloned().collect::<Vec<_>>();
+      let next = offset + hits.len();
+
+      ResponseTemplate::new(200).set_body_json(json!({ "_scroll_id": format!("{next}:{size}"), "hits": { "total": { "value": self.total }, "hits": hits } }))
+    }
+  }
+
+  async fn serve_source(server: &MockServer, total: u64, hits: Vec<serde_json::Value>) {
+    Mock::given(method("POST"))
+      .and(path_regex(SEARCH))
+      .respond_with(Source { total, hits })
+      .with_priority(1)
+      .mount(server)
+      .await;
+  }
+
+  /// Mock a cluster with three source indices holding `total` matching documents,
+  /// and a previous scoped index built with `previous_meta`, if any.
+  async fn cluster(previous_meta: Option<serde_json::Value>, total: u64) -> (MockServer, ElasticsearchProvider) {
     let server = MockServer::start().await;
 
     match previous_meta {
@@ -613,24 +986,16 @@ mod tests {
       .await;
 
     Mock::given(method("POST"))
-      .and(path("/_reindex"))
-      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "task": "node:1" })))
-      .mount(&server)
-      .await;
-
-    Mock::given(method("GET"))
-      .and(path("/_tasks/node:1"))
-      .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-        "completed": true,
-        "task": {},
-        "response": { "timed_out": false, "total": reindex_total, "created": reindex_total, "failures": [] }
-      })))
+      .and(path_regex(SEARCH))
+      .respond_with(Source { total, hits: hits(total) })
+      .with_priority(2)
       .mount(&server)
       .await;
 
     Mock::given(method("POST"))
-      .and(path("/_tasks/node:1/_cancel"))
-      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "nodes": {} })))
+      .and(path_regex(BULK))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "errors": false })))
+      .with_priority(2)
       .mount(&server)
       .await;
 
@@ -640,14 +1005,27 @@ mod tests {
       .mount(&server)
       .await;
 
-    Mock::given(method("GET"))
-      .and(path_regex(r"^/motiva-[a-z0-9]{8}/_refresh$"))
+    Mock::given(path_regex(r"^/motiva-[a-z0-9]{8}/_refresh$"))
       .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "_shards": { "total": 1, "successful": 1, "failed": 0 } })))
       .mount(&server)
       .await;
 
     Mock::given(path_regex(r"^/motiva-[a-z0-9]{8}/_count$"))
-      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "count": reindex_total })))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "count": total })))
+      .mount(&server)
+      .await;
+
+    Mock::given(method("PUT"))
+      .and(path_regex(SETTINGS))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "acknowledged": true })))
+      .with_priority(2)
+      .mount(&server)
+      .await;
+
+    Mock::given(method("GET"))
+      .and(path_regex(HEALTH))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "status": "green" })))
+      .with_priority(2)
       .mount(&server)
       .await;
 
@@ -679,6 +1057,22 @@ mod tests {
       .collect()
   }
 
+  /// List the identifiers written by every bulk request received, in order.
+  async fn written(server: &MockServer) -> Vec<String> {
+    requests(server, "POST", BULK)
+      .await
+      .iter()
+      .flat_map(|request| {
+        String::from_utf8(request.body.clone())
+          .unwrap()
+          .lines()
+          .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+          .filter_map(|line| line.pointer("/index/_id").and_then(|id| id.as_str().map(String::from)))
+          .collect::<Vec<_>>()
+      })
+      .collect()
+  }
+
   fn strings(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| value.to_string()).collect()
   }
@@ -697,11 +1091,14 @@ mod tests {
     .await
     .unwrap();
 
-    let reindex: serde_json::Value = requests(&server, "POST", "^/_reindex$").await[0].body_json().unwrap();
+    let search = &requests(&server, "POST", SEARCH).await[0];
+    let body: serde_json::Value = search.body_json().unwrap();
 
-    assert_eq!(reindex["source"]["index"], json!(["yente-entities-default", "yente-entities-sanctions"]));
-    assert_eq!(reindex["source"]["_source"]["excludes"], json!(["properties.notes", "properties.sourceUrl"]));
-    assert_eq!(reindex["source"]["query"], json!({ "match_all": {} }));
+    assert!(search.url.path().contains("yente-entities-default"));
+    assert!(search.url.path().contains("yente-entities-sanctions"));
+    assert!(!search.url.path().contains("internal_watchlist"));
+    assert_eq!(body["query"], json!({ "match_all": {} }));
+    assert_eq!(body["_source"]["excludes"], json!(["properties.notes", "properties.sourceUrl", "name_parts", "name_phonetic"]));
 
     let create: serde_json::Value = requests(&server, "PUT", NEW_INDEX).await[0].body_json().unwrap();
 
@@ -709,7 +1106,17 @@ mod tests {
       create["mappings"]["_meta"],
       json!({ "motiva": meta(&["yente-entities-default", "yente-entities-sanctions"], &["properties.notes", "properties.sourceUrl"]) })
     );
-    assert_eq!(create["settings"]["index"], json!({ "number_of_shards": "1" }));
+    assert_eq!(
+      create["settings"]["index"],
+      json!({ "number_of_shards": "1", "number_of_replicas": "0", "auto_expand_replicas": "false", "refresh_interval": "-1", "translog": { "durability": "async" } })
+    );
+
+    let settings: serde_json::Value = requests(&server, "PUT", SETTINGS).await[0].body_json().unwrap();
+
+    assert_eq!(
+      settings,
+      json!({ "index": { "auto_expand_replicas": "0-all", "number_of_replicas": "1", "refresh_interval": "10s", "translog.durability": null } })
+    );
 
     let aliases: serde_json::Value = requests(&server, "POST", "^/_aliases$").await[0].body_json().unwrap();
 
@@ -718,58 +1125,255 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn create_scoped_index_waits_for_reindex_task() {
+  async fn create_scoped_index_copies_index_only_fields() {
+    let (server, provider) = cluster(None, 1).await;
+
+    create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await.unwrap();
+
+    let search: serde_json::Value = requests(&server, "POST", SEARCH).await[0].body_json().unwrap();
+
+    // Copy targets are rebuilt by the cluster, and have no doc values anyway.
+    assert_eq!(search["docvalue_fields"], json!(["name_parts", "name_phonetic"]));
+
+    let bulk = &requests(&server, "POST", BULK).await[0];
+    let lines = String::from_utf8(bulk.body.clone()).unwrap();
+
+    assert_eq!(lines, "{\"index\":{\"_id\":\"doc-000\"}}\n{\"id\":\"doc-000\",\"name_parts\":[\"doc-000\"]}\n");
+    assert_eq!(bulk.headers.get("content-type").unwrap(), "application/x-ndjson");
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_pages_through_sources() {
     let (server, provider) = cluster(None, 10).await;
 
-    // The first poll sees the task still running, then a transient error.
-    Mock::given(method("GET"))
-      .and(path("/_tasks/node:1"))
-      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "completed": false, "task": { "status": { "total": 10, "created": 5 } } })))
+    create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await.unwrap();
+
+    let searches = requests(&server, "POST", SEARCH).await;
+    let first: serde_json::Value = searches[0].body_json().unwrap();
+
+    assert_eq!(first["sort"], json!(["_doc"]));
+    assert_eq!(first["size"], 4);
+    assert_eq!(first["track_total_hits"], true);
+
+    let query = searches[0].url.query().unwrap();
+
+    assert!(query.contains("allow_partial_search_results=false"));
+    assert!(query.contains("scroll=5m"));
+
+    let scrolls = searches[1..].iter().map(|search| search.body_json::<serde_json::Value>().unwrap()).collect::<Vec<_>>();
+
+    assert!(searches[1..].iter().all(|search| search.url.path() == "/_search/scroll"));
+    assert_eq!(scrolls.iter().map(|body| body["scroll_id"].clone()).collect::<Vec<_>>(), [json!("4:4"), json!("8:4"), json!("10:4")]);
+    assert!(scrolls.iter().all(|body| body["scroll"] == "5m"));
+
+    assert_eq!(requests(&server, "POST", BULK).await.len(), 3);
+    assert_eq!(written(&server).await, (0..10).map(|i| format!("doc-{i:03}")).collect::<Vec<_>>());
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_clears_its_scroll() {
+    let (server, provider) = cluster(None, 10).await;
+
+    create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await.unwrap();
+
+    let clear: serde_json::Value = requests(&server, "DELETE", "^/_search/scroll$").await[0].body_json().unwrap();
+
+    assert_eq!(clear, json!({ "scroll_id": ["10:4"] }));
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_clears_its_scroll_when_writing_fails() {
+    let (server, provider) = cluster(None, 10).await;
+
+    Mock::given(method("POST"))
+      .and(path_regex(BULK))
+      .respond_with(ResponseTemplate::new(400).set_body_json(json!({})))
       .with_priority(1)
-      .up_to_n_times(1)
       .mount(&server)
       .await;
 
-    Mock::given(method("GET"))
-      .and(path("/_tasks/node:1"))
-      .respond_with(ResponseTemplate::new(500).set_body_json(json!({ "error": { "type": "timeout_exception" }, "status": 500 })))
-      .with_priority(2)
+    create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await.unwrap_err();
+
+    assert_eq!(requests(&server, "DELETE", "^/_search/scroll$").await.len(), 1);
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_reads_ahead_of_writes_without_piling_up() {
+    let (server, provider) = cluster(None, 40).await;
+
+    Mock::given(method("POST"))
+      .and(path_regex(BULK))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "errors": false })).set_delay(Duration::from_secs(2)))
+      .with_priority(1)
+      .mount(&server)
+      .await;
+
+    let build = create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false);
+
+    tokio::time::timeout(Duration::from_millis(500), build).await.unwrap_err();
+
+    // One page is being written, one is waiting for it, and one is waiting to be queued.
+    assert_eq!(requests(&server, "POST", SEARCH).await.len(), 3);
+    assert_eq!(requests(&server, "POST", BULK).await.len(), 1);
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_writes_batches_concurrently() {
+    let (server, provider) = cluster(None, 40).await;
+
+    Mock::given(method("POST"))
+      .and(path_regex(BULK))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "errors": false })).set_delay(Duration::from_secs(2)))
+      .with_priority(1)
+      .mount(&server)
+      .await;
+
+    let options = CopyOptions { write_concurrency: 2, ..fast() };
+    let build = super::build_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false, &options);
+
+    tokio::time::timeout(Duration::from_millis(500), build).await.unwrap_err();
+
+    // Two pages are being written, one is waiting for them, and one is waiting to be queued.
+    assert_eq!(requests(&server, "POST", SEARCH).await.len(), 4);
+    assert_eq!(requests(&server, "POST", BULK).await.len(), 2);
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_stops_on_an_empty_page() {
+    let (server, provider) = cluster(None, 8).await;
+
+    create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await.unwrap();
+
+    // Only an empty page shows that there is nothing left.
+    assert_eq!(requests(&server, "POST", SEARCH).await.len(), 3);
+    assert_eq!(requests(&server, "POST", BULK).await.len(), 2);
+    assert_eq!(written(&server).await.len(), 8);
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_uses_default_options() {
+    let (server, provider) = cluster(None, 10).await;
+
+    super::create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await.unwrap();
+
+    assert_eq!(requests(&server, "POST", SEARCH).await.len(), 2);
+    assert_eq!(requests(&server, "POST", BULK).await.len(), 1);
+    assert_eq!(requests(&server, "POST", "^/_aliases$").await.len(), 1);
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_retries_failed_pages() {
+    let (server, provider) = cluster(None, 10).await;
+
+    Mock::given(method("POST"))
+      .and(path_regex(SEARCH))
+      .respond_with(ResponseTemplate::new(429).set_body_json(json!({})))
+      .with_priority(1)
+      .up_to_n_times(2)
+      .mount(&server)
+      .await;
+
+    create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await.unwrap();
+
+    assert_eq!(requests(&server, "POST", SEARCH).await.len(), 6);
+    assert_eq!(written(&server).await.len(), 10);
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_retries_failed_batches() {
+    let (server, provider) = cluster(None, 3).await;
+
+    Mock::given(method("POST"))
+      .and(path_regex(BULK))
+      .respond_with(ResponseTemplate::new(503).set_body_json(json!({})))
+      .with_priority(1)
       .up_to_n_times(1)
       .mount(&server)
       .await;
 
     create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await.unwrap();
 
-    let reindex = &requests(&server, "POST", "^/_reindex$").await[0];
+    let batches = requests(&server, "POST", BULK).await;
 
-    assert!(reindex.url.query().unwrap().contains("wait_for_completion=false"));
-
-    let polls = requests(&server, "GET", "^/_tasks/node:1$").await;
-
-    assert_eq!(polls.len(), 3);
-    assert!(polls.iter().all(|poll| poll.url.query().is_none()));
-    assert_eq!(requests(&server, "POST", "^/_aliases$").await.len(), 1);
-    assert!(requests(&server, "POST", "/_cancel$").await.is_empty());
+    assert_eq!(batches.len(), 2);
+    assert_eq!(batches[0].body, batches[1].body);
   }
 
   #[tokio::test]
-  async fn create_scoped_index_uses_default_timings() {
-    let (server, provider) = cluster(None, 10).await;
+  async fn create_scoped_index_retries_batches_rejected_under_load() {
+    let (server, provider) = cluster(None, 3).await;
 
-    // The task completes on the first poll, so the production poll interval is never waited on.
-    super::create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await.unwrap();
+    Mock::given(method("POST"))
+      .and(path_regex(BULK))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+        "errors": true,
+        "items": [
+          { "index": { "status": 201 } },
+          { "index": { "status": 429, "error": { "type": "es_rejected_execution_exception" } } },
+        ]
+      })))
+      .with_priority(1)
+      .up_to_n_times(1)
+      .mount(&server)
+      .await;
 
-    assert_eq!(requests(&server, "GET", "^/_tasks/node:1$").await.len(), 1);
+    create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await.unwrap();
+
+    assert_eq!(requests(&server, "POST", BULK).await.len(), 2);
     assert_eq!(requests(&server, "POST", "^/_aliases$").await.len(), 1);
   }
 
   #[tokio::test]
-  async fn create_scoped_index_cleans_up_after_failed_reindex_task() {
+  async fn create_scoped_index_fails_on_rejected_documents() {
+    let (server, provider) = cluster(None, 3).await;
+
+    // A single document that cannot be written fails the batch, whatever the others did.
+    Mock::given(method("POST"))
+      .and(path_regex(BULK))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+        "errors": true,
+        "items": [
+          { "index": { "status": 429, "error": { "type": "es_rejected_execution_exception" } } },
+          { "index": { "status": 400, "error": { "type": "mapper_parsing_exception" } } },
+        ]
+      })))
+      .with_priority(1)
+      .mount(&server)
+      .await;
+
+    let result = create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await;
+
+    assert!(result.unwrap_err().to_string().contains("could not write some documents"));
+    assert_eq!(requests(&server, "POST", BULK).await.len(), 1);
+    assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
+    assert_eq!(requests(&server, "DELETE", NEW_INDEX).await.len(), 1);
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_fails_when_errors_are_not_detailed() {
+    let (server, provider) = cluster(None, 3).await;
+
+    Mock::given(method("POST"))
+      .and(path_regex(BULK))
+      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "errors": true })))
+      .with_priority(1)
+      .mount(&server)
+      .await;
+
+    let result = create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await;
+
+    assert!(result.unwrap_err().to_string().contains("no failed document"));
+    assert_eq!(requests(&server, "POST", BULK).await.len(), 1);
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_does_not_retry_invalid_searches() {
     let (server, provider) = cluster(None, 10).await;
 
-    Mock::given(method("GET"))
-      .and(path("/_tasks/node:1"))
-      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "completed": true, "task": {}, "error": { "type": "index_not_found_exception" } })))
+    // Retrying cannot help a query the cluster refuses.
+    Mock::given(method("POST"))
+      .and(path_regex(SEARCH))
+      .respond_with(ResponseTemplate::new(404).set_body_json(json!({ "error": { "type": "index_not_found_exception" } })))
       .with_priority(1)
       .mount(&server)
       .await;
@@ -777,65 +1381,17 @@ mod tests {
     let result = create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await;
 
     assert!(result.unwrap_err().to_string().contains("index_not_found_exception"));
+    assert_eq!(requests(&server, "POST", SEARCH).await.len(), 1);
     assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
-    assert_eq!(requests(&server, "DELETE", ".*").await.len(), 1);
-
-    // The task has completed, so there is nothing to cancel.
-    assert!(requests(&server, "POST", "/_cancel$").await.is_empty());
-  }
-
-  #[tokio::test]
-  async fn create_scoped_index_cancels_task_when_it_cannot_be_followed() {
-    let (server, provider) = cluster(None, 10).await;
-
-    // The first poll fails permanently, the task completes once cancelled.
-    Mock::given(method("GET"))
-      .and(path("/_tasks/node:1"))
-      .respond_with(ResponseTemplate::new(400).set_body_json(json!({ "error": { "type": "illegal_argument_exception" } })))
-      .with_priority(1)
-      .up_to_n_times(1)
-      .mount(&server)
-      .await;
-
-    let result = create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await;
-
-    assert!(result.unwrap_err().to_string().contains("400"));
-    assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
-
-    let received = server.received_requests().await.unwrap();
-    let cancel = received.iter().position(|request| request.url.path() == "/_tasks/node:1/_cancel").unwrap();
-    let delete = received.iter().position(|request| request.method.as_str() == "DELETE").unwrap();
-
-    assert!(cancel < delete);
-  }
-
-  #[tokio::test]
-  async fn create_scoped_index_fails_when_task_is_lost() {
-    let (server, provider) = cluster(None, 10).await;
-
-    Mock::given(method("GET"))
-      .and(path("/_tasks/node:1"))
-      .respond_with(ResponseTemplate::new(404).set_body_json(json!({ "error": { "type": "resource_not_found_exception" } })))
-      .with_priority(1)
-      .mount(&server)
-      .await;
-
-    let result = create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await;
-
-    assert!(result.unwrap_err().to_string().contains("404"));
-    assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
-    assert_eq!(requests(&server, "DELETE", ".*").await.len(), 1);
-
-    // The first poll fails immediately, and the task cannot be found while cancelling.
-    assert_eq!(requests(&server, "GET", "^/_tasks/node:1$").await.len(), 2);
+    assert_eq!(requests(&server, "DELETE", NEW_INDEX).await.len(), 1);
   }
 
   #[tokio::test]
   async fn create_scoped_index_gives_up_after_repeated_transient_errors() {
     let (server, provider) = cluster(None, 10).await;
 
-    Mock::given(method("GET"))
-      .and(path("/_tasks/node:1"))
+    Mock::given(method("POST"))
+      .and(path_regex(BULK))
       .respond_with(ResponseTemplate::new(503).set_body_json(json!({})))
       .with_priority(1)
       .mount(&server)
@@ -843,78 +1399,23 @@ mod tests {
 
     let result = create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await;
 
-    assert!(result.unwrap_err().to_string().contains("after 5 attempts"));
+    assert!(result.unwrap_err().to_string().contains("could not write documents after 3 attempts"));
+    assert_eq!(requests(&server, "POST", BULK).await.len(), 3);
     assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
-    assert_eq!(requests(&server, "POST", "/_cancel$").await.len(), 1);
-    assert_eq!(requests(&server, "DELETE", ".*").await.len(), 1);
+    assert_eq!(requests(&server, "DELETE", NEW_INDEX).await.len(), 1);
   }
 
   #[tokio::test]
-  async fn create_scoped_index_gives_up_on_task_after_deadline() {
+  async fn create_scoped_index_fails_when_documents_are_missing_from_pages() {
     let (server, provider) = cluster(None, 10).await;
 
-    Mock::given(method("GET"))
-      .and(path("/_tasks/node:1"))
-      .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "completed": false, "task": {} })))
-      .with_priority(1)
-      .mount(&server)
-      .await;
-
-    let timings = TaskTimings {
-      max_wait: Duration::from_millis(100),
-      ..fast()
-    };
-
-    let result = super::build_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false, &timings).await;
-
-    assert!(result.unwrap_err().to_string().contains("did not complete within 100ms"));
-    assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
-    assert_eq!(requests(&server, "POST", "/_cancel$").await.len(), 1);
-    assert_eq!(requests(&server, "DELETE", ".*").await.len(), 1);
-  }
-
-  #[tokio::test]
-  async fn create_scoped_index_fails_when_task_was_cancelled() {
-    let (server, provider) = cluster(None, 10).await;
-
-    Mock::given(method("GET"))
-      .and(path("/_tasks/node:1"))
-      .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-        "completed": true,
-        "task": {},
-        "response": { "timed_out": false, "total": 0, "created": 0, "failures": [], "canceled": "by user request" }
-      })))
-      .with_priority(1)
-      .mount(&server)
-      .await;
-
-    let result = create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await;
-
-    assert!(result.unwrap_err().to_string().contains("cancelled (by user request)"));
-    assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
-    assert_eq!(requests(&server, "DELETE", ".*").await.len(), 1);
-  }
-
-  #[tokio::test]
-  async fn create_scoped_index_fails_when_task_copied_partially() {
-    let (server, provider) = cluster(None, 10).await;
-
-    Mock::given(method("GET"))
-      .and(path("/_tasks/node:1"))
-      .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-        "completed": true,
-        "task": {},
-        "response": { "timed_out": false, "total": 10, "created": 7, "failures": [] }
-      })))
-      .with_priority(1)
-      .mount(&server)
-      .await;
+    serve_source(&server, 10, hits(7)).await;
 
     let result = create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await;
 
     assert!(result.unwrap_err().to_string().contains("copied only 7 of 10"));
     assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
-    assert_eq!(requests(&server, "DELETE", ".*").await.len(), 1);
+    assert_eq!(requests(&server, "DELETE", NEW_INDEX).await.len(), 1);
   }
 
   #[tokio::test]
@@ -929,10 +1430,9 @@ mod tests {
 
     let result = create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await;
 
-    assert!(result.unwrap_err().to_string().contains("holds 7 documents, but the reindex reported 10"));
+    assert!(result.unwrap_err().to_string().contains("holds 7 documents, but 10 were copied"));
     assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
-    assert!(requests(&server, "POST", "^/_tasks/node:1/_cancel$").await.is_empty());
-    assert_eq!(requests(&server, "DELETE", ".*").await.len(), 1);
+    assert_eq!(requests(&server, "DELETE", NEW_INDEX).await.len(), 1);
   }
 
   #[tokio::test]
@@ -949,7 +1449,24 @@ mod tests {
 
     assert!(result.unwrap_err().to_string().contains("counting documents"));
     assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
-    assert_eq!(requests(&server, "DELETE", ".*").await.len(), 1);
+    assert_eq!(requests(&server, "DELETE", NEW_INDEX).await.len(), 1);
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_fails_when_refresh_fails() {
+    let (server, provider) = cluster(None, 10).await;
+
+    Mock::given(path_regex(r"/_refresh$"))
+      .respond_with(ResponseTemplate::new(500).set_body_json(json!({})))
+      .with_priority(1)
+      .mount(&server)
+      .await;
+
+    let result = create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await;
+
+    assert!(result.unwrap_err().to_string().contains("refreshing"));
+    assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
+    assert_eq!(requests(&server, "DELETE", NEW_INDEX).await.len(), 1);
   }
 
   #[tokio::test]
@@ -967,7 +1484,7 @@ mod tests {
 
     assert!(result.unwrap_err().to_string().contains("fetching scoped alias returned 500"));
     assert!(requests(&server, "PUT", NEW_INDEX).await.is_empty());
-    assert!(requests(&server, "POST", "^/_reindex$").await.is_empty());
+    assert!(requests(&server, "POST", SEARCH).await.is_empty());
   }
 
   #[cfg(feature = "aws")]
@@ -992,15 +1509,66 @@ mod tests {
 
     let received = server.received_requests().await.unwrap();
     let position = |suffix: &str| received.iter().position(|request| request.url.path().ends_with(suffix)).unwrap();
+    let last_write = received.iter().rposition(|request| request.url.path().ends_with("/_bulk")).unwrap();
 
     let merge = &received[position("/_forcemerge")];
     let created = requests(&server, "PUT", NEW_INDEX).await[0].url.path().to_string();
 
     assert_eq!(merge.url.path(), format!("{created}/_forcemerge"));
     assert!(merge.url.query().unwrap().contains("max_num_segments=1"));
-    assert!(position("/_reindex") < position("/_forcemerge"));
+    assert!(last_write < position("/_forcemerge"));
     assert!(position("/_forcemerge") < position("/_refresh"));
-    assert!(position("/_refresh") < position("/_aliases"));
+    assert!(position("/_refresh") < position("/_count"));
+    assert!(position("/_count") < position("/_settings"));
+    assert!(position("/_settings") < received.iter().position(|request| request.url.path().contains("/_cluster/health/motiva-")).unwrap());
+    assert!(received.iter().position(|request| request.url.path().contains("/_cluster/health/motiva-")).unwrap() < position("/_aliases"));
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_waits_for_replicas_without_requiring_green() {
+    let (server, provider) = cluster(None, 10).await;
+
+    create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await.unwrap();
+
+    let health = &requests(&server, "GET", HEALTH).await[0];
+    let query = health.url.query().unwrap();
+
+    assert!(query.contains("wait_for_no_initializing_shards=true"));
+    assert!(!query.contains("wait_for_status"));
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_succeeds_when_replicas_are_late() {
+    let (server, provider) = cluster(None, 10).await;
+
+    Mock::given(method("GET"))
+      .and(path_regex(HEALTH))
+      .respond_with(ResponseTemplate::new(408).set_body_json(json!({ "timed_out": true })))
+      .with_priority(1)
+      .mount(&server)
+      .await;
+
+    create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await.unwrap();
+
+    assert_eq!(requests(&server, "POST", "^/_aliases$").await.len(), 1);
+  }
+
+  #[tokio::test]
+  async fn create_scoped_index_fails_when_settings_cannot_be_restored() {
+    let (server, provider) = cluster(None, 10).await;
+
+    Mock::given(method("PUT"))
+      .and(path_regex(SETTINGS))
+      .respond_with(ResponseTemplate::new(500).set_body_json(json!({})))
+      .with_priority(1)
+      .mount(&server)
+      .await;
+
+    let result = create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await;
+
+    assert!(result.unwrap_err().to_string().contains("updating settings"));
+    assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
+    assert_eq!(requests(&server, "DELETE", NEW_INDEX).await.len(), 1);
   }
 
   #[tokio::test]
@@ -1018,7 +1586,7 @@ mod tests {
 
     assert_eq!(requests(&server, "POST", "/_forcemerge$").await.len(), 1);
     assert_eq!(requests(&server, "POST", "^/_aliases$").await.len(), 1);
-    assert!(requests(&server, "DELETE", ".*").await.is_empty());
+    assert!(requests(&server, "DELETE", NEW_INDEX).await.is_empty());
   }
 
   #[tokio::test]
@@ -1034,9 +1602,8 @@ mod tests {
 
     create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await.unwrap();
 
-    assert_eq!(requests(&server, "GET", "/_refresh$").await.len(), 1);
     assert_eq!(requests(&server, "POST", "^/_aliases$").await.len(), 1);
-    assert!(requests(&server, "DELETE", ".*").await.is_empty());
+    assert!(requests(&server, "DELETE", NEW_INDEX).await.is_empty());
   }
 
   #[tokio::test]
@@ -1049,9 +1616,9 @@ mod tests {
       .unwrap();
 
     assert!(requests(&server, "PUT", NEW_INDEX).await.is_empty());
-    assert!(requests(&server, "POST", "^/_reindex$").await.is_empty());
+    assert!(requests(&server, "POST", SEARCH).await.is_empty());
     assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
-    assert!(requests(&server, "DELETE", ".*").await.is_empty());
+    assert!(requests(&server, "DELETE", NEW_INDEX).await.is_empty());
   }
 
   #[tokio::test]
@@ -1070,13 +1637,13 @@ mod tests {
         .await
         .unwrap();
 
-      assert_eq!(requests(&server, "POST", "^/_reindex$").await.len(), 1);
+      assert_eq!(written(&server).await.len(), 10);
 
       let aliases: serde_json::Value = requests(&server, "POST", "^/_aliases$").await[0].body_json().unwrap();
 
       assert_eq!(aliases["actions"][1]["remove"]["index"], "motiva-previous");
 
-      let deleted = requests(&server, "DELETE", ".*").await;
+      let deleted = requests(&server, "DELETE", NEW_INDEX).await;
 
       assert_eq!(deleted.len(), 1);
       assert_eq!(deleted[0].url.path(), "/motiva-previous");
@@ -1098,7 +1665,7 @@ mod tests {
     .await
     .unwrap();
 
-    assert_eq!(requests(&server, "POST", "^/_reindex$").await.len(), 1);
+    assert_eq!(written(&server).await.len(), 10);
   }
 
   #[tokio::test]
@@ -1110,7 +1677,7 @@ mod tests {
       .await
       .unwrap();
 
-    assert_eq!(requests(&server, "POST", "^/_reindex$").await.len(), 1);
+    assert_eq!(written(&server).await.len(), 10);
   }
 
   #[tokio::test]
@@ -1121,7 +1688,7 @@ mod tests {
       .await
       .unwrap();
 
-    assert_eq!(requests(&server, "POST", "^/_reindex$").await.len(), 1);
+    assert_eq!(written(&server).await.len(), 10);
   }
 
   #[tokio::test]
@@ -1145,18 +1712,115 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn create_scoped_index_cleans_up_after_empty_reindex() {
+  async fn create_scoped_index_cleans_up_when_nothing_matches() {
     let (server, provider) = cluster(Some(json!({})), 0).await;
 
     let result = create_scoped_index(&provider, json!({ "match_all": {} }), &[], &[], false).await;
 
-    assert!(result.unwrap_err().to_string().contains("matched no documents"));
+    assert!(result.unwrap_err().to_string().contains("found no documents"));
     assert!(requests(&server, "POST", "^/_aliases$").await.is_empty());
 
-    let deleted = requests(&server, "DELETE", ".*").await;
+    let deleted = requests(&server, "DELETE", NEW_INDEX).await;
 
     assert_eq!(deleted.len(), 1);
     assert!(regex::Regex::new(NEW_INDEX).unwrap().is_match(deleted[0].url.path()));
+  }
+
+  fn spliced(hit: &str) -> String {
+    let hit: Hit = serde_json::from_str(hit).unwrap();
+    let mut body = Vec::new();
+
+    super::write_document(&mut body, &hit).unwrap();
+
+    String::from_utf8(body).unwrap()
+  }
+
+  #[test]
+  fn write_document_merges_doc_values_into_source() {
+    let hit = r#"{"_id":"a","_source":{"id":"a","score":1.10},"fields":{"name_parts":["x","y"]}}"#;
+
+    assert_eq!(spliced(hit), "{\"index\":{\"_id\":\"a\"}}\n{\"id\":\"a\",\"score\":1.10,\"name_parts\":[\"x\",\"y\"]}\n");
+  }
+
+  #[test]
+  fn write_document_without_doc_values() {
+    assert_eq!(spliced(r#"{"_id":"a","_source":{"id":"a"}}"#), "{\"index\":{\"_id\":\"a\"}}\n{\"id\":\"a\"}\n");
+  }
+
+  #[test]
+  fn write_document_with_empty_source() {
+    assert_eq!(spliced(r#"{"_id":"a","_source":{}}"#), "{\"index\":{\"_id\":\"a\"}}\n{}\n");
+    assert_eq!(spliced(r#"{"_id":"a","_source":{},"fields":{"b":[1]}}"#), "{\"index\":{\"_id\":\"a\"}}\n{\"b\":[1]}\n");
+  }
+
+  #[test]
+  fn write_document_keeps_escaped_values() {
+    let hit = r#"{"_id":"a\"b","_source":{"note":"one\ntwo, \"three\", é"}}"#;
+
+    assert_eq!(spliced(hit), "{\"index\":{\"_id\":\"a\\\"b\"}}\n{\"note\":\"one\\ntwo, \\\"three\\\", é\"}\n");
+  }
+
+  #[test]
+  fn write_document_removes_line_breaks() {
+    let hit = "{\"_id\":\"a\",\"_source\":{\n  \"id\": \"a\"\n},\"fields\":{\n  \"b\": [1]\n}}";
+
+    assert_eq!(spliced(hit), "{\"index\":{\"_id\":\"a\"}}\n{\"id\":\"a\",\"b\":[1]}\n");
+  }
+
+  #[test]
+  fn write_document_rejects_sources_that_are_not_objects() {
+    let hit: Hit = serde_json::from_str(r#"{"_id":"a","_source":[1]}"#).unwrap();
+
+    assert!(super::write_document(&mut Vec::new(), &hit).is_err());
+  }
+
+  #[test]
+  fn index_only_fields() {
+    let mappings = json!({
+      "_source": { "excludes": ["name_parts", "name_phonetic", "disabled", "analyzed", "unmapped", "text", "nested_target"] },
+      "properties": {
+        "name_parts": { "type": "keyword", "copy_to": "text" },
+        "name_phonetic": { "type": "keyword", "doc_values": true },
+        "disabled": { "type": "keyword", "doc_values": false },
+        "analyzed": { "type": "text" },
+        "text": { "type": "text" },
+        "nested_target": { "type": "keyword" },
+        "properties": { "properties": { "name": { "type": "keyword", "copy_to": ["names", "nested_target"] } } },
+      }
+    });
+
+    assert_eq!(super::index_only_fields(&mappings), vec!["name_parts".to_string(), "name_phonetic".to_string()]);
+    assert!(super::index_only_fields(&json!({ "properties": {} })).is_empty());
+  }
+
+  #[test]
+  fn strip_source_settings() {
+    let mut settings = json!({
+      "index": {
+        "uuid": "uuid",
+        "provided_name": "yente-entities-default",
+        "creation_date": "0",
+        "version": { "created": "1", "upgraded": "2" },
+        "resize": { "source": { "name": "yente-entities-previous", "uuid": "uuid" } },
+        "blocks": { "read_only": "false", "write": "true" },
+        "routing": { "allocation": { "initial_recovery": { "_id": null }, "include": { "_tier_preference": "data_hot" } } },
+        "number_of_shards": "1",
+      }
+    });
+
+    super::strip_source_settings(&mut settings).unwrap();
+
+    assert_eq!(
+      settings,
+      json!({
+        "index": {
+          "routing": { "allocation": { "include": { "_tier_preference": "data_hot" } } },
+          "number_of_shards": "1",
+        }
+      })
+    );
+
+    assert!(super::strip_source_settings(&mut json!({})).is_err());
   }
 
   #[test]
