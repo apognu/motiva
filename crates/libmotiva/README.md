@@ -278,11 +278,10 @@ $ docker build --build-arg CARGO_ARGS="--features gcp" -t motiva:gcp .
 
 ### Test suite
 
-To run the tests, a Python 3.13+ environment must be set up with the required dependencies (this include `libicu`). You can install it in a virtualenv by using the `uv` file at the root of this repository:
+Some tests compare results against nomenklatura, which requires [mise](https://mise.jdx.dev), [uv](https://docs.astral.sh/uv/) and `libicu`:
 
 ```sh
-$ uv sync
-$ cargo test
+$ mise run test
 ```
 
 One quite lengthy test is ignored by default (scoring the cartesian product of 50x50 entities against each other) and compare it against nomenklatura. You can still run this test by running `cargo test -- --include-ignored`.

@@ -1,0 +1,10 @@
+[env]
+PYO3_PYTHON = "{{ config_root }}/.venv/bin/python"
+LD_LIBRARY_PATH = { value = "{{ tools.python.path }}/lib", tools = true }
+UV_PYTHON = { value = "{{ tools.python.path }}/bin/python", tools = true }
+
+[tools]
+python = "3.14"
+
+[tasks.test]
+run = ["uv sync --locked", "cargo test --locked --workspace"]
