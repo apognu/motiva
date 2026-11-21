@@ -43,7 +43,13 @@ pub async fn algorithms() -> Json<Algorithms> {
   const ALGORITHMS: [Algorithm; 3] = [Algorithm::NameBased, Algorithm::NameQualified, Algorithm::LogicV1];
 
   Json(Algorithms {
-    algorithms: ALGORITHMS.into_iter().map(|alg| AlgorithmDescription { name: alg.name() }).collect(),
+    algorithms: ALGORITHMS
+      .into_iter()
+      .map(|alg| AlgorithmDescription {
+        name: alg.name(),
+        weights: alg.weights(),
+      })
+      .collect(),
     best: Algorithm::best().name(),
     default: Algorithm::default().name(),
   })

@@ -1,11 +1,11 @@
-use std::sync::LazyLock;
+use std::{collections::BTreeMap, sync::LazyLock};
 
 use bumpalo::Bump;
 use tracing::instrument;
 
 use crate::{
   matching::{
-    Explanation, Feature, FeaturesConfig, MatchingAlgorithm,
+    Explanation, Feature, FeaturesConfig, MatchingAlgorithm, collect_weights,
     matchers::{
       address::AddressEntityMatch,
       crypto_wallet::CryptoWalletMatch,
@@ -91,6 +91,10 @@ pub(crate) fn logic_v1(
 impl MatchingAlgorithm for LogicV1 {
   fn name() -> &'static str {
     "logic-v1"
+  }
+
+  fn weights() -> BTreeMap<&'static str, f64> {
+    collect_weights(&[&FEATURES, &QUALIFIERS])
   }
 
   #[instrument(name = "score_hit", skip_all, fields(entity_id = rhs.id))]

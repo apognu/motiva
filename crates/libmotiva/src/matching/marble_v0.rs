@@ -1,11 +1,11 @@
-use std::sync::LazyLock;
+use std::{collections::BTreeMap, sync::LazyLock};
 
 use bumpalo::Bump;
 use tracing::instrument;
 
 use crate::{
   matching::{
-    Explanation, Feature, MatchingAlgorithm,
+    Explanation, Feature, MatchingAlgorithm, collect_weights,
     logic_v1::logic_v1,
     matchers::{
       address::AddressEntityMatch,
@@ -77,6 +77,10 @@ static DISQUALIFIERS: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new
 impl MatchingAlgorithm for MarbleV0 {
   fn name() -> &'static str {
     "marble-v0"
+  }
+
+  fn weights() -> BTreeMap<&'static str, f64> {
+    collect_weights(&[&FEATURES, &QUALIFIERS, &DISQUALIFIERS])
   }
 
   #[instrument(name = "score_hit", skip_all, fields(entity_id = rhs.id))]

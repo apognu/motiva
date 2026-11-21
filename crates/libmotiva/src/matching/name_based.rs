@@ -1,9 +1,11 @@
+use std::collections::BTreeMap;
+
 use bumpalo::Bump;
 use tracing::instrument;
 
 use crate::{
   matching::{
-    Explanation, Feature, FeaturesConfig, MatchingAlgorithm,
+    Explanation, Feature, FeaturesConfig, MatchingAlgorithm, collect_weights,
     matchers::{jaro_winkler::JaroNameParts, soundex::SoundexNameParts},
     run_features,
   },
@@ -19,6 +21,10 @@ const FEATURES: &[(&dyn Feature, f64)] = &[(&SoundexNameParts, 0.5), (&JaroNameP
 impl MatchingAlgorithm for NameBased {
   fn name() -> &'static str {
     "name-based"
+  }
+
+  fn weights() -> BTreeMap<&'static str, f64> {
+    collect_weights(&[FEATURES])
   }
 
   #[instrument(name = "score_hit", skip_all)]

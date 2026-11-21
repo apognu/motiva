@@ -1,11 +1,11 @@
-use std::sync::LazyLock;
+use std::{collections::BTreeMap, sync::LazyLock};
 
 use bumpalo::Bump;
 use tracing::instrument;
 
 use crate::{
   matching::{
-    Explanation, Feature, FeaturesConfig, MatchingAlgorithm,
+    Explanation, Feature, FeaturesConfig, MatchingAlgorithm, collect_weights,
     matchers::{
       jaro_winkler::JaroNameParts,
       mismatch::{SimpleMismatch, dob_day_disjoint, dob_year_disjoint},
@@ -36,6 +36,10 @@ static FEATURES: LazyLock<Vec<(&'static dyn Feature, f64)>> = LazyLock::new(|| {
 impl MatchingAlgorithm for NameQualified {
   fn name() -> &'static str {
     "name-qualified"
+  }
+
+  fn weights() -> BTreeMap<&'static str, f64> {
+    collect_weights(&[&FEATURES])
   }
 
   #[instrument(name = "score_hit", skip_all, fields(algorithm = Self::name(), entity_id = rhs.id))]

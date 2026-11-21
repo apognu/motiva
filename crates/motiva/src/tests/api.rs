@@ -112,13 +112,20 @@ async fn api_algorithms() {
 
   response.assert_json_contains(&json!({
       "algorithms": [
-          { "name": "name-based" },
+          { "name": "name-based", "weights": { "jaro_name_parts": 0.5, "soundex_name_parts": 0.5 } },
           { "name": "name-qualified" },
           { "name": "logic-v1" },
       ],
       "best": "logic-v1",
       "default": "logic-v1"
   }));
+
+  let body = response.json::<serde_json::Value>();
+  let logic_v1 = &body["algorithms"][2]["weights"];
+
+  assert_eq!(logic_v1["name_literal_match"], json!(1.0));
+  assert_eq!(logic_v1["country_mismatch"], json!(-0.2));
+  assert_eq!(logic_v1["identifier_mismatch"], json!(0.0));
 }
 
 #[tokio::test]

@@ -1,4 +1,7 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::{
+  borrow::Cow,
+  collections::{BTreeMap, HashMap},
+};
 
 use ahash::RandomState;
 use libmotiva::prelude::*;
@@ -77,6 +80,7 @@ pub struct Algorithms {
 #[derive(Serialize)]
 pub struct AlgorithmDescription {
   pub name: &'static str,
+  pub weights: BTreeMap<&'static str, f64>,
 }
 
 #[derive(Serialize)]
