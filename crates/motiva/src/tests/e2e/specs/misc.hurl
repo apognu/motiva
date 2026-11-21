@@ -17,6 +17,7 @@ jsonpath "$.algorithms" isCollection
 jsonpath "$.algorithms[*].name" contains "logic-v1"
 jsonpath "$.algorithms[*].name" contains "name-based"
 jsonpath "$.algorithms[*].name" contains "name-qualified"
+jsonpath "$.algorithms[?(@.name == 'logic-v1')].weights.name_literal_match" == 1.0
 jsonpath "$.best" == "logic-v1"
 jsonpath "$.default" == "logic-v1"
 

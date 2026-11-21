@@ -6,7 +6,10 @@ mod tests;
 
 pub use explanation::{CodedPair, Detail, Explanation};
 
-use std::{collections::HashMap, time::Instant};
+use std::{
+  collections::{BTreeMap, HashMap},
+  time::Instant,
+};
 
 use bumpalo::Bump;
 use jiff::Timestamp;
@@ -59,6 +62,16 @@ impl Algorithm {
       Algorithm::Best => "best",
     }
   }
+
+  /// Default weight of each feature used by the algorithm, keyed by feature name.
+  pub fn weights(&self) -> BTreeMap<&'static str, f64> {
+    match self {
+      Algorithm::NameBased => name_based::NameBased::weights(),
+      Algorithm::NameQualified => name_qualified::NameQualified::weights(),
+      Algorithm::LogicV1 | Algorithm::Best => logic_v1::LogicV1::weights(),
+      Algorithm::MarbleV0 => marble_v0::MarbleV0::weights(),
+    }
+  }
 }
 
 pub struct ScoreResult(pub f64, pub Option<Detail>);
@@ -85,6 +98,8 @@ impl From<(f64, Option<Detail>)> for ScoreResult {
 pub trait MatchingAlgorithm {
   /// Readable name of the matching algorithm.
   fn name() -> &'static str;
+  /// Default weight of each feature, keyed by the name used to override it.
+  fn weights() -> BTreeMap<&'static str, f64>;
   /// Score an entity against search parameters.
   ///
   /// The configured `cutoff` needs to be passed in order to skip features that
@@ -169,6 +184,10 @@ pub enum FeaturesSkip {
   #[default]
   Never,
   ScoreBelow(f64),
+}
+
+fn collect_weights(groups: &[&[(&'static dyn Feature, f64)]]) -> BTreeMap<&'static str, f64> {
+  groups.iter().flat_map(|group| group.iter()).map(|(feature, weight)| (feature.name(), *weight)).collect()
 }
 
 fn run_features<'f, F>(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, init: f64, config: FeaturesConfig<'f, F>, results: &mut Vec<Explanation>) -> f64
@@ -321,6 +340,29 @@ mod testing {
     ] {
       assert_eq!(alg.name(), name);
     }
+  }
+
+  #[test]
+  fn algorithm_default_weights() {
+    use super::Algorithm::*;
+
+    for (alg, count) in [(NameBased, 2), (NameQualified, 7), (LogicV1, 22), (MarbleV0, 23)] {
+      assert_eq!(alg.weights().len(), count, "{}", alg.name());
+    }
+
+    assert_eq!(Best.weights(), LogicV1.weights());
+
+    let weights = LogicV1.weights();
+
+    assert_eq!(weights["name_literal_match"], 1.0);
+    assert_eq!(weights["lei_code_match"], 0.95);
+    assert_eq!(weights["country_mismatch"], -0.2);
+    assert_eq!(weights["identifier_mismatch"], 0.0);
+
+    let weights = MarbleV0.weights();
+
+    assert_eq!(weights["country_match"], 0.1);
+    assert_eq!(weights["identifier_mismatch"], -0.3);
   }
 
   #[test]
