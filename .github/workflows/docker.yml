@@ -20,8 +20,8 @@ jobs:
     outputs:
       matrix: ${{ steps.generate.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v6.3.0
         with:
           python-version: "3.14"
       - name: Generate feature combinations
@@ -40,10 +40,10 @@ jobs:
     name: docker/features/${{ matrix.combination.features || 'base' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: Download binary
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: motiva${{ matrix.combination.suffix }}
           path: dist
@@ -58,7 +58,7 @@ jobs:
 
       - name: Docker metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@v6.2.0
         env:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
@@ -68,25 +68,25 @@ jobs:
             org.opencontainers.image.description=Sanctions, PEP and adverse media screening API
 
       - name: Authenticate to Docker Hub
-        uses: docker/login-action@v4
+        uses: docker/login-action@v4.8.0
         if: ${{ inputs.push }}
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
       - name: "Login to GitHub Container Registry"
-        uses: docker/login-action@v4
+        uses: docker/login-action@v4.8.0
         if: ${{ inputs.push }}
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@v4.4.1
 
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v7.4.0
         with:
           context: .
           labels: ${{ steps.meta.outputs.labels }}
@@ -100,7 +100,7 @@ jobs:
           provenance: mode=max
 
       - name: Attest GHCR
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         if: ${{ inputs.push }}
         with:
           subject-name: ghcr.io/apognu/motiva
@@ -109,7 +109,7 @@ jobs:
           create-storage-record: false
 
       - name: Attest GH
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         if: ${{ inputs.push }}
         with:
           subject-name: docker.io/apognu/motiva

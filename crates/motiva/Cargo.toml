@@ -5,7 +5,6 @@ edition = "2024"
 license = "MIT"
 
 authors = ["Antoine POPINEAU"]
-homepage = "https://github.com/apognu/motiva"
 repository = "https://github.com/apognu/motiva"
 
 [features]
