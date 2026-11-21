@@ -7,7 +7,6 @@ license = "MIT"
 readme = "README.md"
 
 authors = ["Antoine POPINEAU"]
-homepage = "https://github.com/apognu/motiva"
 repository = "https://github.com/apognu/motiva"
 documentation = "https://docs.rs/libmotiva"
 
@@ -32,12 +31,17 @@ lei = "0.2.5"
 libmotiva-macros = { version = "0.2.0", path = "../macros" }
 luhn = "1.0.1"
 metrics = "0.24.2"
-opensearch = { version = "2.4.0", default-features = false, features = ["rustls-tls"] }
+opensearch = { version = "2.4.0", default-features = false, features = [
+  "rustls-tls",
+] }
 opentelemetry = { version = "0.33.0", features = ["trace"] }
 rand = "0.10.3"
 rayon = "1.10"
 regex = "1.11.1"
-reqwest = { version = "0.13.1", default-features = false, features = ["rustls", "json"] }
+reqwest = { version = "0.13.1", default-features = false, features = [
+  "rustls",
+  "json",
+] }
 rphonetic = "4.0.0"
 rust-embed = "8.9.0"
 serde = { version = "1.0.219", features = ["rc"] }

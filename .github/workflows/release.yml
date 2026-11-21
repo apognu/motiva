@@ -19,18 +19,18 @@ jobs:
       PRERELEASE: ${{ contains(inputs.tag, '-rc.') }}
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           pattern: motiva*
           merge-multiple: true
 
       - name: Attest
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           subject-path: ${{ github.workspace }}/motiva*
 
       - name: Create release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.4
         with:
           name: motiva ${{ inputs.tag }}
           generate_release_notes: true
@@ -40,7 +40,7 @@ jobs:
           files: motiva*
 
       - name: Publish prerelease
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.4
         if: ${{ env.PRERELEASE == 'true' }}
         with:
           name: motiva ${{ inputs.tag }}
