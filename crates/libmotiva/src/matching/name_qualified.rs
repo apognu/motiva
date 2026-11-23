@@ -42,7 +42,7 @@ impl MatchingAlgorithm for NameQualified {
     collect_weights(&[&FEATURES])
   }
 
-  #[instrument(name = "score_hit", skip_all, fields(algorithm = Self::name(), entity_id = rhs.id))]
+  #[instrument(level = "debug", name = "score_hit", skip_all, fields(algorithm = Self::name(), entity_id = rhs.id))]
   fn score(bump: &Bump, lhs: &SearchEntity, rhs: &Entity, options: &ScoringOptions) -> (f64, Vec<Explanation>) {
     if !rhs.schema.is_a(lhs.schema.as_str()) {
       return (0.0, vec![]);
