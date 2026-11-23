@@ -433,7 +433,7 @@ mod tests {
     fn parse_amz_date(date: &str) -> SystemTime {
       let seconds = DateTime::strptime("%Y%m%dT%H%M%SZ", date)
         .unwrap_or_else(|err| panic!("x-amz-date {date} is not a valid timestamp: {err}"))
-        .to_zoned(TimeZone::UTC)
+        .to_zoned_datetime(TimeZone::UTC)
         .unwrap()
         .timestamp()
         .as_second();
