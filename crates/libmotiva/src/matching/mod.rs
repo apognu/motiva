@@ -15,7 +15,7 @@ use bumpalo::Bump;
 use jiff::Timestamp;
 use serde::Deserialize;
 use serde_inline_default::serde_inline_default;
-use tracing::info_span;
+use tracing::trace_span;
 
 use crate::{
   model::{Entity, SearchEntity},
@@ -201,7 +201,7 @@ where
       return score;
     }
 
-    let span = info_span!("scoring_feature", feature = func.name());
+    let span = trace_span!("scoring_feature", feature = func.name());
     let _span = span.enter();
 
     if let FeaturesSkip::ScoreBelow(cutoff) = config.skip {

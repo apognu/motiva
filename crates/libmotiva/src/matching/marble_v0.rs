@@ -83,7 +83,7 @@ impl MatchingAlgorithm for MarbleV0 {
     collect_weights(&[&FEATURES, &QUALIFIERS, &DISQUALIFIERS])
   }
 
-  #[instrument(name = "score_hit", skip_all, fields(entity_id = rhs.id))]
+  #[instrument(level = "debug", name = "score_hit", skip_all, fields(entity_id = rhs.id))]
   fn score(bump: &Bump, lhs: &crate::model::SearchEntity, rhs: &crate::model::Entity, options: &ScoringOptions) -> (f64, Vec<Explanation>) {
     logic_v1(bump, lhs, rhs, options, &FEATURES, &QUALIFIERS, &DISQUALIFIERS)
   }
