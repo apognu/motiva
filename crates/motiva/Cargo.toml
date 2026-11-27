@@ -9,7 +9,7 @@ repository = "https://github.com/apognu/motiva"
 
 [features]
 aws = ["libmotiva/aws"]
-gcp = ["gcp_auth", "opentelemetry-gcloud-trace"]
+gcp = ["gcp_auth", "gcloud-observability"]
 benchmarks = []
 
 [dependencies]
@@ -30,7 +30,11 @@ metrics-exporter-prometheus = { version = "0.18.1", default-features = false, fe
 ] }
 mimalloc = { version = "0.1.52" }
 opentelemetry = { version = "0.33", features = ["trace"] }
-opentelemetry-gcloud-trace = { version = "0.30", optional = true }
+gcloud-observability = { version = "0.31", optional = true, default-features = false, features = [
+  "trace-api",
+  "tls-roots",
+  "auth-default-crypto",
+] }
 opentelemetry-http = "0.33"
 opentelemetry-otlp = { version = "0.33", features = [
   "grpc-tonic",

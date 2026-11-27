@@ -13,7 +13,7 @@ use tracing_opentelemetry::MetricsLayer;
 use tracing_subscriber::{EnvFilter, Layer, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg(feature = "gcp")]
-use opentelemetry_gcloud_trace::GcpCloudTraceExporterBuilder;
+use gcloud_observability::trace_api::GcpCloudTraceExporterBuilder;
 
 use crate::api::config::{self, Config, Env, TracingExporter};
 
@@ -124,7 +124,7 @@ async fn tracing_layers(mut guards: TraceGuards, config: &Config) -> (TraceGuard
 
       match provider_result {
         Ok(provider) => {
-          let tracer: opentelemetry_sdk::trace::Tracer = gcp_trace_exporter.install(&provider).await.unwrap();
+          let tracer = gcp_trace_exporter.install(&provider);
 
           guards.trace = Some(provider);
 

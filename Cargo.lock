@@ -1883,6 +1883,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "gcloud-observability"
+version = "0.31.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bca64f170aac89c18178847ef1157ccd7ac210fb992c43fbaad9a9a0ecf3a4b3"
+dependencies = [
+ "futures",
+ "gcloud-sdk",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "rsb_derive",
+ "serde",
+ "tracing",
+]
+
+[[package]]
 name = "gcloud-sdk"
 version = "0.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3242,6 +3258,7 @@ dependencies = [
  "axum-macros",
  "axum-test",
  "base64 0.23.1",
+ "gcloud-observability",
  "gcp_auth",
  "glob",
  "hurl",
@@ -3255,7 +3272,6 @@ dependencies = [
  "mimalloc",
  "nix",
  "opentelemetry",
- "opentelemetry-gcloud-trace",
  "opentelemetry-http",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
@@ -3546,28 +3562,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "opentelemetry-gcloud-trace"
-version = "0.30.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f37db23181927b3c4bbe98bcd0d22fbb8d2f4bf4daa9900acb5dc09ed8905ee"
-dependencies = [
- "async-trait",
- "futures",
- "gcloud-sdk",
- "opentelemetry",
- "opentelemetry-semantic-conventions",
- "opentelemetry_sdk",
- "rsb_derive",
- "rvstruct",
- "serde_json",
- "time",
- "tokio-stream",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "opentelemetry-http"
 version = "0.33.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3612,12 +3606,6 @@ dependencies = [
  "tonic",
  "tonic-prost",
 ]
-
-[[package]]
-name = "opentelemetry-semantic-conventions"
-version = "0.33.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a3cf639fefd3e852869114f9925b578da6dd8e99281a2089bb0e773ead46962"
 
 [[package]]
 name = "opentelemetry_sdk"
@@ -4533,26 +4521,6 @@ dependencies = [
  "quick-error",
  "tempfile",
  "wait-timeout",
-]
-
-[[package]]
-name = "rvs_derive"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2c606655bc347ab5ffcc41853a3705a2fe7b2e6564fbc95bd8c4075fa9e1f61"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.10",
-]
-
-[[package]]
-name = "rvstruct"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74210d04e936dd1f3e4d842cf7e3fb2edbeff74505a27ca23aafa60f4a1933de"
-dependencies = [
- "rvs_derive",
 ]
 
 [[package]]
